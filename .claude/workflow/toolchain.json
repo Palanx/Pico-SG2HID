@@ -1,0 +1,16 @@
+{
+  "detected_at": "2026-08-31T19:39:49Z",
+  "detected_from": "8bbc1e7",
+  "stacks": [],
+  "commands": {
+    "test": "make test",
+    "lint": "make lint",
+    "secrets": "gitleaks protect --staged --no-banner --redact"
+  },
+  "file_commands": {
+  },
+  "exempt": [],
+  "gaps": [
+    "stack: no known stack marker found (package.json / pyproject.toml / go.mod / Cargo.toml / ProjectSettings/ProjectVersion.txt / project.godot / *.uproject / Makefile). Fill .claude/workflow/toolchain.manual.json by hand — this script overwrites toolchain.json on every run, that file it never touches."
+  ]
+}

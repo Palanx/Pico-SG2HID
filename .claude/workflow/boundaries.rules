@@ -1,0 +1,55 @@
+# Architectural boundary rules — enforced by .claude/hooks/boundary-check.sh
+# on every edit, and swept by /validate-phase and /refresh-index.
+#
+# Syntax (one directive per line, # comments allowed):
+#   layer <name> <dir-prefix>/     declares a layer as a directory prefix
+#   deny <from> -> <to>            files under <from> may not import from <to>
+#
+# Prose twin: docs/constraints.md §Layering. Rationale: ADR-0002.
+# Changing this file requires a superseding ADR, never a silent edit.
+#
+# Dependencies point inward toward `core`:
+#
+#     app  ──► usb ──┐
+#      │             ├──► core
+#      ├────► hal ───┘
+#      │       ▲
+#     emu ─────┘
+#
+# tests/ and tools/ are deliberately NOT layers: they may read anything, and
+# nothing under src/ may depend on them (that edge is covered by R-ARCH-03's
+# sibling checks in tests/, not here).
+#
+# NOT expressible here, because a layer is a repo directory prefix and the SDK
+# is not one: "core must not include the Pico SDK / TinyUSB" (R-ARCH-01). That
+# edge is enforced twice instead — the host test build gives core no SDK include
+# paths, so a violation fails to compile, and tests/ greps for it by name.
+
+layer core src/core/
+layer hal src/hal/
+layer usb src/usb/
+layer app src/app/
+layer emu src/emu/
+
+# core is pure: it depends on nothing in this repo.
+deny core -> hal
+deny core -> usb
+deny core -> app
+deny core -> emu
+
+# hal owns hardware; it knows core and nothing else.
+deny hal -> usb
+deny hal -> app
+deny hal -> emu
+
+# usb owns the HID transport; it knows core and nothing else.
+deny usb -> hal
+deny usb -> app
+deny usb -> emu
+
+# app wires core + hal + usb. It is not part of the emulator binary.
+deny app -> emu
+
+# emu is the second Pico's firmware: core + hal only, never the HID side.
+deny emu -> usb
+deny emu -> app

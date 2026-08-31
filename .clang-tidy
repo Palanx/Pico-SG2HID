@@ -1,0 +1,59 @@
+# pico-sg2hid — naming rules. Enforced by R-STYLE-02 (docs/constraints.md §Invariants).
+#
+# Verified against clang-tidy 23.1.0. NOTE: clang-tidy silently ignores CheckOptions
+# keys it does not recognise — a typo here disables a rule with no error. The test
+# behind R-STYLE-02 works by feeding it a deliberately misnamed sample and asserting
+# that every category is reported, which is the only way to know these keys still bind.
+#
+# Scope limit: clang-tidy needs to know how to compile the file. Without a
+# compile_commands.json it can only run where the flags are trivial — src/core/ and
+# tests/. src/hal/, src/usb/, src/app/ and src/emu/ pull in Pico SDK and TinyUSB
+# headers and are skipped. Upgrade path: build with CMAKE_EXPORT_COMPILE_COMMANDS=ON
+# once the ARM toolchain is installed, then drop the path filter in `make lint`.
+
+Checks: '-*,readability-identifier-naming,readability-function-size'
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(src|tests)/.*'
+
+CheckOptions:
+  # Types read as CamelCase; things you call read as lower_case. The case tells you
+  # which one you are looking at before you finish the word.
+  - { key: readability-identifier-naming.ClassCase,              value: CamelCase }
+  - { key: readability-identifier-naming.StructCase,             value: CamelCase }
+  - { key: readability-identifier-naming.EnumCase,               value: CamelCase }
+  - { key: readability-identifier-naming.EnumConstantCase,       value: CamelCase }
+  - { key: readability-identifier-naming.TypeAliasCase,          value: CamelCase }
+  - { key: readability-identifier-naming.TypedefCase,            value: CamelCase }
+  - { key: readability-identifier-naming.TemplateParameterCase,  value: CamelCase }
+
+  - { key: readability-identifier-naming.FunctionCase,           value: lower_case }
+  - { key: readability-identifier-naming.MethodCase,             value: lower_case }
+  - { key: readability-identifier-naming.ParameterCase,          value: lower_case }
+  - { key: readability-identifier-naming.VariableCase,           value: lower_case }
+  - { key: readability-identifier-naming.NamespaceCase,          value: lower_case }
+
+  # Private state carries m_ so it is identifiable at the start of the name, not the
+  # end. Chosen over a trailing _ (invisible on long names) and over a leading _
+  # (legal for members, but one capital letter away from a reserved identifier).
+  - { key: readability-identifier-naming.PrivateMemberPrefix,    value: m_ }
+  - { key: readability-identifier-naming.PrivateMemberCase,      value: lower_case }
+  - { key: readability-identifier-naming.ProtectedMemberPrefix,  value: m_ }
+  - { key: readability-identifier-naming.ProtectedMemberCase,    value: lower_case }
+  # Public members exist only on the plain-data structs core is built from (ADR-0002);
+  # they are not private state and take no prefix.
+  - { key: readability-identifier-naming.PublicMemberCase,       value: lower_case }
+
+  # Compile-time constants are kCamelCase, so a protocol constant never looks like a
+  # runtime variable at the call site.
+  - { key: readability-identifier-naming.ConstexprVariableCase,   value: CamelCase }
+  - { key: readability-identifier-naming.ConstexprVariablePrefix, value: k }
+  - { key: readability-identifier-naming.GlobalConstantCase,      value: CamelCase }
+  - { key: readability-identifier-naming.GlobalConstantPrefix,    value: k }
+  - { key: readability-identifier-naming.MacroDefinitionCase,     value: UPPER_CASE }
+
+  # R-CLEAN-02: a function fits on a screen and takes at most 3 parameters. Past
+  # three, the arguments become a struct — on a bus API where half of them are
+  # uint8_t, a swapped pair is a silent bug the compiler cannot see.
+  - { key: readability-function-size.LineThreshold,      value: '60' }
+  - { key: readability-function-size.ParameterThreshold, value: '3'  }
+  - { key: readability-function-size.NestingThreshold,   value: '4'  }

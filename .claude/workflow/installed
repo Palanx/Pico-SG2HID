@@ -1,0 +1,38 @@
+# Files installed by belay, one per line, relative to this repo root.
+# Written by install.sh; used to delete files the package stops shipping,
+# and as the uninstall list (delete these, then .claude/workflow/).
+# Not project state — do not hand-edit.
+.claude/commands/adopt-project.md
+.claude/commands/belay-feedback.md
+.claude/commands/bootstrap-project.md
+.claude/commands/expand-phase.md
+.claude/commands/implement-phase.md
+.claude/commands/plan-feature.md
+.claude/commands/refresh-index.md
+.claude/commands/security-check.md
+.claude/commands/validate-phase.md
+.claude/hooks/bash-gate-adapter.sh
+.claude/hooks/boundary-check.sh
+.claude/hooks/cursor-adapter.sh
+.claude/hooks/edit-gate-adapter.sh
+.claude/hooks/lib/common.sh
+.claude/hooks/lib/detect-toolchain.sh
+.claude/hooks/post-edit-gate.sh
+.claude/hooks/pre-commit-security.sh
+docs/templates/CLAUDE.adopted.md
+docs/templates/CLAUDE.bootstrap.md
+docs/templates/PHASES.example.md
+docs/templates/PHASES.md
+docs/templates/adr.example.md
+docs/templates/adr.md
+docs/templates/boundaries.rules
+docs/templates/constraints.example.md
+docs/templates/constraints.md
+docs/templates/notes.example.md
+docs/templates/notes.md
+docs/templates/requirements.example.md
+docs/templates/requirements.md
+docs/templates/spec.example.md
+docs/templates/spec.md
+scripts/build-index.sh
+scripts/check.sh

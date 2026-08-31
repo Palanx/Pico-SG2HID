@@ -1,0 +1,17 @@
+{
+  "_comment": "Project-owned. detect-toolchain.sh never reads or writes this file; common.sh merges it over toolchain.json, manual wins. The detector has no C/C++ stack, so the per-file gates are declared here by hand.",
+  "file_commands": {
+    "cpp": {
+      "format": "clang-format --style=file -i {file}"
+    },
+    "h": {
+      "format": "clang-format --style=file -i {file}"
+    }
+  },
+  "commands": {
+    "lint": "make lint",
+    "test": "make test",
+    "secrets": "gitleaks git --staged --no-banner --redact"
+  },
+  "_comment_secrets": "gitleaks 8.30.1: `protect` still works but is deprecated upstream. Pinned to the modern `gitleaks git --staged` here so a future gitleaks that drops `protect` cannot turn the pre-commit gate into a confusing hard block. Both verified 2026-08-31 to exit 1 on a staged fake token."
+}

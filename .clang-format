@@ -1,0 +1,76 @@
+# pico-sg2hid — layout style. Enforced by R-STYLE-01 (docs/constraints.md §Invariants).
+#
+# Verified against clang-format 23.1.0. Several keys here were renamed between
+# releases: SpacesInParens replaced SpacesInParentheses in 17, and PackArguments /
+# PackParameters / AllowShortFunctionsOnASingleLine / SortIncludes became structs in 23.
+# If you change clang-format version, re-verify with:
+#     clang-format --style=file --dump-config
+# An unknown key is a hard error, so `make lint` tells you immediately.
+#
+# The through-line: the operator reads dense code badly, so nothing here optimises
+# for fitting more on a line. Whitespace is the feature.
+
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++17
+ColumnLimit: 100
+IndentWidth: 4
+PointerAlignment: Left
+AccessModifierOffset: -4   # public:/private: sit flush with the class keyword
+InsertNewlineAtEOF: true
+
+# --- Inner spacing. `poll( frame, now_us )`, not `poll(frame,now_us)`. -------------
+# Not standard C++ style, and deliberate: legibility over familiarity.
+SpacesInParens: Custom
+SpacesInParensOptions:
+  InConditionalStatements: true
+  InCStyleCasts: true
+  InEmptyParentheses: false
+  Other: true
+SpacesInSquareBrackets: true
+SpacesInAngles: Never              # <uint8_t>, not < uint8_t > — templates get unreadable
+
+# --- Nothing collapses. Structure is found by indentation, not by reading. --------
+AllowShortLambdasOnASingleLine: None
+AllowShortFunctionsOnASingleLine:
+  Empty: true                      # `Foo() {}` may stay on one line
+  Inline: false
+  Other: false
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+InsertBraces: true                 # a braceless if is one careless edit from a bug
+
+# When a call does not fit, one argument per line — never a filled paragraph.
+PackArguments:
+  BinPack: OnePerLine
+PackParameters:
+  BinPack: OnePerLine
+
+SeparateDefinitionBlocks: Always
+MaxEmptyLinesToKeep: 1
+SpacesBeforeTrailingComments: 2
+
+# --- Column alignment. -----------------------------------------------------------
+# This is why a constexpr pin table can be scanned for a wrong drive mode
+# (R-SAFETY-01..03) instead of read entry by entry. Safety, not decoration.
+AlignArrayOfStructures: Left       # needs a plain C array; std::array's {{ }} defeats it
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossComments: true
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AcrossComments: true
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossComments: true
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 1
+
+# --- Includes. -------------------------------------------------------------------
+# Sorted within a block, blocks left alone: SDK headers sometimes have real
+# ordering requirements and Regroup would silently break them.
+SortIncludes:
+  Enabled: true
+IncludeBlocks: Preserve
