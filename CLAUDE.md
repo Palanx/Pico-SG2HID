@@ -75,12 +75,12 @@ TinyUSB or CMSIS header — that is what lets `make test` compile and run it on 
 laptop. Timing-dependent behaviour is expressed as "given elapsed microseconds, decide",
 with the caller supplying the clock.
 
-Errors (ADR-0007): pure decoding returns a `[[nodiscard]]` result struct carrying status
-and value together; the link lifecycle is a state machine where a missing `ACK` is a
+Errors (ADR-0007, ADR-0009): pure decoding returns `[[nodiscard]] std::expected<T, Status>`
+— never `.value()`, which aborts under `-fno-exceptions` (R-ERR-04); the link lifecycle is a state machine where a missing `ACK` is a
 transition to `Absent`, not a failed call. No exceptions, and never a status returned
 alongside a separate out-parameter (R-ERR-01..03).
 
-`make` is the only entry point. `make test` needs a C++17 compiler and `python3` and
+`make` is the only entry point. `make test` needs a C++23 compiler and `python3` and
 nothing else — no hardware, no network, no ARM toolchain. `make firmware` needs cmake,
 `arm-none-eabi-gcc` and `PICO_SDK_PATH`; it is never a precondition for `make test`.
 

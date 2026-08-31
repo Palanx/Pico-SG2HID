@@ -7,7 +7,7 @@
 #
 # Two modes, one script:
 #   STYLE_OPTIONAL=1  missing tools are reported and skipped   (used by `make test`,
-#                     which must run with only a C++17 compiler and python3, R-PROC-04)
+#                     which must run with only a C++23 compiler and python3, R-PROC-04)
 #   unset             missing tools are a failure              (used by `make lint`)
 #
 # clang-tidy scope is src/core/ and tests/ only: everything else includes Pico SDK or
@@ -69,7 +69,7 @@ else
   else
     # One invocation per file, never xargs: xargs appends the file list AFTER the
     # `--`, where clang-tidy reads it as compiler flags and silently checks nothing.
-    out=$(for f in $files; do "$TIDY" --quiet "$f" -- -std=c++17 -Isrc 2>&1; done \
+    out=$(for f in $files; do "$TIDY" --quiet "$f" -- -std=c++23 -Isrc 2>&1; done \
           | grep -E ': (warning|error): ')
     if [ -n "$out" ]; then
       echo "  FAIL: R-STYLE-02 / R-CLEAN-02: naming or function-size violations"

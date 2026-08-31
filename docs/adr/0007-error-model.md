@@ -1,6 +1,8 @@
 # ADR-0007: Errors are result structs when decoding, and state transitions when linking
 
-- Status: accepted
+- Status: accepted — the pure-decoding mechanism is superseded by ADR-0009
+  (`std::expected`). The link-lifecycle state machine below is unchanged and remains
+  the decision of record.
 - Date: 2026-08-31
 
 ## Context

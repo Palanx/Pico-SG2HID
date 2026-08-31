@@ -81,7 +81,7 @@ solve different problems, and neither does the other's job.
 
 Both are checked over `src/` and `tests/` by `make lint`, which fails if either tool is
 missing. `make test` runs the same script with `STYLE_OPTIONAL=1`, which downgrades a
-missing tool to a skip — that is what keeps R-PROC-04 true (host tests need only a C++17
+missing tool to a skip — that is what keeps R-PROC-04 true (host tests need only a C++23
 compiler and `python3`), at the cost that a machine without LLVM installed does not
 enforce style. `make lint` is the authority.
 
@@ -103,6 +103,16 @@ Set by ADR-0007.
 - **R-ERR-01** — Every fallible function in `src/core/` reports through a result struct or through the link state machine. No function returns a status alongside a separate out-parameter carrying the value. — planned: 01-ps2-codec
 - **R-ERR-02** — Every function returning a result struct or a `LinkState` is marked `[[nodiscard]]`. — planned: 01-ps2-codec
 - **R-ERR-03** — No `throw`, `try` or `catch` anywhere under `src/`, and firmware builds pass `-fno-exceptions -fno-rtti`. — planned: 00-scaffold
+- **R-ERR-04** — No call to `.value()` on a `std::expected` anywhere under `src/`. Under `-fno-exceptions` it does not throw, it calls `abort` — the one outcome §Error handling rules out. Access goes through `has_value()` and `operator*`. — planned: 00-scaffold
+
+### Toolchain
+
+Set by ADR-0008. Versions are a rule here and not a README sentence because this project
+has already been bitten twice by them: `.clang-format` keys were renamed in clang-format
+17 and again in 23, and the ARM compiler decides which C++ standard is even available.
+
+- **R-TOOL-01** — Every tool the checks depend on meets its minimum version when present: `clang-format` >= 23 and `clang-tidy` >= 23 (the config uses key shapes introduced in 23), `arm-none-eabi-g++` >= 12 (the release in which libstdc++ gained `<expected>`; only 15.3.1 is actually verified — see ADR-0008 §Verification), `python3` >= 3.8. A tool that is absent is skipped under `OPTIONAL_TOOLS`, never assumed to pass. — planned: 00-scaffold
+- **R-TOOL-02** — The `arm-none-eabi-g++` first on `PATH` can compile a translation unit that includes `<cstdint>` for `cortex-m0plus`. A cross-compiler with no target C library looks installed and cannot build anything; on macOS the sudo-free Homebrew formula is exactly that, and it shadows the working cask. — planned: 00-scaffold
 
 ### Engineering guidelines
 
@@ -161,7 +171,7 @@ above are **mapped**, not duplicated; guidelines that do not apply to this proje
 - **R-PROC-01** — Every rule in this file has exactly one binding in ADR-0005's grammar; every `test:` file carries a matching `RULE <id>` marker; every marker names a declared id; `manual:` rules carry no marker; every `planned:` phase exists and is not `done`; every id `CLAUDE.md` mentions is declared here. — planned: 00-scaffold
 - **R-PROC-02** — Every phase directory whose status is `done` contains a `verify.md` written for a non-specialist: what was built, what it should do, and the exact physical steps and expected readings that confirm it. — planned: 00-scaffold
 - **R-PROC-03** — Commit messages follow Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`), one phase's work per commit where practical. — manual: git history is not a build artifact; a check would either run only on the newest commit (trivially bypassed) or demand rewriting history, which costs more than the drift.
-- **R-PROC-04** — Automated tests never require the real guitar, a network connection, or any toolchain beyond a C++17 compiler and `python3`. Hardware-in-the-loop means Pico against Pico. — manual: a property of the whole suite over time; the closest machine-checkable proxy would be a sandbox the harness does not have.
+- **R-PROC-04** — Automated tests never require the real guitar, a network connection, or any toolchain beyond a C++23 compiler and `python3`. Hardware-in-the-loop means Pico against Pico. — manual: a property of the whole suite over time; the closest machine-checkable proxy would be a sandbox the harness does not have.
 
 ## Observed conventions
 
@@ -199,9 +209,10 @@ Decided in **ADR-0007**. Two mechanisms, at two levels, and the level decides wh
 one input and one output is a result struct; anything that remembers what happened last
 time is the link state machine.
 
-- **Pure decoding returns a result struct** — `status` and `frame` in one object, so the
-  value cannot be reached without the status that qualifies it. `frame` is meaningful
-  only when `status == Ok`.
+- **Pure decoding returns `std::expected<T, Status>`** (ADR-0009) — value and reason in
+  one object, so the value cannot be reached without the status that qualifies it. Access
+  is `has_value()` and `operator*`; **never `.value()`**, which calls `abort` under
+  `-fno-exceptions` (R-ERR-04).
 - **The link lifecycle is a state machine** — `Absent | Negotiating | DigitalStreaming |
   AnalogStreaming`. A missing `ACK` is not a failed call, it is a transition to `Absent`.
   `Link::last_fault` carries why, because trace mode (R5) has to print it.

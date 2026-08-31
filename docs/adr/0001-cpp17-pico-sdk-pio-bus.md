@@ -1,6 +1,8 @@
 # ADR-0001: Write the firmware in C++17 on the Pico SDK, and drive the PS2 bus from PIO
 
-- Status: accepted
+- Status: accepted — the C++17 clause is superseded by ADR-0008 (C++23, chosen by
+  measurement). Everything else here — Pico SDK, PIO for the bus, `make` as the entry
+  point — stands.
 - Date: 2026-08-31
 
 ## Context

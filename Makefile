@@ -1,6 +1,6 @@
 # pico-sg2hid — the single entry point (ADR-0001).
 #
-#   make test      Host tests. Needs only a C++17 compiler and python3.
+#   make test      Host tests. Needs only a C++23 compiler and python3.
 #                  No hardware, no network, no ARM toolchain, no Pico SDK.
 #   make lint      Style gate: clang-format layout + clang-tidy naming. Fails if
 #                  either tool is missing (`make test` only skips them).
@@ -11,7 +11,7 @@
 # CMake is never invoked directly; this file is the seam between the two builds.
 
 CXX      ?= c++
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -Og -g -Isrc
+CXXFLAGS ?= -std=c++23 -Wall -Wextra -Werror -Og -g -UNDEBUG -Isrc
 BUILD    := build/host
 
 CORE_SRC  := $(wildcard src/core/*.cpp)
