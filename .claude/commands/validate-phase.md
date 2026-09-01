@@ -21,7 +21,10 @@ the working tree — `git status --porcelain` and `git diff` (run `git add -N` f
 new in this phase diff as something rather than nothing) — unioned with the files the
 spec's Plan names. **If `notes.md` records a `- base: <ref>` line** under Outcome (written
 by `/implement-phase --implemented`; the literal `working tree` means the default applies),
-use `git diff <ref>..HEAD` and `git diff --name-only <ref>..HEAD` instead, same union.
+use `git diff <ref>` and `git diff --name-only <ref>` instead, same union — the ref against
+the **working tree**, never `<ref>..HEAD`, which shows only what was committed and hides
+hand-written work still sitting uncommitted (`git add -N` first here too, for the same
+reason as above).
 Never fall back to the Plan alone: the file the Plan never named is exactly what step 6
 exists to catch, so a diff that cannot show it turns three gates into no-ops that report
 `pass`.
@@ -44,6 +47,14 @@ exists to catch, so a diff that cannot show it turns three gates into no-ops tha
 3. **Boundary sweep.** Run `scripts/check.sh --files <every source file in the phase's
    file set>` (the file set is defined above). This is the same gate the edit path runs,
    re-run as a batch in case any edit bypassed it.
+   A rules file with no active `deny` line cannot flag anything, so a clean sweep proves
+   nothing. Check `grep -qE '^deny[[:space:]]' .claude/workflow/boundaries.rules` first; if it
+   finds none, report `not swept: no active deny rules` rather than `clean`. The gate is
+   silent about this by design (see its header) — the report must not be (P7). That is a
+   stated gap, not a failure: it never sends the phase back to `/implement-phase`, because
+   no code change can add a `deny` rule. Leaving the rules inert until the humans decide
+   the layering is a supported state (`/adopt-project`, "codebase too inconsistent to infer
+   layering"), and a phase must be able to close in it.
    **Corporate mode** (`.claude/workflow/corporate` exists): also verify no belay state
    path appears in `git status --porcelain` — no line matching
    `^\?\? (\.belay/|CLAUDE\.local\.md|docs/(product|adr|phases|index|security|templates)/|docs/(constraints|adoption-report)\.md|scripts/build-index\.sh)`
@@ -79,7 +90,8 @@ exists to catch, so a diff that cannot show it turns three gates into no-ops tha
 
 6. **Closure test (P5).** Check the record, not just the code:
    - notes.md has all four sections (Outcome, Deviations, Debt, For later phases), none blank — `None` is an entry, blank is a violation.
-   - Every file in the phase's file set is reachable from the spec's Context pointers or Plan. A file changed but never named in the spec = the phase escaped its scope: closure test FAILED. Record it in notes.md Deviations, flag it in your report, and name it in the spec's Plan before re-running — the spec has to describe the change that actually happened.
+   - **Exempt: the files this workflow writes itself** — `docs/phases/$1/spec.md`, `docs/phases/$1/notes.md`, `docs/phases/PHASES.md` and `docs/index/`. Every command here amends them by design, and this one prescribes a `spec.md` amendment as the fix for an `undecidable` verdict — so a phase that goes round the loop once carries its own spec in its diff from then on. Counting those as escaped scope fails the phase for obeying its own instructions. The exemption is those four paths and nothing else: any other file in the diff — an ADR, a config, a scene or prefab authored by hand — is judged by the next bullet.
+   - Every *other* file in the phase's file set is reachable from the spec's Context pointers or Plan. A file changed but never named in the spec = the phase escaped its scope: closure test FAILED. Record it in notes.md Deviations, flag it in your report, and name it in the spec's Plan before re-running — the spec has to describe the change that actually happened.
    - An `undecidable` finding from step 5 IS a missing pointer, found from outside your own head: closure test FAILED; record what the reviewer could not resolve in notes.md Deviations.
    - If notes.md Deviations reports missing pointers, mark the closure test FAILED even if the code passes — the *next* phase pays for it; the operator must know the cuts are drifting.
 
@@ -91,9 +103,10 @@ Append to `docs/phases/$1/notes.md`:
 ## Validation — <date>
 - criteria: <n> passed / <n> failed
 - project gates: test <pass|fail|gap>, lint <...>, typecheck <...>
-- boundary sweep: <clean|violations listed above>
+- boundary sweep: <clean | not swept: no active deny rules | violations listed above>
 - independent review: <clean | contradicts: <what> | undecidable: <what was missing> | skipped: no subagent>
 - closure test: <pass|fail: reason>
+- upstream: <none | <package file(s)> — /belay-feedback recommended>
 - verdict: <done | returned to implementation>
 ```
 
@@ -104,6 +117,20 @@ next iteration. Where that iteration happens depends on what failed: steps 1–4
 failure or an `undecidable` verdict is fixed in `spec.md` plus a notes.md Deviations entry
 and re-validated from here (the record is wrong). Say which of the two you are handing
 back, or the next session guesses.
+
+**Both routes fix this project. Neither asks what caused the finding.** If the file that
+misbehaved is one `.claude/workflow/installed` names — the manifest of everything
+`install.sh` wrote: the hooks, the commands, `scripts/build-index.sh`, `docs/templates/` —
+the cause is the package and the fix above is a workaround. Apply it anyway so the phase can
+close, name the file on the `upstream:` line, and tell the operator to run
+`/belay-feedback`. This never blocks: `done` is decided by the gates. It is stated so it
+cannot be silent (P7) — a package defect patched into one project's `spec.md` is a defect
+the next project rediscovers from zero. Ownership decides this, not who fixes it: a wrong
+command in `toolchain.json` is yours; a command that routes a finding wrongly is not. If the
+manifest is absent — an install old enough to predate it, never re-run — say so on the
+`upstream:` line instead of reading its silence as "nothing upstream", and tell the
+operator to re-run `install.sh`. Every criterion here reads the file from disk, so none
+of it depends on any of this being committed.
 
 ## Failure modes
 

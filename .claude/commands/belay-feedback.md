@@ -23,7 +23,9 @@ that record — with the concrete data needed to reproduce the issue.
 1. **Name the component** — the path inside the package: one of `hooks/*.sh`,
    `hooks/lib/*.sh`, `commands/*.md`, `scripts/build-index.sh`, `install.sh`, or a
    template. If the problem is actually this project's config (e.g. a wrong command in
-   `toolchain.json`), fix the project file instead — no entry.
+   `toolchain.json`), fix the project file instead — no entry. Ownership decides that, not
+   who fixes it: a file `.claude/workflow/installed` lists belongs to the package, so a
+   defect in one is an entry even when the workaround is local and lands in this repo today.
 
 2. **Gather the evidence verbatim.** The actual stderr the hook printed, the exact file
    and lines that triggered it, the relevant config excerpt. A paraphrase is not
@@ -45,6 +47,11 @@ that record — with the concrete data needed to reproduce the issue.
    <verbatim evidence from step 2, fenced if multi-line>
    proposed fix: <if known, else omit the line>
    ```
+
+   `open` is the only status an entry is ever written with. The package repo is what
+   closes it — `status: resolved (<commit>)`, naming the commit that fixed it — and that
+   is what drops the entry off the SessionStart listing there
+   (`scripts/feedback-pending.sh`). Nothing in a consuming project edits a status.
 
 ## Mandatory final step (P6)
 
