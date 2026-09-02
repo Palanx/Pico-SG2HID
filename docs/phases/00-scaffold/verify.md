@@ -88,20 +88,40 @@ Expect `OK` again.
 
 ### 3. Try a few more, if you want
 
-Same pattern. Each should fail naming the rule in the comment:
+Same pattern as §2 — break it, run it, put it back — one rule at a time. Run each line on
+its own and read the output before moving to the next. The order matters: two of these
+write the same filename, so if you paste all four at once only the last one is still on
+disk when `make test` runs, and the other three never fire.
 
 ```
-printf '#include "pico/stdlib.h"\n' > src/core/scratch.h    # R-ARCH-01: core stays hardware-free
-printf '#include "hal/bus.h"\n'     > src/core/scratch.h    # R-ARCH-02: core may not depend on hal
-printf 'bool flag = true;\n'        > src/core/scratch.cpp  # R-CLEAN-03: booleans are named is_/has_/can_
-printf '// TODO: fix\n'             > src/core/scratch.cpp  # R-CLEAN-05: a TODO must say what closes it
+printf '#include "pico/stdlib.h"\n' > src/core/scratch.h  ; make test ; rm -f src/core/scratch.h
 ```
-
-Remove the file after each one:
+`R-ARCH-01` — `src/core/` stays hardware-free.
 
 ```
-rm -f src/core/scratch.h src/core/scratch.cpp && make test
+printf '#include "hal/bus.h"\n'     > src/core/scratch.h  ; make test ; rm -f src/core/scratch.h
 ```
+`R-ARCH-02` — `core` may not depend on `hal`.
+
+```
+printf 'bool flag = true;\n'        > src/core/scratch.cpp; make test ; rm -f src/core/scratch.cpp
+```
+`R-CLEAN-03` — booleans are named `is_`, `has_`, `can_`, `should_`.
+
+```
+printf '// TODO: fix\n'             > src/core/scratch.cpp; make test ; rm -f src/core/scratch.cpp
+```
+`R-CLEAN-05` — a `TODO` must say what closes it, e.g. `// TODO(09-guitar-observe): …`.
+
+Each one should fail naming that rule, and `make test` should say `OK` again as soon as
+the file is removed. When you are finished:
+
+```
+rmdir src/core src 2>/dev/null ; make test
+```
+
+Expect `OK`. (`src/` is empty in this phase and git does not track empty folders, so
+removing it puts the repository back exactly as it was.)
 
 ### 4. Confirm the rule/test tie is checked, not assumed
 

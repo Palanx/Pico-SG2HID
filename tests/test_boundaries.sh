@@ -13,6 +13,7 @@ ROOT=$( pwd )
 HOOK="$ROOT/.claude/hooks/boundary-check.sh"
 
 fail=0
+rejected=0
 
 # sweep <project-root> — runs the hook over every file below <project-root>/src, not just
 # *.cpp/*.h: the hook decides for itself what an import line looks like, and a layer can be
@@ -73,11 +74,17 @@ tmp=$( mktemp -d ) || exit 1
 mkdir -p "$tmp/.claude/workflow" "$tmp/src/core"
 cp "$ROOT/.claude/workflow/boundaries.rules" "$tmp/.claude/workflow/boundaries.rules"
 printf '#include "hal/bus.h"\n' > "$tmp/src/core/bad.cpp"
-if sweep "$tmp" >/dev/null 2>&1; then
-    echo "  FAIL: R-ARCH-02 rejection case did not fire — core including hal was accepted"
-    fail=1
-else
+# Assert the exact code, never just "non-zero": sweep returns 2 when the hook could not
+# run, and reading that as a successful rejection is how a check that enforces nothing
+# looks green. A broken hook would then satisfy this case and the one below by itself.
+sweep "$tmp" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then
     echo "  ok:   R-ARCH-02 rejection case (core -> hal is refused)"
+    rejected=$(( rejected + 1 ))
+else
+    echo "  FAIL: R-ARCH-02 rejection case did not fire — core including hal returned $rc, expected 1"
+    fail=1
 fi
 rm -rf "$tmp"
 
@@ -88,13 +95,16 @@ mkdir -p "$tmp/src/core" "$tmp/stub"
 printf '#include "hal/bus.h"\n' > "$tmp/src/core/bad.cpp"
 printf '#!/bin/sh\nexit 3\n' > "$tmp/stub/hook"
 chmod +x "$tmp/stub/hook"
-( HOOK="$tmp/stub/hook"; sweep "$tmp" >/dev/null 2>&1; [ $? -eq 2 ] )
-if [ $? -eq 0 ]; then
+if ( HOOK="$tmp/stub/hook"; sweep "$tmp" >/dev/null 2>&1; [ $? -eq 2 ] ); then
     echo "  ok:   R-ARCH-02 rejection case (a hook that cannot run is not a violation)"
+    rejected=$(( rejected + 1 ))
 else
     echo "  FAIL: R-ARCH-02 rejection case did not fire — a broken hook was reported as a breach"
     fail=1
 fi
 rm -rf "$tmp"
+
+echo "  rejection cases: $rejected/2"
+[ "$rejected" -eq 2 ] || fail=1
 
 exit $fail

@@ -743,3 +743,245 @@ nothing, and a starved independent review is still paying for itself on round 5.
 - `tests/test_rule_traceability.py`'s marker sits in the module docstring without the `#`
   prefix Plan step 9 specifies. The checker matches the substring, and `#` inside a docstring
   would be odd Python.
+
+## Implementation — 2026-09-02 (round 6, after re-expansion)
+
+Round 4 laid out two routes and round 5 falsified its own "the code has converged" reading.
+The operator took the escape route this time: status back to `pending`, `/expand-phase`
+rewrote `spec.md` once from the row's Goal and from this file rather than patching it a
+twelfth time, and this round implemented the result. The rewritten spec carries a **Plan
+step 0** listing the five edits the code owed; that is what this round did, and nothing
+wider.
+
+Structural change in the spec, worth knowing before reading the diff: **counts are now
+floors over a named enumeration** (`rejection cases: 11 (floor 10)`), because an exact count
+written in a Plan step and again in the Acceptance block is what produced three separate
+findings across rounds 2-5. A floor cannot contradict its own list.
+
+Code:
+
+- `tests/test_boundaries.sh` — round 5's confirmed `contradicts`. The positive rejection
+  case was `if sweep "$tmp"; then FAIL else ok`, so `sweep`'s rc 2 ("the hook did not run")
+  was announced as proof that the layer is enforced. It now asserts the exact code
+  (`rc -eq 1`) and reports what it got. Verified the way round 5 found it: a copy of the
+  file with `HOOK` pointed at a stub exiting 3 now **exits 1** and prints
+  `core including hal returned 2, expected 1`, where before it printed three `ok:` lines and
+  exited 0. The file also prints `rejection cases: n/n` and asserts it, which the other three
+  files did and this one did not — round 5's taste note that the acceptance criteria asserted
+  a count nothing printed. The second case's `( … ; [ $? -eq 2 ] )` / `if [ $? -eq 0 ]` pair
+  became a plain `if ( … )` while that block was being touched.
+- `tests/test_repo_shape.sh` — R-ARCH-03's `std::string` alternation is anchored
+  (`std::string([^_[:alnum:]]|$)`), so `std::string_view` no longer fires a
+  no-dynamic-allocation rule that the phase's own R-ARCH-01 accept case already declares
+  legal in `core`. Two cases pin it in opposite directions: an accept case
+  (`std::string_view sv;`) and a **new rejection case** (`std::string s;`), because anchoring
+  a pattern can silently kill the match it exists for and nothing would have caught that.
+  Rejection 10 -> 11, accept 10 -> 11.
+- `tests/test_repo_shape.sh` — the `=[[:space:]]*delete` exclusion is gone; see Deviations.
+- `tests/test_secrets.sh` — a gitleaks too old for the `dir`/`git` subcommands used to exit
+  non-zero and be reported as `FAIL: R-SEC-01: gitleaks found secrets in the tree`, the same
+  class of misdiagnosis Plan step 4 goes to lengths to prevent for the boundary hook. Now
+  each subcommand is probed with `gitleaks <sub> --help` (0 when known, 1 when not, measured
+  on 8.30.1) and a failure says `too old to scan with`. Verified with a stub gitleaks that
+  rejects both subcommands: `FAIL: … has no 'dir' subcommand`, exit 1. Deliberately **no**
+  R-TOOL-01 version floor for gitleaks — the floor would need a release number nobody here
+  has measured, and the capability probe answers the question the floor was for. The two
+  scans also stopped sharing `/tmp/gl.$$`: each gets its own `mktemp`, so the history scan no
+  longer erases the tree scan's findings before they are printed. That closes the remaining
+  half of the round-1 taste note.
+- `docs/phases/00-scaffold/verify.md` §3 — four "try a few more" cases wrote two filenames
+  with a single cleanup after the block, so an operator pasting them literally saw two of the
+  four rules fire. Now one break/run/restore per rule, matching §2 and the spec's adversarial
+  block, and it says why the order matters.
+
+Verified this round:
+
+- acceptance criteria 12/12: `make test` OK, `make lint` 0, traceability 9/9, boundaries
+  `rejection cases: 2/2`, repo_shape 8 ok / 11 rejection / 11 accept, phase_docs 3 ok lines,
+  secrets tree + history + rejection + accept, tool_versions four tools real
+  (clang-format 23.1.0, clang-tidy 23.1.0, arm-none-eabi-g++ 15.3.1, python3 3.14.6) and 4/4
+  rejection cases, `planned: 00-scaffold` 0, `STYLE_OPTIONAL` 0 in both files, both docs
+  non-empty
+- adversarial block 12/12, each producing a `FAIL:` line **that names its rule**, tree
+  restored, `make test` back to 0. The first run of that check was itself wrong and is worth
+  recording: it grepped the output for the bare rule id, which also matches the `ok:` line
+  the same check prints, so a case that failed for an unrelated reason would have read as a
+  pass. Re-run with `grep -E "FAIL:.*<id>"`. Same failure mode as the phase's own thesis, one
+  level up
+- the accept case for `= delete;` is load-bearing now, checked by breaking it: with the
+  pattern tightened to a bare `delete` word match the case fires and the file fails
+- `docs/index/` rebuilt (stamp `c8d5eff`); the test files changed line counts and `--check`
+  cannot see content staleness while the work is uncommitted (round 3's deviation, already
+  filed upstream)
+
+## Deviations (round 6)
+
+- **Plan step 0c's suggested input does not work, and the exclusion it defends is
+  unreachable.** The spec offered `Bus& operator=( const Bus& ) = delete;` as an input the
+  base pattern would match; it does not — the alternation requires `delete` followed by
+  whitespace and an identifier, and every `= delete` form ends `delete;`. There is no legal
+  C++ line that matches the base pattern and needs the `=[[:space:]]*delete` exclusion, so
+  the exclusion was dead code defending against a match that cannot happen. Took the step's
+  other branch: the exclusion is removed and the accept case kept, which now exercises the
+  base pattern's own "whitespace plus identifier" requirement — tighten that to a bare
+  `delete` word match and the case fires. `spec.md` step 0c amended to say this instead of
+  the input that does not work.
+- **One acceptance criterion was impossible as written, and was amended rather than
+  deleted.** The adversarial block's positive case ran
+  `printf '#include <string_view>\nstd::string_view sv;\n' > src/core/x.h ; make test` and
+  expected exit 0. It cannot pass: clang-tidy on this machine resolves **no** standard header
+  without a `compile_commands.json`, so any scratch file containing `std::` or an
+  `#include <…>` fails R-STYLE-02 with `error: 'string_view' file not found
+  [clang-diagnostic-error]`. That is a tooling result and says nothing about R-ARCH-03. The
+  criterion now runs `sh tests/test_repo_shape.sh` over the same file — which is where
+  R-ARCH-03's accept case lives — and the spec states the limitation and points here.
+  Measured invocation in §For later phases.
+- **`docs/phases/PHASES.md`'s coarse row was corrected during the re-expansion**: "the eleven
+  rules marked `planned: 00-scaffold`" -> "the fourteen rules". Rounds 1-5 left it stale on
+  the reading that rows are append-only, and it produced an `undecidable` finding twice.
+  `CLAUDE.md`'s append-only rule is about a wrong *cut* — a cut is superseded, never edited —
+  and `/expand-phase` §Failure modes explicitly allows sharpening a row whose coarse text has
+  drifted. The cut itself is unchanged. Flagged to the operator, who can have it reverted.
+- **No missing Context pointers.** Everything this round needed was reachable from the
+  rewritten spec. Files touched that no Plan step names: `docs/index/` only, which
+  `/validate-phase` step 6 exempts.
+
+## For later phases (added round 6)
+
+- **`01-ps2-codec` — R-STYLE-02 will fail on the phase's very first header, and it is not a
+  naming problem.** `tests/test_style.sh` invokes `clang-tidy --quiet <file> -- -std=c++23
+  -Isrc`. Homebrew's clang-tidy 23 finds no standard header that way: a file containing
+  `#include <cstdint>` reports `error: 'cstdint' file not found [clang-diagnostic-error]`,
+  and `WarningsAsErrors: '*'` turns that into a `FAIL: R-STYLE-02` line. Measured 2026-09-02
+  on this machine: `-isysroot $(xcrun --show-sdk-path)` alone does **not** fix it; adding the
+  toolchain's own libc++ headers does —
+
+      clang-tidy --quiet <file> -- -std=c++23 -Isrc \
+        -isysroot "$(xcrun --show-sdk-path)" \
+        -I/opt/homebrew/opt/llvm/include/c++/v1
+
+  ...runs clean on `#include <cstdint>` + `using Byte = std::uint8_t;`. Two things follow.
+  (1) `01-ps2-codec` must fix the invocation before it can pass `make lint`, and the fix is
+  three flags, not a `compile_commands.json`. (2) `docs/constraints.md` §Style and the header
+  of `.clang-tidy` both say clang-tidy can run where "the flags are trivial — `src/core/` and
+  `tests/`"; that is false today for any file using the standard library, which is every file
+  that phase will write. It is a **finding** in `CLAUDE.md`'s sense — the obvious reading of
+  the config is wrong, and it cost a measurement to establish — and belongs in
+  `docs/constraints.md` §Observed conventions with its date. Not written there this round:
+  amending the catalogue's prose is outside this phase's Plan, which only flips bindings.
+  Proposed to the operator instead.
+- **`03-pio-bus`** — unchanged from earlier rounds: R-ERR-05 must move from `planned:` to
+  `test:` when the CMake config lands, and the `clang-query` upgrade for
+  `tests/test_repo_shape.sh` rides along with the `compile_commands.json` that phase produces.
+
+## Validation — 2026-09-02 (round 6)
+
+- criteria: 12 passed / 0 failed. Each checked against its stated expectation, not just its
+  exit code: `make test` OK, `make lint` 0, traceability 9/9, boundaries `rejection cases:
+  2/2`, repo_shape 8 rule `ok:` lines + 11 rejection (floor 10) + 11 accept (floor 11),
+  phase_docs rejection case confirmed, secrets tree + history + rejection + accept,
+  tool_versions 4/4 with five `R-TOOL` ok lines, `planned: 00-scaffold` 0, `STYLE_OPTIONAL` 0
+  in both files, both docs non-empty. Adversarial block re-run this session: 12/12, each
+  producing a `FAIL:` line **naming its rule** (grepped as `FAIL:.*<id>`, not the bare id —
+  the bare id also matches the `ok:` line the same check prints), tree restored, `make test`
+  back to 0. Positive case green
+- project gates: test pass, lint pass, typecheck gap —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never overwrites.`
+  (`scripts/check.sh` must be run as `./scripts/check.sh`, not `sh scripts/check.sh`: it is
+  `#!/usr/bin/env bash` and uses process substitution, which dash rejects at line 99.)
+- boundary sweep: **not swept: no file in the set is under a declared layer.** Checked both
+  other reasons a sweep comes back clean: `boundaries.rules` holds 13 active `deny` lines, so
+  the rules are live, and the declared prefixes are `src/core|hal|usb|app|emu/` — the phase's
+  file set is `tests/`, `docs/`, `Makefile` and package files, none of which any prefix
+  covers. Ordinary for a test-only phase, and no code change could alter it
+- index: fresh (`c8d5eff`) **and content-fresh**, verified against the tree rather than
+  trusting the stamp: all seven `tests/` line counts in `docs/index/tests.md` match
+- independent review: **contradicts — one finding, reproduced (below); undecidable — two
+  missing pointers, recorded in Deviations.** The reviewer also ran its own replica of every
+  finder, mutation-tested all eleven accept cases (each flips to a failure when its exclusion
+  or anchor is removed — no vacuous accept case survives, which was round 5's strongest taste
+  note) and confirmed the traceability checker reports 0/9 when its `check()` is stubbed out
+- closure test: **fail** — two `undecidable` findings are missing pointers by definition. The
+  mechanical half passes: all four sections present and non-blank, and all ten non-exempt
+  files in the set are named in the spec
+- upstream: **`.claude/commands/validate-phase.md`** — `/belay-feedback` recommended. Both
+  undecidables are about files belay `c1d4334` made *structurally* exempt in step 6
+  (`docs/phases/PHASES.md`, `docs/index/`). The exemption is real, but it lives in a command
+  file the starved reviewer never receives, so every phase in this workflow will keep
+  producing these two findings forever — the statement was moved to where it is enforced and
+  away from where it is read. The round-3 `build-index.sh --check` content-staleness hole is
+  already filed
+- verdict: **returned to implementation** — a `contradicts` is a code failure, so this goes to
+  `/implement-phase 00-scaffold`, with the two spec pointers written in the same round
+
+### The confirmed `contradicts` finding
+
+**`tests/test_boundaries.sh:13` assigns `HOOK` unconditionally, so Plan step 0's own
+verification command reports the opposite of the truth.** Spec step 0's check line says: with
+`HOOK` pointed at a stub that always exits 3, the file must exit non-zero. Reproduced:
+
+```
+$ HOOK=/tmp/stub3 sh tests/test_boundaries.sh
+  ok:   R-ARCH-02 (no sources yet)
+  ok:   R-ARCH-02 rejection case (core -> hal is refused)
+  ok:   R-ARCH-02 rejection case (a hook that cannot run is not a violation)
+  rejection cases: 2/2
+rc=0
+```
+
+`HOOK="$ROOT/.claude/hooks/boundary-check.sh"` discards the environment value, so the stub is
+never used and the run is the ordinary green one.
+
+Two things keep this from being a repeat of round 5's defect, and both matter for the fix.
+The *substance* of step 0a is delivered: `sweep` really does return 1 for a breach and 2 for a
+hook that cannot run, both in-file rejection cases assert those exact codes, and the file does
+exit non-zero when the hook is genuinely broken — which is how it was verified during
+implementation, with a `sed`-patched copy rather than an environment variable. What is broken
+is that the spec prescribes an *externally driven* verification the code cannot support, so
+anyone running the check literally concludes the check is dead when it is not. The fix belongs
+on the code side because it makes the spec's check real:
+`HOOK="${HOOK:-$ROOT/.claude/hooks/boundary-check.sh}"` — one line, and the second rejection
+case's subshell override keeps working unchanged.
+
+### Deviations found by validation (round 6) — two missing pointers
+
+- **(a) The spec does not say whether `docs/phases/PHASES.md` may be edited, and this round
+  edited its row.** `/expand-phase` corrected the coarse acceptance text from "the eleven
+  rules" to "the fourteen rules" alongside the status flips. No Plan step names the file;
+  `CLAUDE.md` says a cut "is superseded by new rows, never edited or deleted"; the spec's own
+  header says the code is what changes where the two disagree, and the stale row is not one of
+  step 0's five owed edits. All three readings are defensible from the documents given, which
+  is the definition of undecidable. The spec must state the rule: a row's *cut* is
+  append-only, a row's coarse acceptance *text* may be corrected when it has drifted from the
+  spec's Goal (`/expand-phase` §Failure modes allows exactly that), and status flips are
+  written by the workflow commands.
+- **(b) The spec does not say the repo index is regenerated inside the phase.**
+  `docs/index/_overview.md`, `scripts.md` and `tests.md` are in the diff and no Plan step
+  mentions them. `/validate-phase` step 6 exempts `docs/index/` — but that exemption is
+  invisible to a reviewer holding only `CLAUDE.md` and `spec.md`. One line in the spec fixes
+  it for this phase; the general case is the `upstream:` note above.
+  The reviewer additionally observed that `docs/index/scripts.md` reports
+  `scripts/build-index.sh` growing 231 -> 276 lines while that file appears nowhere in the
+  diff. That is an artefact of how the review input was cut, not a defect: five package files
+  (`.claude/commands/expand-phase.md`, `.claude/commands/validate-phase.md`,
+  `.claude/hooks/boundary-check.sh`, `.claude/workflow/belay-version`,
+  `scripts/build-index.sh`) changed between the base `db97117` and now via `chore(belay):`
+  commits `7f1b2c9`, `98da73a` and `c8d5eff`, and were excluded from the reviewer's diff as
+  not being this phase's work. Recorded so the next round does not chase it.
+
+### Taste, not blocking (round 6)
+
+- **The strongest, and it is a correctness problem in prose rather than a preference:**
+  `verify.md` §3 still explains the hazard that step 0e removed — "two of these write the same
+  filename, so if you paste all four at once only the last one is still on disk". Every line
+  now ends in its own `rm -f`, so pasting all four works fine and all four fire. A false
+  sentence in the operator-facing document R-PROC-02 exists to keep honest; worth one edit
+  next round.
+- Plan step 5's check line says `tests/test_repo_shape.sh` prints "eight `ok:` lines". It
+  prints ten: the two count lines carry the same `ok:` prefix. The Acceptance criteria wording
+  ("8 rules ok") is right; a mechanical `grep -c 'ok:'` against the Plan's number would not be.
+- The `belay-debt:` comment in `tests/test_repo_shape.sh` names its upgrade path but not its
+  owning phase; §Out of scope names `03-pio-bus` as the earliest landing point.
+- `tests/test_rule_traceability.py` parses the whole of `docs/constraints.md` rather than
+  restricting to §Invariants as the Goal says. It can only over-report, never under-report —
+  a `- **R-…**` line added to another section would be flagged unparsable.

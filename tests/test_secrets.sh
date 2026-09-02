@@ -21,24 +21,41 @@ if ! command -v gitleaks >/dev/null 2>&1; then
     exit 1
 fi
 
-if gitleaks dir "$ROOT" --no-banner --redact >/tmp/gl.$$ 2>&1; then
+# Capability, not version. Both scans below hard-code a subcommand; a gitleaks too old to
+# know one exits non-zero and would be reported as "found secrets", which is the wrong
+# diagnosis of a tooling problem. `--help` on an unknown subcommand exits 1, on a known one
+# 0. gitleaks is given no R-TOOL-01 version floor on purpose: the floor would need a release
+# number nobody here has measured, and this probe answers the question the floor was for.
+for sub in dir git; do
+    if ! gitleaks "$sub" --help >/dev/null 2>&1; then
+        echo "  FAIL: R-SEC-01: this gitleaks has no '$sub' subcommand — too old to scan with"
+        exit 1
+    fi
+done
+
+tree_out=$( mktemp ) || exit 1
+hist_out=$( mktemp ) || exit 1
+
+if gitleaks dir "$ROOT" --no-banner --redact >"$tree_out" 2>&1; then
     echo "  ok:   R-SEC-01 (working tree)"
 else
     echo "  FAIL: R-SEC-01: gitleaks found secrets in the tree"
-    grep -iE 'finding|secret|rule|file' /tmp/gl.$$ | head -8 | sed 's|^|        |'
+    grep -iE 'finding|secret|rule|file' "$tree_out" | head -8 | sed 's|^|        |'
     fail=1
 fi
 
 # The rule says "source, config or history". A secret deleted in the next commit is still in
-# the repository, so the working-tree scan alone does not bind the rule.
-if gitleaks git "$ROOT" --no-banner --redact >/tmp/gl.$$ 2>&1; then
+# the repository, so the working-tree scan alone does not bind the rule. Its own output file:
+# one shared path would let the second scan erase the first scan's findings before they are
+# read.
+if gitleaks git "$ROOT" --no-banner --redact >"$hist_out" 2>&1; then
     echo "  ok:   R-SEC-01 (history)"
 else
     echo "  FAIL: R-SEC-01: gitleaks found secrets in the commit history"
-    grep -iE 'finding|secret|rule|file' /tmp/gl.$$ | head -8 | sed 's|^|        |'
+    grep -iE 'finding|secret|rule|file' "$hist_out" | head -8 | sed 's|^|        |'
     fail=1
 fi
-rm -f /tmp/gl.$$
+rm -f "$tree_out" "$hist_out"
 
 # --- rejection case --------------------------------------------------------------------
 # The fake token below is deliberately NOT the AWS documentation example key

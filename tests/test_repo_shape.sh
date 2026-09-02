@@ -74,7 +74,11 @@ report( ) {
 # header. The second list is anchored on the closing '>' so <string_view> is not read as
 # <string>; freestanding headers (<cstdint>, <array>, <span>, <expected>) are untouched.
 find_arch01( ) { hits '^[[:space:]]*(#include[[:space:]]*[<"](pico/|hardware/|tusb|device/|class/|cmsis|core_cm)|#include[[:space:]]*<(iostream|fstream|sstream|iomanip|thread|mutex|condition_variable|future|filesystem|regex|locale|memory|new|stdexcept|exception|vector|string|map|set|unordered_map|unordered_set|deque|list|random)>)' '' $( core_files "$1" ); }
-find_arch03( ) { hits '(\bnew[[:space:]]+[A-Za-z_]|\bmalloc[[:space:]]*\(|\bfree[[:space:]]*\(|std::vector|std::string|std::function|\bdelete[[:space:]]+[A-Za-z_])' '=[[:space:]]*delete' $( src_files "$1" ); }
+# std::string is anchored so that std::string_view — which owns nothing and allocates
+# nothing — stays legal; the same header is accepted by R-ARCH-01 one line above, and the
+# two halves must not disagree. No exclusion pattern: `= delete;` never matches the base
+# alternation, which requires `delete` followed by whitespace and an identifier.
+find_arch03( ) { hits '(\bnew[[:space:]]+[A-Za-z_]|\bmalloc[[:space:]]*\(|\bfree[[:space:]]*\(|std::vector|std::string([^_[:alnum:]]|$)|std::function|\bdelete[[:space:]]+[A-Za-z_])' '' $( src_files "$1" ); }
 find_err03( )  { hits '(\bthrow\b|\btry[[:space:]]*\{|\bcatch[[:space:]]*\()' '' $( src_files "$1" ); }
 find_err04( )  { hits '\.value[[:space:]]*\(' '' $( src_files "$1" ); }
 find_clean03( ){ hits '\bbool[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[;=]' 'bool[[:space:]]+(m_)?(is|has|can|should)_' $( src_files "$1" ); }
@@ -125,8 +129,10 @@ reject R-PROTO-05 find_proto05 src/core/x.cpp 'load( "tests/vectors/digital.hex"
 # The two clauses validation found unchecked: each rule's second syntactic form.
 reject R-ARCH-01  find_arch01  src/core/x.h   '#include <iostream>'
 reject R-CLEAN-09 find_clean09 src/core/x.h   'struct A : B { };'
-echo "  ok:   rejection cases: $rejected/10"
-[ "$rejected" -eq 10 ] || fail=1
+# Anchoring std::string must not stop it matching the thing it is there for.
+reject R-ARCH-03  find_arch03  src/core/x.cpp 'std::string s;'
+echo "  ok:   rejection cases: $rejected (floor 10)"
+[ "$rejected" -ge 10 ] || fail=1
 
 # A rule that fires on legitimate code is as broken as one that never fires. These must
 # NOT be reported.
@@ -144,7 +150,8 @@ accept( ) { # accept <label> <finder> <relative-path> <content>
 }
 
 accepted=0
-accept "= delete is legal C++"        find_arch03  src/core/x.h   'Bus( const Bus& ) = delete;'
+accept "= delete; is not an allocation" find_arch03 src/core/x.h   'Bus( const Bus& ) = delete;'
+accept "std::string_view allocates nothing" find_arch03 src/core/x.h 'std::string_view sv;'
 accept "is_ prefixed bool"            find_clean03 src/core/x.cpp 'bool is_ready = true;'
 accept "m_has_ prefixed member bool"  find_clean03 src/core/x.cpp 'bool m_has_ack = false;'
 accept "TODO with a phase reference"  find_clean05 src/core/x.cpp '// TODO(09-guitar-observe): confirm'
@@ -154,7 +161,7 @@ accept "freestanding <span>"          find_arch01  src/core/x.h   '#include <spa
 accept "freestanding <expected>"      find_arch01  src/core/x.h   '#include <expected>'
 accept "<string_view> is not <string>" find_arch01 src/core/x.h   '#include <string_view>'
 accept "enum with a fixed underlying type" find_clean09 src/core/x.h 'enum class Mode : uint8_t { kDigital };'
-echo "  ok:   false-positive cases: $accepted/10"
-[ "$accepted" -eq 10 ] || fail=1
+echo "  ok:   false-positive cases: $accepted (floor 11)"
+[ "$accepted" -ge 11 ] || fail=1
 
 exit $fail
