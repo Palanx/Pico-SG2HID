@@ -69,7 +69,7 @@ Set by ADR-0006 and by the hard constraints in `docs/product/requirements.md`.
 - **R-PROTO-02** — After every byte of a frame except the last, the master waits for the controller's `ACK`. A missing `ACK` within the timeout aborts the frame and marks the controller absent; it never yields a partially decoded report. — planned: 01-ps2-codec
 - **R-PROTO-03** — A frame whose header byte is not a known controller id is reported as unknown, never guessed at or decoded on a best-effort basis. — planned: 01-ps2-codec
 - **R-PROTO-04** — The whammy axis is read only from a frame that reported analog mode. A digital-mode frame yields the axis at rest, never a byte reinterpreted from a digital report. — planned: 01-ps2-codec
-- **R-PROTO-05** — Every expected byte sequence in the tests is a literal, stored under `tests/vectors/` and written by hand from the protocol documentation. No expected value is produced by `core` or captured from the emulator, and no file under `src/` may reference `tests/vectors/`. — planned: 00-scaffold
+- **R-PROTO-05** — Every expected byte sequence in the tests is a literal, stored under `tests/vectors/` and written by hand from the protocol documentation. No expected value is produced by `core` or captured from the emulator, and no file under `src/` may reference `tests/vectors/`. — test: `tests/test_repo_shape.sh`
 
 ### Style
 
@@ -92,9 +92,9 @@ compile each file, and everything else pulls in Pico SDK or TinyUSB headers with
 
 ### Architecture
 
-- **R-ARCH-01** — `src/core/` contains no `#include` of a Pico SDK, TinyUSB, CMSIS or other hardware header, and no `#include <` of a hosted-only standard header. — planned: 00-scaffold
-- **R-ARCH-02** — Every file under `src/` respects the dependency directions in §Layering, as encoded in `.claude/workflow/boundaries.rules`. — planned: 00-scaffold
-- **R-ARCH-03** — Firmware code performs no dynamic allocation: no `new`, `delete`, `malloc`, `free`, `std::vector`, `std::string` or `std::function` anywhere under `src/`. — planned: 00-scaffold
+- **R-ARCH-01** — `src/core/` contains no `#include` of a Pico SDK, TinyUSB, CMSIS or other hardware header, and no `#include <` of a hosted-only standard header. — test: `tests/test_repo_shape.sh`
+- **R-ARCH-02** — Every file under `src/` respects the dependency directions in §Layering, as encoded in `.claude/workflow/boundaries.rules`. — test: `tests/test_boundaries.sh`
+- **R-ARCH-03** — Firmware code performs no dynamic allocation: no `new`, `delete`, `malloc`, `free`, `std::vector`, `std::string` or `std::function` anywhere under `src/`. — test: `tests/test_repo_shape.sh`
 
 ### Error model
 
@@ -102,8 +102,9 @@ Set by ADR-0007.
 
 - **R-ERR-01** — Every fallible function in `src/core/` reports through a result struct or through the link state machine. No function returns a status alongside a separate out-parameter carrying the value. — planned: 01-ps2-codec
 - **R-ERR-02** — Every function returning a result struct or a `LinkState` is marked `[[nodiscard]]`. — planned: 01-ps2-codec
-- **R-ERR-03** — No `throw`, `try` or `catch` anywhere under `src/`, and firmware builds pass `-fno-exceptions -fno-rtti`. — planned: 00-scaffold
-- **R-ERR-04** — No call to `.value()` on a `std::expected` anywhere under `src/`. Under `-fno-exceptions` it does not throw, it calls `abort` — the one outcome §Error handling rules out. Access goes through `has_value()` and `operator*`. — planned: 00-scaffold
+- **R-ERR-03** — No `throw`, `try` or `catch` anywhere under `src/`. — test: `tests/test_repo_shape.sh`
+- **R-ERR-05** — Firmware builds pass `-fno-exceptions -fno-rtti`. Split out of R-ERR-03 on 2026-08-31: the source clause is a grep and the flags clause is a property of a build that does not exist yet, so one binding could not honestly cover both. — planned: 03-pio-bus
+- **R-ERR-04** — No call to `.value()` on a `std::expected` anywhere under `src/`. Under `-fno-exceptions` it does not throw, it calls `abort` — the one outcome §Error handling rules out. Access goes through `has_value()` and `operator*`. — test: `tests/test_repo_shape.sh`
 
 ### Toolchain
 
@@ -111,8 +112,8 @@ Set by ADR-0008. Versions are a rule here and not a README sentence because this
 has already been bitten twice by them: `.clang-format` keys were renamed in clang-format
 17 and again in 23, and the ARM compiler decides which C++ standard is even available.
 
-- **R-TOOL-01** — Every tool the checks depend on meets its minimum version when present: `clang-format` >= 23 and `clang-tidy` >= 23 (the config uses key shapes introduced in 23), `arm-none-eabi-g++` >= 12 (the release in which libstdc++ gained `<expected>`; only 15.3.1 is actually verified — see ADR-0008 §Verification), `python3` >= 3.8. A tool that is absent is skipped under `OPTIONAL_TOOLS`, never assumed to pass. — planned: 00-scaffold
-- **R-TOOL-02** — The `arm-none-eabi-g++` first on `PATH` can compile a translation unit that includes `<cstdint>` for `cortex-m0plus`. A cross-compiler with no target C library looks installed and cannot build anything; on macOS the sudo-free Homebrew formula is exactly that, and it shadows the working cask. — planned: 00-scaffold
+- **R-TOOL-01** — Every tool the checks depend on meets its minimum version when present: `clang-format` >= 23 and `clang-tidy` >= 23 (the config uses key shapes introduced in 23), `arm-none-eabi-g++` >= 12 (the release in which libstdc++ gained `<expected>`; only 15.3.1 is actually verified — see ADR-0008 §Verification), `python3` >= 3.8. A tool that is absent is skipped under `OPTIONAL_TOOLS`, never assumed to pass. — test: `tests/test_tool_versions.sh`
+- **R-TOOL-02** — The `arm-none-eabi-g++` first on `PATH` can compile a translation unit that includes `<cstdint>` for `cortex-m0plus`. A cross-compiler with no target C library looks installed and cannot build anything; on macOS the sudo-free Homebrew formula is exactly that, and it shadows the working cask. — test: `tests/test_tool_versions.sh`
 
 ### Engineering guidelines
 
@@ -124,13 +125,13 @@ above are **mapped**, not duplicated; guidelines that do not apply to this proje
 
 - **R-CLEAN-01** — Names reveal intent and use domain language: what the thing is on the bus, not what it is in the abstract. Abbreviations only where universally known (`id`, `url`, `api`, `usb`, `pio`, `gpio`, `hid`, `ack`). A name that needs a comment to explain it is renamed instead. — manual: intent is a judgement about meaning; no checker can tell a good name from a bad one.
 - **R-CLEAN-02** — A function is at most 60 lines, takes at most 3 parameters, and nests at most 4 deep. Past three parameters the arguments become a struct. — test: `tests/test_style.sh`
-- **R-CLEAN-03** — Boolean names are assertions: `is_`, `has_`, `can_`, `should_`. Never `flag`, `status`, `check`. — planned: 00-scaffold
+- **R-CLEAN-03** — Boolean names are assertions: `is_`, `has_`, `can_`, `should_`. Never `flag`, `status`, `check`. — test: `tests/test_repo_shape.sh`
 - **R-CLEAN-04** — No magic numbers or strings in logic. Every protocol byte, timeout and threshold is a named `constexpr` in one place per concern. The literals under `tests/vectors/` are the sole exception, and being literal is their purpose (R-PROTO-05). — planned: 01-ps2-codec
-- **R-CLEAN-05** — Every `TODO` names the phase or issue that will close it: `// TODO(09-guitar-observe): confirm against the real controller`. A bare `TODO` is not allowed. — planned: 00-scaffold
+- **R-CLEAN-05** — Every `TODO` names the phase or issue that will close it: `// TODO(09-guitar-observe): confirm against the real controller`. A bare `TODO` is not allowed. — test: `tests/test_repo_shape.sh`
 - **R-CLEAN-06** — Comments explain *why*, never *what*; a comment that no longer matches the code is deleted or corrected, never left standing. — manual: whether a comment is still true is exactly the judgement a checker cannot make.
 - **R-CLEAN-07** — Command-Query Separation: a function returns a value or changes state, never both. — manual: distinguishing a query from a command requires knowing intent, not signature.
 - **R-CLEAN-08** — Constructors only assign. No logic, no I/O, no side effects. — manual: "logic" has no syntactic definition; a grep would flag every non-trivial initialiser list.
-- **R-CLEAN-09** — Composition over inheritance. `src/core/` uses no inheritance and no virtual dispatch at all: it is plain data plus free functions. — planned: 00-scaffold
+- **R-CLEAN-09** — Composition over inheritance. `src/core/` uses no inheritance and no virtual dispatch at all: it is plain data plus free functions. — test: `tests/test_repo_shape.sh`
 
 **SOLID**
 
@@ -139,7 +140,7 @@ above are **mapped**, not duplicated; guidelines that do not apply to this proje
 
 **Security**
 
-- **R-SEC-01** — Zero secrets in the repository: no credentials, tokens or keys in source, config or history. — planned: 00-scaffold
+- **R-SEC-01** — Zero secrets in the repository: no credentials, tokens or keys in source, config or history. — test: `tests/test_secrets.sh`
 
 **Process**
 
@@ -168,8 +169,8 @@ above are **mapped**, not duplicated; guidelines that do not apply to this proje
 
 ### Process
 
-- **R-PROC-01** — Every rule in this file has exactly one binding in ADR-0005's grammar; every `test:` file carries a matching `RULE <id>` marker; every marker names a declared id; `manual:` rules carry no marker; every `planned:` phase exists and is not `done`; every id `CLAUDE.md` mentions is declared here. — planned: 00-scaffold
-- **R-PROC-02** — Every phase directory whose status is `done` contains a `verify.md` written for a non-specialist: what was built, what it should do, and the exact physical steps and expected readings that confirm it. — planned: 00-scaffold
+- **R-PROC-01** — Every rule in this file has exactly one binding in ADR-0005's grammar; every `test:` file carries a matching `RULE <id>` marker; every marker names a declared id; `manual:` rules carry no marker; every `planned:` phase exists and is not `done`; every id `CLAUDE.md` mentions is declared here. — test: `tests/test_rule_traceability.py`
+- **R-PROC-02** — Every phase directory whose status is `done` contains a `verify.md` written for a non-specialist: what was built, what it should do, and the exact physical steps and expected readings that confirm it. — test: `tests/test_phase_docs.sh`
 - **R-PROC-03** — Commit messages follow Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`), one phase's work per commit where practical. — manual: git history is not a build artifact; a check would either run only on the newest commit (trivially bypassed) or demand rewriting history, which costs more than the drift.
 - **R-PROC-04** — Automated tests never require the real guitar, a network connection, or any toolchain beyond a C++23 compiler and `python3`. Hardware-in-the-loop means Pico against Pico. — manual: a property of the whole suite over time; the closest machine-checkable proxy would be a sandbox the harness does not have.
 

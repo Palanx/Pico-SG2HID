@@ -6,7 +6,7 @@
 # RULE R-CLEAN-02 — docs/constraints.md §Invariants — function size, params, nesting
 #
 # Two modes, one script:
-#   STYLE_OPTIONAL=1  missing tools are reported and skipped   (used by `make test`,
+#   OPTIONAL_TOOLS=1  missing tools are reported and skipped   (used by `make test`,
 #                     which must run with only a C++23 compiler and python3, R-PROC-04)
 #   unset             missing tools are a failure              (used by `make lint`)
 #
@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 fail=0
 skip_or_fail() {
-  if [ "${STYLE_OPTIONAL:-0}" = "1" ]; then
+  if [ "${OPTIONAL_TOOLS:-0}" = "1" ]; then
     echo "  skip: $1"
   else
     echo "  FAIL: $1"
