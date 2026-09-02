@@ -861,8 +861,13 @@ Verified this round:
         -I/opt/homebrew/opt/llvm/include/c++/v1
 
   ...runs clean on `#include <cstdint>` + `using Byte = std::uint8_t;`. Two things follow.
-  (1) `01-ps2-codec` must fix the invocation before it can pass `make lint`, and the fix is
-  three flags, not a `compile_commands.json`. (2) `docs/constraints.md` §Style and the header
+  (1) `01-ps2-codec` must fix the invocation before it can pass `make lint`. Three flags are
+  enough **on this machine**, and that is the catch: the third is
+  `-I/opt/homebrew/opt/llvm/include/c++/v1`, a Homebrew-on-Apple-Silicon path. Hardcoding
+  it fixes one laptop and breaks `make lint` on every other, which contradicts this
+  phase's own goal of a green run from a clean clone. There is no CI to catch that today.
+  So the choice — hardcoded flags versus a generated `compile_commands.json` versus
+  detecting the include root — is owed by that phase and is not settled by this note. (2) `docs/constraints.md` §Style and the header
   of `.clang-tidy` both say clang-tidy can run where "the flags are trivial — `src/core/` and
   `tests/`"; that is false today for any file using the standard library, which is every file
   that phase will write. It is a **finding** in `CLAUDE.md`'s sense — the obvious reading of

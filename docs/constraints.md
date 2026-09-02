@@ -90,6 +90,10 @@ compile each file, and everything else pulls in Pico SDK or TinyUSB headers with
 `compile_commands.json` to describe them. The upgrade path is in the header of
 `.clang-tidy`.
 
+That scope is necessary but **not sufficient, and this paragraph used to imply it was**:
+inside `src/core/` the invocation still resolves no standard header, so the first file
+using the standard library fails R-STYLE-02 too. See §Observed conventions, 2026-09-02.
+
 ### Architecture
 
 - **R-ARCH-01** — `src/core/` contains no `#include` of a Pico SDK, TinyUSB, CMSIS or other hardware header, and no `#include <` of a hosted-only standard header. — test: `tests/test_repo_shape.sh`
@@ -186,6 +190,15 @@ each entry gets one when it does.
 - Names say what the thing is on the bus, not what it is in the abstract:
   `Ps2Frame`, `ControllerId`, `AckTimeout`, `WhammyAxis`.
 - Files, directories and identifiers are English, always, including comments.
+- **clang-tidy resolves no standard header without a compile database (measured
+  2026-09-02).** `clang-tidy --quiet <file> -- -std=c++23 -Isrc` fails on a file as small
+  as `#include <cstdint>` + `using Byte = std::uint8_t;`, with `clang-diagnostic-error`,
+  not a naming complaint — so the failure does not look like the rule it comes from.
+  `-isysroot $(xcrun --show-sdk-path)` alone does not fix it; adding
+  `-I/opt/homebrew/opt/llvm/include/c++/v1` does. That third flag is Homebrew-on-Apple-
+  Silicon specific, so it fixes this machine and breaks every other one: the choice
+  between hardcoded flags and a generated `compile_commands.json` is owed by the first
+  phase that writes `src/core/`, and is not settled here.
 - Magic bytes from the PS2 protocol are named `constexpr` values in one place per
   concern, never inline literals in logic — except inside `tests/vectors/`, where being
   a literal is the point (R-PROTO-05).
