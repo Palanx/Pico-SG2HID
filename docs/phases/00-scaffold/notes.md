@@ -2238,3 +2238,114 @@ Harness on the clean tree: accounting `ok:` for all seven check files, `neutered
   prefix**, so the liveness harness's accounting cannot see it and §Plan step 0c's rule does
   not reach it either. Not a defect today — the floor is asserted on the next line — but it is
   the only case count in the suite that is invisible to the harness.
+
+## Validation — 2026-09-03 (round 11)
+
+- criteria: **37 passed / 0 failed.** 14 main (`make test` OK, `make lint` 0, harness
+  accounting for all seven files + `neutered: 26/26` + `alternations: 59/59` + `bootstrap:
+  fixture gap reported as expected`, traceability 9/9, boundaries `rejection cases: 2/2`,
+  repo_shape 55 rejection + 13 accept + `wiring cases: 8/8`, phase_docs rejection + wiring +
+  false-positive, secrets both `LIVE` labels, tool_versions six `ok:` lines,
+  `planned: 00-scaffold` 0, `STYLE_OPTIONAL` 0 in both, both docs non-empty, `time make test`
+  **55.3s** against the 2m cap); 8 liveness mutations, each failing the build, including the
+  two that survived round 9; 1 clean-clone block (rc=0, 4 `skip:`, 3 `unproven:`, zero "does
+  not pass on the real tree"); 12 adversarial cases each naming its own rule; 2 negative-half
+  cases. Tree green after every one
+- project gates: test pass, lint pass, typecheck **gap** —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never overwrites.`
+- boundary sweep: **not swept: no file in the set is under a declared layer.** Both other
+  reasons checked rather than assumed: 13 active `deny` lines, prefixes
+  `src/{core,hal,usb,app,emu}/`, 0 of the 26 files in the set match one
+- index: was **STALE** at `26c04d8`, rebuilt to `d0a41d4`, `--check` clean
+- independent review: **contradicts — two, both reproduced before being recorded;
+  undecidable — four.** The first review of this round hung: it emitted `I'll read the three
+  inputs.`, wrote 137 bytes and stopped. Killed and relaunched with the same three inputs
+- closure test: **fail.** The mechanical half passes — four sections present and non-blank,
+  and all 19 non-exempt files in the set are reachable from the Plan or from the
+  package-provenance table added in round 10. It fails on four `undecidable` verdicts
+- upstream: **none new.** No package-owned file misbehaved this round; the provenance table
+  did its job and the reviewer raised no question about those paths for the first time in
+  three rounds. The open entry (`~/.claude-belay/feedback/pico-sg2hid.md`,
+  `commands/validate-phase.md`, 2026-09-02) still stands on its own terms
+- verdict: **escaped to /expand-phase: spec re-expanded.** This is validation **#3** against
+  the round-9 spec (`## Validation` sections at notes.md:1735 and :1952 follow the
+  `escaped to /expand-phase` verdict at :1482), and a gate failed, so the iteration-3+ escape
+  applies. **Status set to `pending` by this command**, per its own instruction not to leave
+  the flip to the operator
+
+### The two confirmed `contradicts` — and why they are the spec's fault, not the code's
+
+Both are one finding, and it is the **third** consecutive round it has been returned under a
+different verdict name. Round 9's reviewer raised it as `undecidable` (b) — "does step 6's
+wiring requirement reach the five rules outside `test_repo_shape.sh`?" — and no round has
+resolved it in the spec; round 10 was scoped away from it by the operator; round 11 fixed it
+in `tests/test_phase_docs.sh` only, and said so. It has now come back as a `contradicts`
+because §Goal says "**each rule** gets a wiring case" while §Plan step 6 illustrates the
+requirement with `run_all`, which exists in one file.
+
+1. **Wiring cases reach 9 of the 14 rules.** `tests/test_repo_shape.sh` has 8, one per rule;
+   `tests/test_phase_docs.sh` has 1. `tests/test_boundaries.sh` (R-ARCH-02),
+   `tests/test_secrets.sh` (R-SEC-01) and `tests/test_tool_versions.sh` (R-TOOL-01, R-TOOL-02)
+   have none, and the consequence §Goal names is live in all three. Measured this round, each
+   against a full `make test`:
+
+   ```
+   test_secrets.sh:69   `fail=1` -> `:`   in the tree-scan else branch     make test rc=0
+   test_boundaries.sh:66 `fail=1` -> `:`  in the "forbidden direction" arm  make test rc=0
+   test_tool_versions.sh:104 drop `|| fail=1` from the clang-tidy probe     make test rc=0
+   ```
+
+   Each prints its `FAIL:` line and exits 0. No case, no harness property and no acceptance
+   criterion notices.
+2. **The shared-verdict requirement reaches 2 of the 5 shell checks.** Only
+   `tests/test_repo_shape.sh` and `tests/test_phase_docs.sh` define `report`; in the other
+   three every case re-decides from a raw exit code (`sweep` → `rc -eq 1`, `if scan …`,
+   `if check_version …`). §Goal's "every rejection and accept case runs **through** the shared
+   `report` function" is false of three files.
+
+### The four `undecidable` findings
+
+- **(a) `tests/test_secrets.sh`'s two floors** (`rejection cases: … (floor 2)`,
+  `false-positive cases: … (floor 2)`). §Acceptance criteria counts "the two secret-scan
+  cases" among the floors that remain, and §How counts are stated requires a floor to equal a
+  by-name enumeration in its Plan step. Step 6 enumerates none of this file's cases. Missing:
+  the name list, and whether "two" is one floor or both.
+- **(b) `tests/test_tool_versions.sh`'s `rejection cases: $rejected/4`.** §Acceptance criteria
+  calls the remaining count "the four tool probes", but the probes are pinned by the four
+  `# LIVE R-TOOL-01:` labels; the floor of 4 counts four rejection *stubs* that no step
+  enumerates. Missing: which four the floor means, and their names.
+- **(c) `tests/test_boundaries.sh` asserts `rejected -eq 2`** while §Acceptance criteria says
+  `n >= 2`. Equality breaks on a third case; the spec does not say which was intended, and
+  §Plan step 6 names the stub-hook case explicitly and the core→hal case only implicitly.
+- **(d) Is `tests/test_style.sh` inside the accounting property?** §Goal counts "six checks
+  under `tests/`" and does not include it; §Out of scope excludes only *mutating* it. But
+  `check_files()` takes every `tests/test_*.{sh,py}`, so its three ids — R-STYLE-01,
+  R-STYLE-02, R-CLEAN-02, none of them among the fourteen — must produce non-case result
+  lines or the harness fails the file. Missing: a statement of the accounting property's file
+  set.
+
+### Why this is an escape and not a twelfth round
+
+Every gate that judges the *code* passed: 37 acceptance criteria, both project gates, the
+sweep, the index. What failed is the gate that judges whether the **spec** describes the
+code, and the failure is concentrated in two places the spec has never stated precisely:
+which files each structural requirement reaches (the two `contradicts`), and which counts are
+floors over which enumerations (three of the four `undecidable`). The spec has been amended in
+rounds 9, 10 and 11 — eleven separate amendments — and each amendment has produced the next
+round's finding somewhere it did not reach. That is the condition the iteration-3+ escape
+exists to stop.
+
+What a re-expansion has to settle, so it is not rediscovered a fourth time:
+
+1. **The reach of each structural requirement, per file, by name.** Wiring cases and the
+   shared verdict either apply to all five shell checks — in which case three files owe work —
+   or the requirement is scoped to the aggregate-shaped checks and §Goal must stop saying
+   "each rule". Do not leave it as prose that names `run_all`.
+2. **Every floor with its enumeration**, for `test_secrets.sh`, `test_tool_versions.sh` and
+   `test_boundaries.sh`, or an explicit statement that those three carry no floor. §How counts
+   are stated already demands this and three files do not satisfy it.
+3. **The accounting property's file set**, explicitly: whether it is "the six checks" or
+   "every `tests/test_*` the Makefile globs", and what happens to a check whose rules are
+   outside the fourteen.
+4. **Whether `notes.md` §For later phases (round 11) items are in scope**: the exit-code-only
+   mutant judgement, the orphaned `mut_*.sh`, and `test_boundaries.sh:111`'s prefix-less count.
