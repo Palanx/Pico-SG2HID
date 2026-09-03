@@ -1871,3 +1871,206 @@ rejection and accept case", not "every case in `test_repo_shape.sh`".
   floor was removed.
 - An interrupted harness leaves `mut_*.sh` in `tests/` carrying real `RULE` markers.
 - `R-ERR-05` sits between `R-ERR-03` and `R-ERR-04` in the catalogue, breaking numeric order.
+
+## Implementation — 2026-09-03 (round 10, the two corrections named at the close of round 9)
+
+Scope was fixed by the operator to one piece in one file plus the spec step that states its
+criterion, with an explicit ban on fixing the other round-9 findings ("nada de arreglar
+hallazgos en otros archivos"). Files touched: `tests/test_checks_are_live.py`,
+`docs/phases/00-scaffold/spec.md` (§Plan step 2, plus two acceptance-criteria fixes forced by
+this validation), `docs/index/` (regenerated), this file. Nothing else.
+
+**1. The accounting criterion (round-9 `contradicts` 2 — F2, closed).** The property was
+"does this rule id appear in some result line". Every check ships rejection and accept cases
+whose lines name the rule, so the answer is yes whether or not the real run still happens —
+which is why `sweep "$ROOT"` could be deleted from `test_boundaries.sh` and the real
+`missing_verify` run from `test_phase_docs.sh` with the file *and* the harness green. The
+criterion asks the question of the real run's own lines now: one regex, `CASE_LINE`, over the
+output, resting on the house convention that a case line says which case it is (`rejection
+case`, `false-positive case`, `accept case`, `wiring case`), and a declared id reported by
+nothing but case lines is a deleted real run.
+
+Deviation from §Plan step 2 as the operator stated it: step 2's true criterion ("does a line
+that is not the real run carry this id?") is universally yes, which read literally means
+every rule in every check needs a `LIVE` label — five check-file headers. The convention is
+derived in the harness instead, so the fix closed all six files from one file and cost no
+declaration. `LIVE` labels remain for the one residue the convention cannot reach — a rule
+with several independent real calls (R-SEC-01, R-TOOL-01) — and must now pin a *real-run*
+line, not merely a unique one.
+
+**2. `bootstrap()` reimplemented the mutation loop inline (round-9 taste, promoted).** The
+fixture could report its expected gap while the real properties were blind. Extracted
+`alternation_jobs(path)`; `bootstrap()` and `property_alternation()` both drive it through
+`run_mutants()`. `run_mutants()` no longer reports — a survivor is a defect for properties 2
+and 3 and the *expected* result for the floor — so reporting moved to `mutation_score()`.
+`mutate_and_run()` writes the mutant beside its own source rather than always under `tests/`.
+
+**Verified by mutating a copy of the repository, which is the step nine rounds skipped.** Not
+by running the file and reading its output:
+
+```
+delete the real `sweep "$ROOT"` block, test_boundaries.sh   before rc=0  ->  after rc=1
+delete the real `missing_verify "$ROOT/…"` block, phase_docs before rc=0  ->  after rc=1
+delete the real `scan git "$ROOT"` block, test_secrets.sh                     after rc=1
+sabotage the harness: `return label, rc == 0` -> `return label, False`        after rc=1
+```
+
+The first two are the cases that survived round 9; the messages are
+`R-ARCH-02, reported by nothing but its own cases — the real run is gone` and the same for
+`R-PROC-02`. The fourth is the floor doing its job: the sabotaged harness still prints
+`neutered: 12/12 caught` and `alternations: 55/55 caught` and fails only on
+`bootstrap: expected exactly 1 uncovered alternative in the fixture, got 0`.
+
+One premise in the operator's order was wrong and is corrected here rather than absorbed:
+R-SEC-01 was **not** passing with its real run unbound. The `LIVE` prefix-exactly-one test
+already caught that deletion, because `R-SEC-01 false-positive case (history)` does not
+prefix-match `R-SEC-01 (history)`. What was broken is the criterion deciding *which* rules
+get a label, which left the other four files resting on plain accounting.
+
+## Deviations (round 10)
+
+- **The `LIVE`-label-per-rule reading of step 2 was not implemented; the convention is
+  derived in the harness.** Reason above. Step 2 now states the convention, names the two
+  files whose deletion it catches, and keeps `LIVE` for the multi-call residue.
+- **An acceptance criterion had never been runnable, and this validation is what found it.**
+  The liveness block's second mutation is
+  `s.replace('    report R-ERR-04   "$( find_err04   "$1" )"\n', '', 1)`. The line in
+  `tests/test_repo_shape.sh` has carried `|| fail=1` since the wiring cases landed, so the
+  replacement matched nothing: the criterion mutated no file, `make test` returned 0, and the
+  0 was read as the criterion passing. A silent no-op that has been reported as a pass for at
+  least two rounds. `spec.md` fixed to include `|| fail=1`; re-run gives rc=2. Its expected
+  message was also stale — the R-ERR-04 **wiring case** fires first now
+  (`R-ERR-04 is reported but never reaches the exit code (run_all left fail=0)`,
+  `wiring cases: 7/8`), and the harness then fails the file; the comment says that.
+- **`docs/index/` was stale and was rebuilt** (stamp `8a339bd` -> `26c04d8`), per step 4.
+- **An interrupted `make test` leaves `tests/mut_*.sh` behind.** The harness unlinks each
+  mutant in a `finally`, which a SIGTERM skips. A 9-minute tool timeout during the
+  adversarial block orphaned seven; removed by hand. Round 9 logged the same thing under
+  taste — it is now observed twice, and the fix is a trap or a `.gitignore` line, owned by no
+  step of this spec.
+
+## Validation — 2026-09-03 (round 10)
+
+- criteria: **32 passed / 1 failed-then-fixed.** 14 main (`make test` OK, `make lint` 0,
+  harness accounting for all seven files + `neutered: 12/12` + `alternations: 55/55` +
+  `bootstrap: fixture gap reported as expected`, traceability 9/9, boundaries
+  `rejection cases: 2/2`, repo_shape 55 rejection + 11 accept + `wiring cases: 8/8`,
+  phase_docs rejection + false-positive, secrets both `LIVE` labels, tool_versions six `ok:`
+  lines, `planned: 00-scaffold` 0, `STYLE_OPTIONAL` 0 in both files, both docs non-empty,
+  `time make test` **55.9s** against the 2m cap); 5 liveness — one of which was **not
+  runnable** and is recorded under §Deviations, fixed in `spec.md` and then passing; 12
+  adversarial, each exiting non-zero and naming its own rule id; 1 negative half (repo_shape
+  quiet on `std::string_view`), tree green after every one
+- project gates: test pass, lint pass, typecheck **gap** —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never overwrites.`
+- boundary sweep: **not swept: no file in the set is under a declared layer.** Both other
+  reasons checked rather than assumed: 13 active `deny` lines, prefixes
+  `src/{core,hal,usb,app,emu}/`, and none of them prefixes any of the 26 files in the set
+- index: was **STALE**, rebuilt, `--check` clean at `26c04d8`
+- independent review: **contradicts — six, all six reproduced against the tree before being
+  recorded; undecidable — two.** Detail below
+- closure test: **fail.** Mechanical half passes — four sections present and non-blank, and
+  every non-exempt, non-package file in the set is named in the spec's Plan or Context
+  pointers. It fails on the two `undecidable` verdicts, which are missing pointers by
+  definition
+- upstream: **`.claude/commands/validate-phase.md`** — third consecutive round in which the
+  path-filtered diff carries seven package-owned files and costs a review finding
+  (`undecidable` 1 this time, `contradicts` 3 in round 9). Already filed and open
+  (`~/.claude-belay/feedback/pico-sg2hid.md`, 2026-09-02); no new entry. Also new:
+  `.claude/workflow/installed` does **not** name `.claude/workflow/belay-version`, so the
+  spec's "files `installed` names are the package's" exemption cannot cover a file that rides
+  in on every `chore(belay):` commit. Worth one line in the same open entry
+- verdict: **returned to implementation.** Six `contradicts` are code failures, so this goes
+  to `/implement-phase 00-scaffold`. This is validation **#2** against the round-9 spec (two
+  `## Validation` sections follow the `escaped to /expand-phase` verdict of round 8), so the
+  iteration-3+ escape does not apply and must not be invoked. Round 10 was deliberately
+  scoped to two corrections and forbidden from touching the rest, so five of the six findings
+  below are round-9 defects surviving by instruction, not by oversight
+
+### What round 10 closed
+
+- **Round-9 `contradicts` 2 (F2) is closed in all six checks at once.** Both surviving
+  mutations now fail; see §Implementation for the before/after codes.
+- The bootstrap floor can now fail, demonstrated by sabotage rather than asserted.
+
+### The six confirmed `contradicts` — all still open
+
+1. **§Out of scope parks parallelising; the harness parallelises.** "*parallelising is an
+   optimisation nobody has yet needed*" against `run_mutants()`'s
+   `ThreadPoolExecutor(max_workers=min(len(jobs), cpu_count*2))`, and
+   `tests/test_repo_shape.sh`'s single shared `case_tmp` replacing per-case `mktemp -d`,
+   justified in its own comment as wall-clock work. The code is defensible — 67 mutants
+   serially is minutes, and an acceptance criterion caps the suite at two — but §Out of scope
+   says not to, and the spec is what a cold session reads.
+2. **§Plan step 4 says "top-level" alternatives; `alternatives()` splits at every nesting
+   depth, on purpose.** Step 4's own prose argues for depth (31 alternatives in
+   `find_arch01`, one top-level branch), so the word "top-level" is stale text inside a step
+   that everywhere else demands the opposite. The code is right and the step is wrong; the
+   step is what must change.
+3. **§Plan step 3's naming convention is four names; the harness carries five, plus an
+   invisible hole.** `FN_NAMES = ("sweep", "scan", "missing_verify")` adds a fifth name the
+   step does not declare — the hand-written list step 3 exists to forbid. And
+   `arm_compiles( )` in `tests/test_tool_versions.sh` — the whole of R-TOOL-02 — falls
+   outside the convention, so it is never neutered and never alternation-mutated, and the
+   harness prints only the set it *discovered*, so nothing in the output says so.
+   `ver_num( )` and `resolve( )` are in the same position.
+4. **§Plan step 0c's premise is false of the file in this diff.** 0c says
+   `test_repo_shape.sh` already prints its shortfall as `FAIL:`; line 220 prints
+   `ok:   rejection cases: $rejected` unconditionally and only then evaluates
+   `[ "$rejected" -gt 0 ] || fail=1`. Round 9 reintroduced the exact shape 0c bans, when the
+   floor was removed. The step-0 check as written is also false: the grep matches four files,
+   three of which print inside a floor-passing branch.
+5. **The clean-clone floor is still broken (round-9 `contradicts` 1, unfixed by
+   instruction).** `Makefile:28` prefixes `OPTIONAL_TOOLS=1` onto the `SH_TESTS` loop only;
+   `PY_TESTS` run bare, and the harness's `run()` passes no `env`. Re-measured today with
+   `/opt/homebrew/bin` off `PATH`:
+   `OPTIONAL_TOOLS=1 sh tests/test_secrets.sh` -> `skip:`, rc=0; the same file as the harness
+   invokes it -> `FAIL:`, rc=1. So §Plan step 2's `unproven:` branch is unreachable under
+   `make test`, and §Goal's "`make test` exits 0 on the clean repo" is false on the floor the
+   `PHASES.md` row promises. The reviewer also separated the partial-skip half correctly:
+   `SKIPPED.search(out) and not RESULT.search(out)` is false for `test_tool_versions.sh` when
+   some tools resolve and others do not, so an absent `arm-none-eabi-g++` leaves its
+   `# LIVE R-TOOL-01: arm-none-eabi-g++` label prefixing zero lines and the harness fails the
+   file. Accounting has no notion of a partially-skipped file
+6. **Three false statements in the tree, the class §Plan step 0 exists to delete.**
+   `tests/test_secrets.sh:116` and `tests/test_repo_shape.sh:154` both name
+   `tests/test_checks_are_live.**sh**`, a file that does not exist — the harness is `.py`, as
+   §Goal says. `tests/test_boundaries.sh:13` attributes the `HOOK`-stub requirement to "*the
+   spec's own step-0 check*"; step 0 contains no such check, it is in step 6.
+
+**Round-9 `contradicts` 2b is also still open** and was re-verified today, though this
+round's reviewer did not surface it: `tests/test_phase_docs.sh` writes `[ -n "$found" ]`
+three separate times instead of routing every case through one shared verdict, so gutting
+only the real run's copy (`if [ -n "$found" ]; then` -> `if false; then`) leaves the file at
+rc=0 and the harness at rc=0. §Plan step 6 requires the shared-verdict shape of "*every
+rejection and accept case*"; it exists in `test_repo_shape.sh` and nowhere else.
+
+### The two `undecidable` findings
+
+- **(a) Which paths in the diff belong to the belay package.** The spec's "*A third
+  category*" exempts "*files that `.claude/workflow/installed` names*" but never writes the
+  list out, and the reviewer holds only `CLAUDE.md`, the spec and the diff. It could not
+  decide for `.claude/commands/{expand-phase,validate-phase}.md`,
+  `.claude/hooks/boundary-check.sh`, `.claude/workflow/belay-version`,
+  `docs/templates/CLAUDE.{adopted,bootstrap}.md`, `CLAUDE.md`, and especially
+  `scripts/build-index.sh`, whose dependency-edge loop is rewritten in this diff. Missing:
+  the package-owned paths written out inline. See the `upstream:` line — the manifest itself
+  does not name `belay-version`, so even a spec that quoted `installed` verbatim would not
+  cover the whole set.
+- **(b) The accept-case floor of 11 has no enumeration to equal.**
+  `false-positive cases: $accepted (floor 11)` fails below 11, but §"How counts are stated"
+  requires every count to be a floor equal to the names enumerated in its Plan step, and no
+  step enumerates accept cases — step 6 says only "*an accept case wherever the pattern could
+  plausibly misfire*". §Acceptance criteria lists no accept floor either. Missing: the
+  enumeration, or a statement that accept coverage carries no floor.
+
+### Taste, not blocking (round 10)
+
+- `scripts/build-index.sh` uses `[[ … ]]` and `${other##*/}` — bash-only — in a script the
+  rest of the repo drives with `sh`. Package-owned; belongs upstream if anywhere.
+- New `tests/*.sh` and `tests/fixtures/incomplete_check.sh` are mode `100644` while
+  `tests/test_style.sh` is `100755`. §Out of scope already parks `.sh` modes.
+- `verify.md` says `make test` "takes about a minute" against a 2m cap: true today (55.9s),
+  and a number that drifts upward with every alternative a later phase adds.
+- The large hand-enumerated `R-ARCH-01` rejection block is what §Plan step 4 predicted the
+  harness would demand, not a finding.

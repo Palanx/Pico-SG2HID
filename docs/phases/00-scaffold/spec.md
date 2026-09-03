@@ -465,9 +465,10 @@ cp /tmp/rs.bak tests/test_repo_shape.sh ; make test # expect: exit 0, "OK"
 python3 - <<'EOF'
 import pathlib
 p = pathlib.Path('tests/test_repo_shape.sh'); s = p.read_text()
-p.write_text(s.replace('    report R-ERR-04   "$( find_err04   "$1" )"\n', '', 1))
+p.write_text(s.replace('    report R-ERR-04   "$( find_err04   "$1" )" || fail=1\n', '', 1))
 EOF
-make test                                          # expect: non-zero, R-ERR-04 declared but never reported
+make test                                          # expect: non-zero — R-ERR-04's wiring case fires first
+                                                   # (run_all leaves fail=0), then the harness fails the file
 cp /tmp/rs.bak tests/test_repo_shape.sh ; make test # expect: exit 0, "OK"
 
 python3 - <<'EOF'
