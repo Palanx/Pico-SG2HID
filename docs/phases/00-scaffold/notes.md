@@ -2074,3 +2074,39 @@ rejection and accept case*"; it exists in `test_repo_shape.sh` and nowhere else.
   and a number that drifts upward with every alternative a later phase adds.
 - The large hand-enumerated `R-ARCH-01` rejection block is what §Plan step 4 predicted the
   harness would demand, not a finding.
+
+## Deviations (round 10, post-validation spec amendments)
+
+Four of the round-10 validation findings were spec text, not code, and were fixed in
+`spec.md` on the operator's order rather than handed to `/implement-phase`. No code changed;
+`make test` still exits 0. The other five findings — `contradicts` 1, 3, 5, 6 and round-9's
+2b — are code and remain open, so the phase stays returned to implementation.
+
+- **§Plan step 4 no longer says "top-level".** It now says every nesting depth, which is what
+  the paragraph below it always argued for and what `alternatives()` implements. Added the
+  reason inline: `find_arch01` is one top-level branch wrapping groups of 7 and 24 prefixes,
+  so depth-0 splitting yields one mutant for thirty-odd forbidden forms. The code was right
+  and the word was stale (`contradicts` 2).
+- **§Plan step 0c's premise corrected and a third file added.** The draft named
+  `test_repo_shape.sh` among the files that already print `FAIL:` on a shortfall; it does not,
+  since round 9 removed its floor and left `ok:   rejection cases: $rejected` printing above
+  `[ "$rejected" -gt 0 ] || fail=1`. 0c now owes that line too, and its check is no longer
+  circular: it was "the grep count equals the number of files that print one inside a
+  floor-passing branch", which compares a number to itself and cannot fail. Now `→ 4`, with
+  the branch half stated as read-by-hand because a grep cannot see a branch — three of four
+  pass it today (`contradicts` 4). **This leaves one code item owed**, which is the honest
+  outcome: the rule is general and the file breaks it.
+- **The package-owned paths are written out inline**, as a table with the provenance test
+  (`git log --oneline -- <path>` shows `chore(belay):` commits only), replacing a pointer to
+  `.claude/workflow/installed` that the reviewer cannot read. Eight rows, including
+  `scripts/build-index.sh` — which round 10 singled out — and the two the manifest cannot
+  cover: `.claude/workflow/belay-version`, which `install.sh` writes but never lists, and the
+  one `CLAUDE.md` line, whose provenance is `694c902`, confirmed with `git log -S`
+  (`undecidable` a).
+- **The eleven accept cases are enumerated in §Plan step 6**, so the
+  `false-positive cases: 11` floor equals a list, as §How counts are stated requires. Also
+  corrected the acceptance-criteria paragraph that claimed "the two floors that remain" and
+  named two of the five that actually remain — the nine traceability modes, the two boundary
+  cases, the two secret-scan cases, the four tool probes and the eleven accept cases. Accept
+  coverage is enumerated rather than generated because mutating what a check *finds* says
+  nothing about what it must *ignore* (`undecidable` b).

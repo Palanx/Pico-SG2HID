@@ -154,7 +154,25 @@ that accompanies it is path-filtered and carries neither file. Their absence is 
 working, not a skipped step — it has been returned as `undecidable` twice and is filed
 upstream (`~/.claude-belay/feedback/pico-sg2hid.md`, `commands/validate-phase.md`, open).
 Likewise, files that `.claude/workflow/installed` names are the belay package's; they enter
-the diff through `chore(belay):` commits and are not this phase's work.
+the diff through `chore(belay):` commits and are not this phase's work. **A pointer to a
+manifest the reviewer cannot read decides nothing** — it came back `undecidable` in round 10,
+with `scripts/build-index.sh` singled out — so the package-owned paths this phase's diff
+actually carries are written out here:
+
+| path | why it is in the diff, and how to check without the manifest |
+|---|---|
+| `.claude/commands/expand-phase.md` | manifest; `git log --oneline -- <path>` shows `chore(belay):` commits only |
+| `.claude/commands/validate-phase.md` | same |
+| `.claude/hooks/boundary-check.sh` | same |
+| `docs/templates/CLAUDE.adopted.md` | same |
+| `docs/templates/CLAUDE.bootstrap.md` | same |
+| `scripts/build-index.sh` | same — including the rewrite of its dependency-edge loop, which is package work, not this phase's |
+| `.claude/workflow/belay-version` | `install.sh` writes it but the manifest does **not** name it; it rides in on the same `chore(belay):` commits. A manifest defect, filed upstream, not an exception to this rule |
+| `CLAUDE.md` — the line "A phase's diff always carries files the workflow wrote…" | written by `694c902`, a `chore(belay):` commit (`git log -S` on the line confirms it). Round 9's reviewer returned this hunk as a `contradicts` for want of that fact |
+
+The test is provenance, not path: a file whose every commit is `chore(belay):` is the
+package's. Anything in the diff not in this table is judged by the closure test's ordinary
+rule — reachable from the Context pointers or the Plan, or the phase escaped its scope.
 
 ## Context pointers
 
@@ -200,8 +218,16 @@ is where the phase's remaining risk lives.
    - **(0c) `ok:` may never prefix a shortfall.** `tests/test_tool_versions.sh:175` and
      `tests/test_rule_traceability.py:270` print `ok:   … rejection cases: n/m`
      unconditionally, before the comparison that sets the failure. Both files must print
-     `FAIL:` when the floor is not met, as `test_repo_shape.sh` and `test_secrets.sh` already
-     do. The build was never fooled; the reader was, and this phase is read by an operator.
+     `FAIL:` when the floor is not met, as `tests/test_secrets.sh` already does. The build was
+     never fooled; the reader was, and this phase is read by an operator.
+     **A third file, added round 10, and the earlier draft of this item was wrong about it.**
+     That draft named `test_repo_shape.sh` among the files already doing the right thing. It
+     is not one: when round 9 removed that file's rejection-case floor — correctly, under
+     §How counts are stated — it left `echo "  ok:   rejection cases: $rejected"` printing
+     unconditionally with `[ "$rejected" -gt 0 ] || fail=1` on the line below, which is this
+     item's own banned shape reintroduced by the round that was closing it. The rule is
+     general and has no exception for a floor of one: no `ok:` line anywhere reports a count
+     that the next comparison may reject.
    - **(0d) `verify.md` must not promise what a shared function does not buy.** Its round-8
      paragraph tells the operator that the real run and the rejection case calling the same
      function is "what makes an `ok:` line evidence that something ran". It is evidence that
@@ -219,8 +245,12 @@ is where the phase's remaining risk lives.
      naming the id and the file". Fix the messages, not the Goal.
    — check: `sh tests/test_repo_shape.sh`, `sh tests/test_secrets.sh`,
    `sh tests/test_tool_versions.sh`, `python3 tests/test_rule_traceability.py` → each exit 0;
-   `grep -rn 'ok:   .*rejection cases' tests/ | wc -l` equals the number of files that print
-   one **inside a floor-passing branch** (verify by reading, four files); `make test` → exit 0.
+   `grep -rn 'ok:   .*rejection cases' tests/ | wc -l` → **`4`**, and each of those four lines
+   must sit inside the branch taken only when its floor is met. The grep cannot see a branch,
+   so that half is read, not run — and the earlier phrasing ("equals the number of files that
+   print one inside a floor-passing branch") was circular: it compared a number to itself and
+   could not fail. Today three of the four are inside such a branch and
+   `tests/test_repo_shape.sh:220` is not, which is what 0c above owes. `make test` → exit 0.
 
 1. **The optional-tool flag is one flag** — touches `tests/test_style.sh`, `Makefile`.
    `STYLE_OPTIONAL` is `OPTIONAL_TOOLS`, so one flag governs every check needing a tool
@@ -288,12 +318,19 @@ is where the phase's remaining risk lives.
 
 4. **Harness property 3 — alternation: removing any alternative must fail its file.** Touches
    the harness. For each check function found in step 3, extract its extended-regex pattern
-   from the source, split it into **top-level** alternatives (`|` outside any `(…)` group and
-   any `[…]` class), and for each alternative produce a copy of the file with that alternative
+   from the source, split it into alternatives at **every nesting depth** — every `|` outside
+   a `[…]` class, at depth 0 and inside every `(…)` group — and for each alternative produce
+   a copy of the file with that alternative
    removed *cleanly* — dropping the alternative together with one adjacent `|`, never leaving
    an empty alternative, which would match everything and fail for the wrong reason. Run each
    copy; require a non-zero exit. Report the count and, on failure, name the file, the
    function and the exact alternative that no case covers.
+   **Depth is the property, not a detail.** `find_arch01` is one top-level branch wrapping
+   two groups of 7 and 24 prefixes, so splitting at depth 0 alone yields *one* mutant for a
+   pattern with thirty-odd forbidden forms — precisely the gap round 8 shipped. The round-9
+   draft of this step said "top-level" while the paragraph below it argued for depth and the
+   harness implemented depth; the word was stale and is corrected here rather than in the
+   code.
    This is the property rounds 7 and 8 reached for by hand and got to one finder out of eight
    (`notes.md` §Deviations, F1: `find_arch01` has 31 alternatives and 2 cases; `find_err03`
    has 3 and 1; `find_clean09` has 3 covering 2). Expect this step to **fail first and require
@@ -379,6 +416,17 @@ is where the phase's remaining risk lives.
      violation, requiring both the rule's name in the output *and* the run to end failed.
      Without it, dropping one `|| fail=1` prints the `FAIL:` line and still exits 0. Both
      were found by mutating for them after the harness reported all-green.
+   - **The eleven accept cases, by name, because a floor must equal an enumeration.**
+     `tests/test_repo_shape.sh` fails below `false-positive cases: 11`, and §How counts are
+     stated forbids a count with no list beside it — round 10 returned that floor as
+     `undecidable` for exactly this reason. Accept coverage is *not* generated by the harness
+     (it mutates what a check finds, never what it must ignore), so it is an enumeration and
+     the floor is `>= 11`: `= delete;` is not an allocation; `std::string_view` allocates
+     nothing; an `is_`-prefixed bool; an `m_has_`-prefixed member bool; a `TODO` carrying a
+     phase reference; the freestanding headers `<cstdint>`, `<array>`, `<span>` and
+     `<expected>`; `<string_view>` is not `<string>`; and an `enum class` with a fixed
+     underlying type. Eleven names, eleven the floor — a twelfth accept case raises both or
+     neither.
    - Any `RULE`-shaped fixture text is assembled at runtime; a literal marker in a check's
      source is a real marker and the traceability checker will report it. The same is true of
      the fake token in `tests/test_secrets.sh`, which is also **not** the AWS documentation key
@@ -443,11 +491,17 @@ test -s docs/phases/00-scaffold/notes.md           # expect: exit 0
 time make test                                     # expect: real under 2m0s (the harness runs each check once per generated mutant)
 ```
 
-No rejection-case floors appear above for the files the harness covers: the harness is what
-asserts their sufficiency, and a floor beside it would be the round-8 defect — a count and a
-universal claim about the same thing, drifting apart. The two floors that remain
-(`test_rule_traceability.py`, `test_boundaries.sh`) are enumerations the harness does not
-generate, and §Goal says so.
+No **rejection**-case floors appear above for the files the harness covers: the harness is
+what asserts their sufficiency, and a floor beside it would be the round-8 defect — a count
+and a universal claim about the same thing, drifting apart. What remains is every count the
+harness does *not* generate, each an enumeration named in its own Plan step: the nine
+traceability failure modes (`test_rule_traceability.py`), the two boundary cases
+(`test_boundaries.sh`), the two secret-scan cases and the four tool probes
+(`test_secrets.sh`, `test_tool_versions.sh`), and the eleven **accept** cases of §Plan step 6
+— accept coverage is enumerated for the same reason, since mutating what a check finds says
+nothing about what it must ignore. An earlier draft of this paragraph said "the two floors
+that remain" and named two of those five; it was wrong, and round 10's reviewer found the
+accept floor through the gap it left.
 
 **Liveness block — the point of the phase, and what distinguishes this round from rounds 1-8.**
 Each mutation must make `make test` exit non-zero. Run one at a time; restore between.
