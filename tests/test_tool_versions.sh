@@ -2,6 +2,14 @@
 # The tools the other checks depend on are present, recent enough, and actually work.
 #
 # RULE R-TOOL-01 — docs/constraints.md §Invariants — minimum versions
+# R-TOOL-01 is four independent probes behind one rule id, so deleting any one of them
+# leaves the other three still reporting it. One LIVE label per probe; the harness requires
+# each to prefix exactly one result line. Same shape, and same fix, as R-SEC-01's two scans.
+# LIVE R-TOOL-01: clang-format
+# LIVE R-TOOL-01: clang-tidy
+# LIVE R-TOOL-01: arm-none-eabi-g++
+# LIVE R-TOOL-01: python3
+#
 # RULE R-TOOL-02 — docs/constraints.md §Invariants — the arm-none-eabi-g++ first on PATH
 #                  can compile a translation unit that includes <cstdint> for cortex-m0plus
 #
@@ -172,7 +180,11 @@ else
 fi
 
 rm -rf "$stub_dir"
-echo "  ok:   rejection cases: $rejected/4"
-[ "$rejected" -eq 4 ] || fail=1
+if [ "$rejected" -eq 4 ]; then
+    echo "  ok:   rejection cases: $rejected/4"
+else
+    echo "  FAIL: rejection cases: $rejected/4"
+    fail=1
+fi
 
 exit $fail

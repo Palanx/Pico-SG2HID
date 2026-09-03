@@ -92,7 +92,10 @@ compile each file, and everything else pulls in Pico SDK or TinyUSB headers with
 
 That scope is necessary but **not sufficient, and this paragraph used to imply it was**:
 inside `src/core/` the invocation still resolves no standard header, so the first file
-using the standard library fails R-STYLE-02 too. See §Observed conventions, 2026-09-02.
+using the standard library fails R-STYLE-02 too. Measured by `tests/test_style.sh`, whose
+clang-tidy invocation is the one that fails, while running phase `00-scaffold`'s adversarial
+block against a scratch `src/core/x.h` containing `std::string_view sv;`. See §Observed
+conventions, 2026-09-02.
 
 ### Architecture
 

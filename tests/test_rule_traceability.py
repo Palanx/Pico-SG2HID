@@ -86,13 +86,17 @@ def check(root, constraints, phases, claude):
 
     for line in ANY_RULE_LINE.findall(catalogue):
         if not RULE_LINE.match(line):
+            seen = RULE_ID.search(line)
             problems.append(
-                "unparsable rule line (see ADR-0005 for the grammar): " + line[:90]
+                f"{seen.group(0) if seen else '<no id found>'}: unparsable rule line in "
+                f"{constraints} (see ADR-0005 for the grammar): " + line[:90]
             )
 
     for rule_id in sorted(set(ids)):
         if ids.count(rule_id) > 1:
-            problems.append(f"{rule_id}: declared {ids.count(rule_id)} times, must be once")
+            problems.append(
+                f"{rule_id}: declared {ids.count(rule_id)} times in {constraints}, must be once"
+            )
 
     statuses = phase_status(read(phases))
     markers = collect_markers(root)
@@ -111,11 +115,11 @@ def check(root, constraints, phases, claude):
         elif binding == "planned":
             if value not in statuses:
                 problems.append(
-                    f"{rule_id}: planned in phase '{value}', which is not in PHASES.md"
+                    f"{rule_id}: planned in phase '{value}', which is not in {phases}"
                 )
             elif statuses[value] == "done":
                 problems.append(
-                    f"{rule_id}: planned in phase '{value}', which is already done — "
+                    f"{rule_id}: planned in phase '{value}', which {phases} marks done — "
                     "the phase closed without settling the rule"
                 )
         elif binding == "manual":
@@ -134,7 +138,9 @@ def check(root, constraints, phases, claude):
 
     for rule_id in sorted(set(RULE_ID.findall(read(claude)))):
         if rule_id not in ids:
-            problems.append(f"CLAUDE.md mentions {rule_id}, which the catalogue does not declare")
+            problems.append(
+                f"{rule_id}: mentioned in {claude} but not declared in {constraints}"
+            )
 
     return problems
 
@@ -201,13 +207,13 @@ CASES = [
         "planned: phase that is not in the index",
         "- **R-X-01** — text — planned: 99-nonexistent\n",
         {},
-        "not in PHASES.md",
+        "which is not in",
     ),
     (
         "planned: phase that is already done",
         "- **R-X-01** — text — planned: 09-closed\n",
         {},
-        "already done",
+        "marks done",
     ),
     (
         "duplicate rule id",
@@ -225,7 +231,7 @@ CASES = [
         "CLAUDE.md cites a rule the catalogue does not declare",
         "- **R-X-01** — text — manual: because\n",
         {},
-        "CLAUDE.md mentions R-Y-02",
+        "R-Y-02: mentioned in",
     ),
 ]
 
@@ -267,8 +273,10 @@ def main():
         print("  ok:   R-PROC-01 (catalogue consistent in both directions)")
 
     passed = run_rejection_cases()
-    print(f"  ok:   R-PROC-01 rejection cases: {passed}/{len(CASES)}")
-    if passed != len(CASES):
+    if passed == len(CASES):
+        print(f"  ok:   R-PROC-01 rejection cases: {passed}/{len(CASES)}")
+    else:
+        print(f"  FAIL: R-PROC-01 rejection cases: {passed}/{len(CASES)}")
         failed = True
     return 1 if failed else 0
 

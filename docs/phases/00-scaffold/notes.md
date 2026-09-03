@@ -8,8 +8,17 @@
   base behind that commit would keep them inside this phase's file set — in the diff the
   independent review reads and in the closure test's reachability check. The phase's own
   work is unchanged and still uncommitted; only the baseline it is measured from moved.
+  **Held at `db97117` for round 8 (2026-09-02), deliberately.** Rounds 6 and 7 are now
+  committed (`1a48543`, `b35395a`), so bumping the base to `HEAD` would shrink the review
+  diff to this round's four files and hide the rest of the phase from the independent
+  reviewer — which is precisely how round 7 found the `test_secrets.sh` defect in a file
+  round 7 never touched. The base moves for package commits, not for the phase's own work.
+  Held at `db97117` again for round 9, for the same reason and with the same known cost:
+  seven package-owned files ride along in the file set. That cost is filed upstream
+  (`~/.claude-belay/feedback/pico-sg2hid.md`, `commands/validate-phase.md`, open) rather
+  than paid again by moving the base and blinding the reviewer to the phase's own work.
 
-Six new checks under `tests/`, all picked up by `make test` with no Makefile edit:
+Seven new files under `tests/` (six checks plus the round-9 liveness harness), all picked up by `make test` with no Makefile edit:
 
 | file | rules |
 |---|---|
@@ -19,6 +28,9 @@ Six new checks under `tests/`, all picked up by `make test` with no Makefile edi
 | `tests/test_phase_docs.sh` | R-PROC-02 |
 | `tests/test_secrets.sh` | R-SEC-01 |
 | `tests/test_tool_versions.sh` | R-TOOL-01, R-TOOL-02 |
+| `tests/test_checks_are_live.py` | none — it checks the six above (added round 9) |
+
+plus `tests/fixtures/incomplete_check.sh`, the harness's bootstrap floor, which is data the harness reads and deliberately not a `tests/test_*` file: the Makefile glob would otherwise run it as a check, and it is designed to be incomplete.
 
 Fourteen rules moved from `planned: 00-scaffold` to `test:` in `docs/constraints.md`;
 `grep -c 'planned: 00-scaffold'` is now 0. Each test carries its `RULE <id>` marker, and
@@ -161,6 +173,71 @@ R-ERR-05 is new debt, not a fifteenth binding.
   Acceptance criteria line asks for four — the spec contradicts itself, and the same ambiguity
   would let a one-case implementation claim compliance.
 
+### Round 8 validation — the five confirmed `contradicts`, and what they share
+
+Recorded here rather than only in the round-8 validation record because `/expand-phase`
+reads this section first, and the re-expansion has to answer them as one question, not five.
+Every mutation below was run against the tree as it stands; each removes the named substring
+from the named file and leaves the whole suite exiting **0**. Reproduce with:
+
+```
+python3 - <<'EOF'
+import pathlib, subprocess
+f, old, new = 'tests/test_repo_shape.sh', '<substring from the table>', ''
+src = pathlib.Path(f).read_text(); assert old in src
+pathlib.Path('tests/mut.sh').write_text(src.replace(old, new, 1))
+print(subprocess.run(['sh','tests/mut.sh']).returncode)   # 0 == the mutation survived
+EOF
+rm -f tests/mut.sh
+```
+
+| # | file | substring removed | result |
+|---|---|---|---|
+| F1 | `test_repo_shape.sh` | `hardware/\|` | rc=0 — a `hardware/gpio.h` include in `core` becomes invisible |
+| F1 | `test_repo_shape.sh` | `vector\|` | rc=0 — and the spec's own adversarial line `#include <vector>` stops firing |
+| F1 | `test_repo_shape.sh` | `\|\bcatch[[:space:]]*\(` | rc=0 — the one case still matches via `\btry` |
+| F1 | `test_repo_shape.sh` | `:[[:space:]]*(public\|private\|protected)[[:space:]]\|` | rc=0 — both cases still match via the `(struct\|class)…:` form |
+| F3 | `test_repo_shape.sh` | the whole `report R-ERR-04 "$( find_err04 "$1" )"` line | rc=0, 7 `ok:` lines — the rule is simply not run |
+| F3 | `test_repo_shape.sh` | `if [ -n "$2" ]; then` → `if false; then` | rc=0 — **all eight** rules unenforced |
+| F2 | `test_secrets.sh` | `scan git "$ROOT"` → `scan dir "$ROOT"` | rc=0 — the history clause silently unbound |
+| F2 | `test_secrets.sh` | the entire real `if scan git "$ROOT" …` block | rc=0 — the scan does not run at all |
+
+The control matters as much as the mutations: removing `iostream\|` **is** caught (rc=1),
+because that alternation is one of the two `find_arch01` has a case for. The suite catches
+exactly the alternations that were enumerated by hand and nothing else — which is the shape
+of the defect, not an accident of which ones were tried.
+
+- **F1 — the §Goal claim outran the code.** Round 8 wrote "every alternation in a pattern
+  needs a case that fires on it alone" into §Goal and "deleting any one alternation from any
+  finder must make this file exit non-zero" into Plan step 5, then delivered cases for the
+  seven alternations round 7 had happened to name. `find_arch03` has 7 alternations and 7
+  cases; `find_arch01` has 31 and 2; `find_err03` has 3 and 1; `find_clean09` has 3 and 3 but
+  two of them reach the same alternation. Step 5 enumerates 18 names, so `18 >= 18` conforms
+  to the enumeration while contradicting the check line directly above it.
+- **F2 — binding the function is not binding the call.** Round 8 routed both scans through
+  `scan()` and proved the *function* cannot be gutted. Nothing proves the function is ever
+  called on `$ROOT`. The comment left in the file ("Delete the `scan git` call above and this
+  is what stops it going unnoticed") is false as written.
+- **F3 — the same defect one layer up, in every file.** The rejection and accept machinery
+  calls the finders directly (`$2 "$reject_tmp"`), so it validates a *pattern against a
+  fixture* and never that the pattern is run against the real tree. `run_all`, `report()` and
+  `check_version`'s call sites are unprotected in all six files.
+- **F4 — `verify.md` now teaches this as a guarantee.** Its round-8 paragraph tells a
+  non-specialist that a shared function is "what makes an `ok:` line evidence that something
+  ran". Per F3 it is evidence that the *function* works. R-PROC-02 is about the operator
+  being able to judge these files.
+- **F5 — `ok:` on a shortfall survives in the two files round 8 did not touch.**
+  `tests/test_tool_versions.sh:175` and `tests/test_rule_traceability.py:270` print
+  `ok:   … rejection cases: n/m` unconditionally, before the comparison that sets the
+  failure. Round 8 fixed the two files it was already editing and wrote the principle into
+  step 5's check line, where it reads as scoped to `test_repo_shape.sh`.
+
+**What the five share.** Every one is the same sentence: *a check can report success while
+the thing it names never ran.* Rounds 4 through 8 each found one instance and fixed that
+instance. F1, F2 and F5 are instances; F3 is the class. A sixth round of enumerated cases
+buys one more instance and leaves the class intact.
+
+
 ## Debt
 
 - `find_clean03` scans line by line, so a single line declaring both a compliant and a
@@ -187,6 +264,18 @@ R-ERR-05 is new debt, not a fifteenth binding.
 - - The `R-TOOL-01` floor for `arm-none-eabi-g++` is GCC 12, inferred from when libstdc++
   gained `<expected>`. Only 15.3.1 has been measured. Anything in between is unverified —
   recorded in ADR-0008 §Verification.
+- `belay-debt:` in `tests/test_checks_are_live.py` — the `.py` check under `tests/` is held
+  to the accounting property only. Its internals are never mutated, so its nine failure modes
+  rest on nine hand-written rejection cases, which round 9 established is the weaker form.
+  Upgrade when a rule arrives whose check is not a grep; owner `01-ps2-codec`.
+- The liveness harness discovers check functions by naming convention (`find_*`, `check_*`,
+  `sweep`, `scan`, `missing_verify`). A check function named outside it is not mutated. The
+  mitigation is that the discovered set is printed on every run, so the omission is visible —
+  but it is a convention, not a guarantee, and a future check that invents a new name gets no
+  coverage until someone reads that line. Owner: whichever phase adds such a check.
+- `tests/fixtures/incomplete_check.sh` is the harness's floor, not a regress: it proves the
+  harness still detects a gap, not that it detects *every* gap. Nothing tests the fixture
+  itself. That is the accepted end of the tower.
 
 ## For later phases
 
@@ -219,6 +308,56 @@ R-ERR-05 is new debt, not a fifteenth binding.
   gives up on `std::array`'s doubled braces, so `src/core/pins.h` must use a plain array for
   the pin table to be scannable in columns. Already recorded in `docs/constraints.md`
   §Observed conventions; repeated here because it is a constraint on that phase's first file.
+- **Whoever re-expands `00-scaffold`** — the bullet above ("the pattern to copy is a check
+  function that takes the tree root as an argument, plus a rejection case…") is **known to be
+  insufficient** as of round 8, and following it verbatim in `01-ps2-codec` would reproduce
+  this phase's defect in new code. It makes a pattern testable against a fixture. It does not
+  make the *check* testable: nothing in that pattern fails when the call in `run_all` is
+  deleted, when `report()`'s failure branch is gutted, or when the real scan is pointed
+  somewhere else. See §Deviations "Round 8 validation" for the eight mutations that
+  demonstrate it. The re-expansion's central question is that wiring layer — what ties a
+  check to the real run — and the answer has to be one mechanism, not a longer list of
+  rejection cases. Two shapes worth weighing when the spec is rewritten, neither yet chosen:
+  a self-test that mutates the suite's own files and requires a non-zero exit (the thing
+  every round has done by hand, made into a check), or an accounting property the suite
+  asserts about itself — every declared rule id produced a result line this run, so a
+  deleted call site is a missing rule rather than a silent pass.
+- **Whoever re-expands `00-scaffold`** — the §Goal must not promise more than the Plan
+  delivers. "A negative self-test on every check" has been in §Goal since round 1 and has
+  never been true at the granularity the same document claims; that gap is where the
+  `contradicts` findings of rounds 4, 7 and 8 all came from. Either lower the Goal to what
+  the phase actually ships and record the rest as declared debt with an owning phase, or add
+  the Plan step that raises the code to it. Leaving the two out of step is what makes the
+  phase unvalidatable — the reviewer is handed a spec that its own diff cannot satisfy.
+- **Any phase adding a rule** — a rule's binding is only as good as the weakest link in
+  `catalogue → check → call site → real tree`. This phase bound the first three links and
+  never the fourth, and `make test` stayed green throughout. When `01-ps2-codec` moves
+  R-PROTO-01..04 to `test:`, the question to ask of each is not "does the check catch a bad
+  vector" but "what would have to break for this check to stop running without anyone
+  noticing".
+
+- **Any phase adding a check** — three requirements, all of which round 9 established by
+  finding their absence, and all of which `tests/test_checks_are_live.py` or the check file
+  itself will now enforce:
+  1. Declare every rule the file checks as `# RULE <id>` in its header. The harness requires
+     each to produce a result line, so a call site that disappears becomes a build failure.
+  2. If one rule is checked by more than one independent real-run call, declare
+     `# LIVE <id><literal prefix of that call's result line>` for each. R-SEC-01 (working
+     tree, history) and R-TOOL-01 (four tool probes) are the worked examples. Without this,
+     deleting one of the calls is invisible.
+  3. Route rejection and accept cases **through** the file's reporting function, and give
+     each rule a wiring case driving the real aggregate. A case that calls the finder
+     directly leaves both the verdict logic and the exit-code path load-bearing for nothing —
+     holes 3 and 4 of round 9.
+- **Any phase adding an alternative to an existing check pattern** — the harness will fail
+  the build on the next run naming that alternative, because nothing tests it yet. That is
+  working as intended; add the rejection case it names. Cost per alternative is one line, and
+  it is deliberate: a forbidden form nobody demonstrates is a forbidden form nobody enforces.
+- **`01-ps2-codec` onwards** — `make test` now takes about a minute (67 generated mutants,
+  run in a thread pool) against ~2s before. The spec caps it at two minutes. When that starts
+  to bind, the lever is the number of mutants, not the parallelism: mutating only the check
+  files a commit touched would cut it, at the cost of the guarantee being per-commit rather
+  than absolute. Not needed yet.
 
 ## Validation — 2026-08-31
 
@@ -1217,3 +1356,518 @@ note as permission to override it. What the fix bought is a counter that measure
 current spec instead of the phase's lifetime; it did not buy an exemption. Round 7 returned
 one code defect plus three missing pointers, and three failed validations against one spec
 is precisely the signal the escape exists to raise.
+
+## Implementation — 2026-09-02 (round 8, after the round-7 validation)
+
+Round 7 returned one confirmed `contradicts` and three missing pointers. All four are
+closed. One check changed what it enforces (`tests/test_secrets.sh`), one gained seven
+rejection cases (`tests/test_repo_shape.sh`), and the rest are spec and doc work.
+
+- **The `contradicts` — `tests/test_secrets.sh` enforced nothing.** Both real scans are now
+  routed through one `scan <subcommand> <root> <output>` function, and so is every case, the
+  way `sweep` and the `find_*` helpers already worked. The rejection cases are what changed
+  substance: the working-tree case is unchanged in spirit, and a **second, history-only case**
+  now exists — a temp git repo where the fake token is committed and then deleted, asserting
+  both halves at once (`scan dir` comes back clean, `scan git` still fires). That is the
+  first thing in this phase that binds the rule's "or history" clause to anything.
+  Mutation-tested rather than asserted, both mutations run from `tests/` so `ROOT` resolves:
+  - `scan` body → `return 0`: two rejection FAILs, `rejection cases: 0 (floor 2)`, rc=1.
+  - `gitleaks "$1"` → `gitleaks dir`, i.e. the history scan silently becomes a second tree
+    scan: the history rejection case FAILs, `rejection cases: 1 (floor 2)`, rc=1. Under the
+    old file this mutation was invisible.
+- **A `.git` guard, found while writing the above.** `gitleaks git` over a directory that is
+  not a repository exits 1 — the same code as "found a secret" — so a source export with no
+  `.git` would have been reported as a leak. Its own `FAIL:` line now, the same treatment
+  step 0d gave the too-old-gitleaks case. Verified: `gitleaks git /tmp/not-a-repo` → 1,
+  `gitleaks git <clean repo>` → 0.
+- **Missing pointer (a) — the self-test granularity is per alternation.** §Goal now says so,
+  and Plan step 5 enumerates eighteen rejection cases instead of ten. Seven added, one per
+  alternation validation proved deletable: `malloc(`, `free(`, `std::vector`,
+  `std::function`, `delete p` (R-ARCH-03), `throw` (R-ERR-03), `virtual` (R-CLEAN-09). Each
+  was re-mutated after the fact — deleting any one of the seven now gives rc=1 with two
+  `FAIL:` lines (the case, and the floor). The file reports 18 against a floor of 18.
+- **Missing pointer (b) — one destination for a verified finding, and it is the catalogue.**
+  `CLAUDE.md` §Conventions was already unambiguous; the spec was the document disagreeing
+  with it. Plan step 9 now authorizes the two non-binding `docs/constraints.md` hunks
+  explicitly (a finding to §Observed conventions, and a §Style paragraph a check in this
+  phase proved wrong), and §Acceptance criteria no longer routes the clang-tidy measurement
+  to `notes.md` — `notes.md` keeps the working invocation, the catalogue keeps the finding.
+  Nothing moved on disk: both hunks were already where they belong.
+- **Missing pointer (c) — the `docs/index/` exemption is structural.** The round-7 sentence
+  justified it by "the six new test files", which reads as a scope and is why the reviewer
+  could not decide `scripts.md`'s 231 → 276 line change. Rewritten: the whole directory is
+  generated output, exempt whatever changed in it and whoever changed it, and a diff of
+  `docs/index/` is never evidence about a phase.
+- **Two count lines that lied.** `test_repo_shape.sh` printed `ok:   rejection cases: N
+  (floor M)` even when `N < M`, then set `fail=1` — a shortfall announced under an `ok:`
+  prefix, in the phase whose §Goal is that a broken check must not look like a passing one.
+  Both count lines in `test_repo_shape.sh` and both in the new `test_secrets.sh` now print
+  `FAIL:` when the floor is not met. Visible in the mutation output above.
+- **`verify.md` gained one paragraph**, on the failure mode round 7 found: a healthy
+  rejection case vouching for a real scan that has been disconnected, and the structural
+  repair (real run and rejection case call the same function). R-PROC-02 is about the
+  operator being able to judge these files, and this is the thing that fooled six rounds of
+  readers. The stale sentence claiming rejection cases had caught every broken check was
+  corrected in the same edit — this one was caught by mutation, not by a rejection case.
+
+Acceptance: 12/12 criteria pass. Adversarial block re-run in full because both changed files
+are in it: 12/12 caught, each by a `FAIL:` line naming its rule id, tree restored and
+`make test` back to `OK` after every case and at the end; the negative half
+(`std::string_view sv;` → `test_repo_shape.sh` rc=0) passes.
+
+## Deviations (round 8)
+
+- **`spec.md` was amended again.** Three of the four findings were missing pointers, which
+  no code change can close. §Goal gained the granularity rule, §"Files this phase writes that
+  no Plan step names" had its `docs/index/` bullet rewritten, and Plan steps 5, 7 and 9 and
+  §Acceptance criteria were updated to match what the code now does. No criterion was
+  deleted or weakened; two floors went up (repo_shape rejection 10 → 18, secrets rejection
+  and accept 1 → 2 each).
+- **Two edits no finding named.** The `.git` guard in `test_secrets.sh` and the four count
+  lines that printed `ok:` on a shortfall. Both came out of implementing the findings, both
+  are the phase's own §Goal applied to itself, and both are recorded here rather than folded
+  in silently.
+- Files touched: `tests/test_secrets.sh` (step 7), `tests/test_repo_shape.sh` (step 5),
+  `docs/phases/00-scaffold/spec.md` (per the first bullet),
+  `docs/phases/00-scaffold/verify.md` (step 10), `docs/phases/00-scaffold/notes.md` (step 11).
+  Nothing outside the Plan's named set.
+- **Round-7 taste notes: none taken.** All five are still open and still not blocking; none
+  changes what a rule catches, and this round was already carrying a `contradicts` plus three
+  spec gaps. `head -8` truncation and the broad `class/`/`device/` prefixes are the two most
+  likely to become real, and they become real when `src/` has files — `01-ps2-codec`.
+
+## Validation — 2026-09-02 (round 8)
+
+- criteria: 12 passed / 0 failed. Each against its stated expectation: `make test` OK,
+  `make lint` 0, traceability 9/9, boundaries `rejection cases: 2/2`, repo_shape 8 rule
+  `ok:` lines + 18 rejection (floor 18) + 11 accept (floor 11), phase_docs rejection +
+  false-positive, secrets both scans + 2 rejection + 2 accept, tool_versions 4/4 with five
+  `R-TOOL` ok lines, `planned: 00-scaffold` 0, `STYLE_OPTIONAL` 0 in both files, both docs
+  non-empty. The adversarial block was run in this session's implementation half after the
+  last code change: 12/12 caught by rule id, negative half clean
+- project gates: test pass, lint pass, typecheck gap —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never overwrites.`
+- boundary sweep: **not swept: no file in the set is under a declared layer.** Both other
+  reasons were checked, not assumed: 13 active `deny` lines, declared prefixes
+  `src/{core,hal,usb,app,emu}/`, and the set contains no `src/` file. Ordinary for a
+  test-only phase
+- index: was **STALE** (`tests/test_repo_shape.sh`, `tests/test_secrets.sh`) — rebuilt,
+  stamp `8a339bd`, `--check` now clean
+- independent review: **contradicts — five findings, all reproduced by mutation (below);
+  undecidable — two, both real spec gaps.** One further reported `contradicts` (the
+  `CLAUDE.md` hunk) was checked and is not a code defect: `git log -S` puts that line in
+  `694c902`, a `chore(belay):` commit, and the spec's claim that `CLAUDE.md` already states
+  the rule is true. It is the file-set artefact described under `upstream:`
+- closure test: **fail** — two undecidables are missing pointers by definition. The
+  mechanical half passes: four sections present and non-blank, and all eleven non-exempt,
+  non-package files in the set are named in the spec
+- upstream: **`.claude/commands/validate-phase.md`** (in `.claude/workflow/installed`) —
+  `/belay-feedback` recommended, three items, all about the file set. (i) The set cannot
+  separate a `chore(belay):` package-install commit from phase work, so seven package-owned
+  files sit in this phase's diff — six named in `.claude/workflow/installed`, plus
+  `.claude/workflow/belay-version`. Step 6 exempts four paths "and nothing else", so read
+  literally they fail reachability, and the prescribed fix (name them in the Plan) would make
+  the spec claim this phase wrote `docs/templates/CLAUDE.bootstrap.md`. Excluded explicitly
+  here rather than silently, which is what round 7 did — its "all ten non-exempt files"
+  count already applied this exclusion without stating it. The `- base: <ref>` workaround
+  only removes package noise when every package commit precedes the base; here they
+  interleave with phase work, so no single ref exists that keeps the phase's own history in
+  the diff and the package's out of it. (ii) The reviewer is not told the diff is
+  path-filtered, so the deliberate absence of `notes.md` reads as evidence that Plan step 11
+  was skipped — finding 7, and the same confusion round 7 recorded. `CLAUDE.md` now asserts
+  a phase diff always carries those files, which makes the filtered diff look like a defect.
+  (iii) `.claude/workflow/installed` omits `.claude/workflow/belay-version`, which
+  `install.sh` writes. Round 6's `upstream:` item (the step-6 exemption living in a command
+  file the starved reviewer never receives) is unchanged and still open
+- verdict: **escaped to /expand-phase: spec re-expanded.** This is validation #3 against the
+  spec written in round 6 — the `## Validation` sections following the escape verdict
+  recorded above are rounds 6, 7 and this one — which is the iteration-3+ threshold. Status
+  moved to `pending` by this command, per its own failure-mode rule. The standing note for
+  round 8 said the escape would be right to fire if this round failed, and the findings below
+  are why it is: round 8 closed a defect in one file and one rule-set and wrote a *universal*
+  claim into the Goal that the code satisfies for one finder out of eight
+
+### The five confirmed `contradicts`
+
+All reproduced here by mutation, each run from `tests/` so `ROOT` resolves to the repository.
+
+**1. "One case per alternation" holds for `find_arch03` and nothing else.** Round 8 added the
+Goal sentence "every alternation in a pattern needs a case that fires on it alone" and the
+step 5 check line "deleting any one alternation from any finder must make this file exit
+non-zero", then delivered cases for the seven alternations round 7 happened to name. Surviving
+mutations, all `rc=0`:
+
+| finder | alternations | cases | example surviving deletion |
+|---|---|---|---|
+| `find_arch01` | 31 (7 include prefixes + 24 headers) | 2 | `hardware/`; also `vector`, which silently disables the spec's own adversarial line 370 |
+| `find_err03` | 3 | 1 | `\bcatch[[:space:]]*\(` — the single case still matches via `\btry` |
+| `find_clean09` | 3 | 3 | the whole `:[[:space:]]*(public\|private\|protected)` alternation — both cases still match via the `(struct\|class)…:` form |
+| `find_arch03` | 7 | 7 | none — the only finder that satisfies the rule |
+
+The spec is complicit: step 5 enumerates 18 names and lists "R-ARCH-01 hardware header" and
+"R-ERR-03 `try`/`catch`" as single cases, so `18 = 18` conforms to the enumeration while
+failing the check line and the Goal bullet in the same file. Two sentences of one spec cannot
+both be satisfied — which is the defect, not the count.
+
+**2. `tests/test_secrets.sh`: the real history scan is still unbound, and the file now says
+otherwise.** Round 8 bound the `scan` *function*; nothing binds the *call*. Changing the real
+run's `scan git "$ROOT"` to `scan dir "$ROOT"`, or deleting that block outright, leaves the
+file green (`rc=0` both). The in-file comment "Delete the `scan git` call above and this is
+what stops it going unnoticed" is false as written, and step 7's sentence "without it the
+`git` scan can be silently turned into a second `dir` scan with the file still green" is true
+only of the mutation inside the function, not of the one at the call site. Round 8 verified
+the first and wrote the claim as if it covered both.
+
+**3. The wiring layer is untested in every file — the same defect class, one level up.** The
+rejection and accept machinery calls the finders directly, so it proves the *pattern* works
+and never that the pattern is run against `$ROOT`. Deleting `report R-ERR-04 "$( find_err04
+"$1" )"` from `run_all` leaves 7 `ok:` lines and `rc=0`; gutting `report()`'s failure branch
+(`if [ -n "$2" ]` → `if false`) disables all eight rules and still exits 0. The same holds for
+`check_version` in `tests/test_tool_versions.sh`. This is what findings 1 and 2 are instances
+of, and it is the finding the phase most needs: eight rounds have each fixed one instance.
+
+**4. `verify.md` overstates the guarantee to the operator.** Round 8's new paragraph tells a
+non-specialist that "the real run and the rejection case must call the same function … which
+is what makes an `ok:` line evidence that something ran". Per finding 3 a shared function
+makes the `ok:` line evidence that the *function* works, not that the real run invoked it.
+R-PROC-02 is about the operator being able to judge these files; this sentence teaches
+something false.
+
+**5. `ok:` on a shortfall, still, in the two files round 8 did not touch.**
+`tests/test_tool_versions.sh:175` prints `  ok:   rejection cases: $rejected/4` and
+`tests/test_rule_traceability.py:270` prints `  ok:   R-PROC-01 rejection cases: {passed}/{n}`
+unconditionally, before the comparison that sets the failure. Both still exit non-zero, so the
+build is not fooled and the reader is. Round 8 fixed exactly the two files it was already
+editing and wrote the principle into step 5's check line, where it reads as scoped to
+`test_repo_shape.sh`.
+
+### The two `undecidable` findings
+
+- **(a) Plan step 11 cannot be verified, and now looks skipped.** The review diff carries no
+  `notes.md` and no `spec.md` hunk. That is `/validate-phase` step 5 starving the reviewer on
+  purpose plus this session supplying `spec.md` whole as its own input — but nothing tells the
+  reviewer the diff is path-filtered, and `CLAUDE.md` line 18 states that a phase's diff
+  always carries both files. Round 7 recorded the same confusion as "not a spec gap, working
+  as designed"; it has now recurred against a `CLAUDE.md` that contradicts it, so it is filed
+  upstream rather than dismissed a second time.
+- **(b) Which check that this phase writes proved the §Style paragraph wrong?** Round 8's new
+  step 9 authorizes a §Style correction "when a check this phase writes proves it wrong". The
+  clang-tidy measurement behind that paragraph comes from `tests/test_style.sh`, which this
+  phase did not write — `git diff` shows its only change in this range is the
+  `STYLE_OPTIONAL` → `OPTIONAL_TOOLS` rename. The authorization as written does not reach the
+  hunk it was written for. The §Observed conventions entry is unambiguously authorized by the
+  same step; only the §Style paragraph is unclear.
+
+### Taste, not blocking (round 8)
+
+Carried forward for whoever re-expands this phase; none changes what a rule catches.
+
+- `\b` is used throughout `test_repo_shape.sh` while step 0b chose the portable
+  `([^_[:alnum:]]|$)` form for one pattern on portability grounds. Inconsistent.
+- `sweep`'s `for f in $( find … )` word-splits on paths containing spaces; same in the
+  `hits`/`raw_hits` argument expansion.
+- `PATH="$stub_dir:$PATH" check_version …` — a prefix assignment on a *function* call
+  persists under POSIX `sh`, so `PATH` keeps a deleted directory for the rest of the run.
+- The duplicate-id, unparsable-line and `planned:` traceability messages name no file, and
+  the unparsable one names no id, against §Goal's "each with its own message naming the id
+  and the file".
+- `SKIP_DIRS` adds `node_modules`, which Plan step 2 does not list.
+- `find_clean09`'s `enum[[:space:]]+class` exclusion is line-based, so one line carrying both
+  an enum and a real base clause is excluded wholesale.
+- `test_secrets.sh` exits 0 having enforced nothing when `gitleaks` is absent under
+  `OPTIONAL_TOOLS` — authorized by step 7, but R-SEC-01's `test:` binding is then vacuous on
+  a machine without the tool.
+- The five new `.sh` files are mode `100644` while `tests/test_style.sh` is `100755`
+  (carried from round 7, still not blocking).
+- `report`'s `head -8` silently truncates a long violation list (carried from round 7).
+
+## Implementation — 2026-09-03 (round 9, against the re-expanded spec)
+
+The round-8 escape sent this phase back to `/expand-phase`, and the re-expansion made one
+change of substance: the coverage question stopped being a human's to remember and became a
+machine's to answer. This round built that machine, and it immediately found four holes —
+three of which no round had ever named, and one of which was a claim in the new spec itself.
+
+### The mechanism: `tests/test_checks_are_live.py`
+
+One new file that checks no rule. It reads the other checks' source and generates mutations
+from it, rather than from a list anybody maintains — which is the whole difference from
+rounds 7 and 8, where a human enumerated cases and covered one check function out of eight.
+
+- **accounting** — every rule id a check file declares in its header must produce a result
+  line when that file runs for real, in both directions. A deleted call site becomes a
+  missing rule instead of a silent pass.
+- **neutering** — replacing any check function with one that finds nothing must make its
+  file fail. 12 functions discovered by naming convention (`find_*`, `check_*`, `sweep`,
+  `scan`, `missing_verify`); the discovered set is printed, so a function the convention
+  misses is visible rather than quietly unmutated.
+- **alternation** — removing any one alternative from any check function's pattern, at any
+  nesting depth, must make its file fail. 55 generated. This is what rounds 7 and 8 reached
+  for by hand.
+- **bootstrap** — the harness cannot verify itself without a regress, so
+  `tests/fixtures/incomplete_check.sh` ships with a two-alternative pattern and a case for
+  only one, and the harness must report exactly that hole every run.
+
+### Four holes it found, none of which reading had found in eight rounds
+
+1. **31 alternatives of `find_arch01` had no case; so did 3 of `find_clean09` and 2 of
+   `find_err03`.** First run: `alternations: 16/52 caught`, naming all 36. Closed by 39 new
+   rejection cases. The three interesting ones are `: public Base` / `: private Base` /
+   `: protected Base` on a **continuation line** — the only form the access-specifier
+   alternative can catch alone, because `struct A : public B` on one line is also caught by
+   the `(struct|class) Name :` alternative. That is precisely the gap round 8's reviewer
+   predicted and no hand-written case had covered.
+2. **`find_err03` was not being mutated at all, and the harness said `52/52`.** Its pattern
+   contains a literal `\{`, the brace matcher counted it as a nesting brace, walked off the
+   end of the file, and dropped the function from the set — silently. Fixed by making the
+   matcher quote-aware **and by making an unparsable definition a hard failure**: the bug was
+   not the miscount, it was that a check the harness could not parse was skipped without a
+   word. A harness with that hole is the defect it exists to catch.
+3. **Gutting `report()` left everything green.** The rejection and accept cases called the
+   finders directly, so the function deciding *whether output counts as a violation* was
+   load-bearing for nothing. Fixed structurally: `report()` no longer sets `fail` itself, it
+   returns a verdict, and every one of the 55 rejection and 11 accept cases now runs through
+   it. Gutting it now fails on the first case.
+4. **Dropping one `|| fail=1` printed the `FAIL:` line and still exited 0.** The verdict
+   reached the screen and not the exit code. The harness cannot see this — it only reads
+   exit codes — so it needed a check in the file: **eight wiring cases**, one per rule,
+   driving the real `run_all` over a tree carrying exactly that rule's violation and
+   requiring both the rule's name in the output and a failed run.
+
+Holes 3 and 4 are why the harness is not the whole answer, and the spec now says so.
+
+### The `LIVE` label, and a substring that matched the wrong line
+
+R-SEC-01 is two independent scans behind one rule id, and R-TOOL-01 is four tool probes, so
+accounting on the id alone cannot see one of them disappear. A check file now declares
+`# LIVE <id><rest>`, where the rest is the literal prefix of the result line that proves that
+call happened. The first implementation required the label to appear anywhere in the output
+and **passed while the real history scan was deleted**: `(history)` also occurs inside
+`ok:   R-SEC-01 false-positive case (history)`. The rule is now *prefix of exactly one result
+line*. Verified by deleting the real `scan git "$ROOT"` block (harness fails, naming
+`R-SEC-01 (history)`) and by deleting one `check_version` call (fails, naming
+`R-TOOL-01: clang-tidy`).
+
+That near-miss is worth keeping in view: it is the same shape as everything else this phase
+has found. The check looked right, ran, printed `ok:`, and was answering a different question
+than the one asked.
+
+### Runtime
+
+`make test` went from ~2s to ~56s, because it now runs 67 mutants. Two changes kept it under
+the spec's two-minute criterion: `tests/test_repo_shape.sh` uses one scratch directory
+instead of `mktemp -d` per case (66 per run × 67 runs), and the harness runs its mutants in a
+thread pool. 82s → 24s for the harness; 56s for the whole suite, measured.
+
+### Step 0's six owed edits, all closed
+
+0a the false universal comment in `test_repo_shape.sh`; 0b the false comment in
+`test_secrets.sh` about what protects the history scan; 0c `ok:` prefixing a shortfall in
+`test_tool_versions.sh` and `test_rule_traceability.py`; 0d `verify.md`'s claim that a shared
+function makes an `ok:` line evidence; 0e the §Style correction now names the check that
+produced it (`tests/test_style.sh`); 0f five traceability messages now name the id and the
+file, which broke three of its own rejection cases — they asserted the old text, and were
+updated in the same edit.
+
+### Acceptance, measured
+
+13/13 criteria pass. `make test` 56s against the spec's 2-minute cap.
+
+**Adversarial block: 12/12**, each caught by a `FAIL:` line naming its rule id, tree restored
+and `make test` back to `OK` after every case and at the end. Negative half clean
+(`std::string_view sv;` → `test_repo_shape.sh` rc=0).
+
+**Liveness block: 5/5** — this is the part rounds 1-8 could not do, so the messages are
+recorded verbatim:
+
+```
+alternative with no case    FAIL: R-ARCH-01 rejection case did not fire on: #include "hardware/gpio.h"
+deleted call site           FAIL: R-ERR-04 is reported but never reaches the exit code (run_all left fail=0)
+gutted report()             FAIL: R-ARCH-01 rejection case did not fire on: #include "pico/stdlib.h"
+dropped || fail=1           FAIL: R-ERR-04 is reported but never reaches the exit code (run_all left fail=0)
+deleted real history scan   FAIL: test_secrets.sh declares the live call(s) R-SEC-01 (history) but the run produced no such line
+```
+
+Every one of those five was green on this tree at the start of the round.
+
+Harness summary on the clean tree: `neutered: 12/12 caught`, `alternations: 55/55 caught`,
+`bootstrap: fixture gap reported as expected (forbidden_beta)`, accounting `ok:` for all
+seven check files. `tests/test_repo_shape.sh` reports 55 rejection cases, 11 accept cases and
+`wiring cases: 8/8`.
+
+## Deviations (round 9)
+
+- **The harness is `tests/test_checks_are_live.py`, not `.sh` as the spec's Plan said.**
+  Splitting a regex into its alternatives at every nesting depth is a parser, and the shell
+  is the wrong tool for one. `python3` is inside the floor R-PROC-04 guarantees, so this
+  costs no dependency. `spec.md` and its acceptance criterion were amended to match.
+- **Three claims in the round-9 spec were wrong and the spec was corrected, not worked
+  around.** (i) "Properties 2 and 3 also catch a gutted shared helper for free" — they do
+  not; that is holes 3 and 4 above, and §Plan step 6 now carries the two structural
+  requirements that do catch them. (ii) The `LIVE` label rule said "appear verbatim in the
+  output"; it is now "prefix exactly one result line", with the reason. (iii) The liveness
+  block's expected message for the `hardware/` mutation named the harness, but the case added
+  for that alternative now catches it earlier and more directly, in `test_repo_shape.sh`
+  itself. Each is recorded here because an amended spec requires it.
+- **`tests/test_repo_shape.sh` lost its rejection-case floor.** The spec's §How counts are
+  stated forbids a floor next to a universal claim about the same thing, and the harness is
+  now the universal claim. It prints the count without a threshold.
+- **Two files were restored by hand after a killed experiment.** A 2-minute tool timeout
+  killed a mutation script mid-restore and left `tests/test_secrets.sh` without its real
+  history scan — in the working tree and in the backup the script had made. The harness's own
+  accounting property is what caught it (`declares the live call(s) R-SEC-01 (history) but
+  the run produced no such line`) rather than a human noticing. Block reconstructed and
+  verified. Worth stating plainly: for a few minutes this phase's tree contained exactly the
+  defect it exists to prevent, and the new machinery is what found it.
+- **`spec.md` step 5 amended during validation to name the fixture by path.** It said
+  "touches the harness and `tests/fixtures/`" — the directory, with the file's content
+  specified in the step but its path never written out. Reachable on a generous reading and
+  ambiguous on a strict one, and this phase has lost rounds to exactly that gap, so the exact
+  path is now in the step. No behaviour changed; the file was already there.
+- **Files touched, all named in the Plan:** `tests/test_checks_are_live.py` (new, steps 2-5),
+  `tests/fixtures/incomplete_check.sh` (new, step 5), `tests/test_repo_shape.sh` (0a, 5, 6),
+  `tests/test_secrets.sh` (0b, 2, 6), `tests/test_tool_versions.sh` (0c, 2),
+  `tests/test_rule_traceability.py` (0c, 0f), `docs/constraints.md` (0e, 7),
+  `docs/phases/00-scaffold/verify.md` (0d, 8), `docs/phases/PHASES.md` (step 9, plus status),
+  `docs/phases/00-scaffold/spec.md` (per the second bullet), `docs/phases/00-scaffold/notes.md`
+  (step 10).
+
+## Validation — 2026-09-03 (round 9)
+
+- criteria: 14 passed / 0 failed. Each against its stated expectation, not just its exit
+  code: `make test` OK, `make lint` 0, harness `neutered: 12/12` + `alternations: 55/55` +
+  `bootstrap: fixture gap reported as expected`, traceability 9/9, boundaries
+  `rejection cases: 2/2`, repo_shape 55 rejection + 11 accept + `wiring cases: 8/8`,
+  phase_docs rejection + false-positive, secrets both `LIVE` labels reporting,
+  tool_versions six `ok:` lines, `planned: 00-scaffold` 0, `STYLE_OPTIONAL` 0 in both files,
+  both docs non-empty, `time make test` **58.4s** against the 2m criterion
+- project gates: test pass, lint pass, typecheck gap —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never overwrites.`
+- boundary sweep: **not swept: no file in the set is under a declared layer.** Both other
+  reasons checked rather than assumed: 13 active `deny` lines, prefixes
+  `src/{core,hal,usb,app,emu}/`, and 0 of the 26 files in the set match one
+- index: was **STALE** (`test_rule_traceability.py`, `test_secrets.sh`,
+  `test_tool_versions.sh`) — rebuilt, stamp `8a339bd`, `--check` clean
+- independent review: **contradicts — three, all reproduced by mutation and all confirmed
+  (below); undecidable — three, two of them real spec gaps.** The reviewer also found the
+  bootstrap fixture weaker than §Plan step 5 assumes, which is recorded under
+  §For later phases
+- closure test: **fail** — two undecidables are missing pointers by definition. The
+  mechanical half passes: four sections present and non-blank, and all thirteen non-exempt,
+  non-package files in the set are named in the spec (`tests/fixtures/incomplete_check.sh`
+  was named by path during this validation; see §Deviations)
+- upstream: **`.claude/commands/validate-phase.md`** — unchanged from round 8, already filed
+  and open (`~/.claude-belay/feedback/pico-sg2hid.md`, entry of 2026-09-02). Seven
+  package-owned files ride in the file set again, and the reviewer again returned the
+  `CLAUDE.md` hunk as a `contradicts` (finding 3): `git log -S` puts that line in `694c902`,
+  a `chore(belay):` commit, so the phase never wrote it. Second consecutive round in which
+  that artefact costs a review finding. No new entry — the open one covers it
+- verdict: **returned to implementation.** A `contradicts` is a code failure, so this goes to
+  `/implement-phase 00-scaffold`. This is validation **#1** against the round-9 spec (zero
+  `## Validation` sections follow the `escaped to /expand-phase` verdict above), so the
+  iteration-3+ escape does not apply and must not be invoked
+
+### The three confirmed `contradicts`
+
+**1. The harness breaks the clean-clone promise it was built under.** `make test` runs the
+shell checks with `OPTIONAL_TOOLS=1` but runs `PY_TESTS` — where the harness lives — with
+nothing, and `run()` passes no `env`, so every check file the harness executes inherits an
+environment where a missing external tool is a *hard failure* rather than a skip. Measured on
+this machine by removing only the directory holding `gitleaks` from `PATH`:
+
+```
+$ PATH=<without /opt/homebrew/bin> OPTIONAL_TOOLS=1 sh tests/test_secrets.sh
+  skip: R-SEC-01: gitleaks not found (brew install gitleaks)      rc=0     <- make test
+$ PATH=<without /opt/homebrew/bin> sh tests/test_secrets.sh
+  FAIL: R-SEC-01: gitleaks not found (brew install gitleaks)      rc=1     <- the harness
+$ PATH=<without /opt/homebrew/bin> python3 tests/test_checks_are_live.py
+  FAIL: test_secrets.sh does not pass on the real tree (rc=1)
+```
+
+So `make test` fails on a clean clone that has clang++ and python3 and nothing else — which
+is what the `PHASES.md` row promises, what `CLAUDE.md` §Architecture states, and what
+§Goal's own "What this phase does NOT prove" bullet relies on when it says a skipped file
+must be reported `unproven:` rather than failing. That branch is unreachable today: the file
+fails before it can be reported unproven. The same holds for `test_style.sh` without LLVM and
+`test_tool_versions.sh` without the ARM toolchain. **The round that added a check to prove
+the checks are live is the round that made the suite unrunnable on the floor it promises.**
+
+There is a second, independent half the reviewer separated correctly: `test_tool_versions.sh`
+emits `skip:` lines for absent tools *and* an `ok:` for `python3`, so it is not "skipped" by
+the harness's test (`not RESULT.search(out)`), and each absent tool then leaves its
+`# LIVE R-TOOL-01: <tool>` label prefixing zero result lines. The accounting property has no
+notion of a partially-skipped file.
+
+**2. `LIVE` labels were given to the two rules with obviously-multiple calls, and the same
+hole is open in two files that did not get one.** Accounting is satisfied when a declared id
+appears in *any* result line — and in `test_boundaries.sh` and `test_phase_docs.sh` the
+rejection-case lines themselves carry the rule id. Both reproduced, both leave the file *and*
+the harness green:
+
+```
+delete the real sweep block from test_boundaries.sh   -> file rc=0, harness rc=0  SURVIVES
+delete the real run from test_phase_docs.sh           -> file rc=0, harness rc=0  SURVIVES
+```
+
+`src/` is never swept and `PHASES.md` is never examined, and nothing anywhere says so. This
+is F2 — round 8's central finding — reproduced verbatim in the two files that happened not to
+need a label under the criterion §Plan step 2 wrote down. **That criterion is wrong.** "More
+than one real-run call" is not the test; the test is "does any line that is *not* the real
+run also carry this rule id", which is true of every check with a rejection case that names
+its rule.
+
+**2b. `tests/test_phase_docs.sh` bypasses the shared verdict, the one shape §Plan step 6
+forbids.** `missing_verify` returns text, and `[ -n "$found" ]` is written three separate
+times — real run, rejection case, accept case. Gutting only the real run's copy
+(`if [ -n "$found" ]; then` → `if false; then`) leaves file and harness at rc=0. Step 6's
+requirement was implemented in `test_repo_shape.sh` and nowhere else; the step says "every
+rejection and accept case", not "every case in `test_repo_shape.sh`".
+
+**3. `CLAUDE.md` in the diff.** Not a code defect: the hunk came from `694c902`, a
+`chore(belay):` commit. Recorded above under `upstream:`.
+
+### The three `undecidable` findings
+
+- **(a) Is the exclusion pattern in scope for the alternation property?** `find_clean03` is
+  `hits '<pattern>' '<exclusions>'` and `first_pattern()` deliberately takes only the first
+  quoted string, so the exclusion's alternatives are never mutated. Confirmed live:
+  dropping `can|` from `'bool[[:space:]]+(m_)?(is|has|can|should)_'` leaves file and harness
+  green, and `bool can_fire = true;` silently becomes a false positive. §Goal says "any check
+  function's pattern" and the Context pointer describes both strings; the spec must say
+  which it means.
+- **(b) Does step 6's wiring requirement reach the five rules outside `test_repo_shape.sh`?**
+  The parenthetical names `run_all`, which exists only there, and the acceptance criteria
+  mention wiring only as `8/8`. R-ARCH-02, R-PROC-01, R-PROC-02, R-SEC-01 and R-TOOL-01/02
+  have none — so deleting `fail=1` from `test_secrets.sh`'s history-scan `else` branch prints
+  `FAIL: R-SEC-01`, satisfies accounting with that very line, and exits 0.
+- **(c) `verify.md` §3's clang-tidy claim is not checkable from the inputs.** Step 8 requires
+  every command the page prints to produce the `FAIL:` line it promises; whether the third
+  and fourth scratch files also trip clang-tidy cannot be decided without `tests/test_style.sh`,
+  which the diff carries only as the two rename hunks.
+
+### Taste, not blocking (round 9)
+
+- **The bootstrap fixture cannot floor the properties it exists to floor.** `bootstrap()`
+  re-implements the mutation loop inline and never calls `mutate_and_run`, `run_mutants`,
+  `property_alternation`, `property_neutering` or `NO_MUTATE`. Two mutations leave it
+  printing "fixture gap reported as expected" while the harness is blind: `return label, rc == 0`
+  → `return label, False` (every mutant "caught", both properties print n/n), or adding
+  `test_repo_shape.sh` to `NO_MUTATE` (alternation drops to zero jobs and `main()` prints
+  nothing and fails nothing when `total == 0`). The code matches §Plan step 5 as written; the
+  step is what is weak. This is the most valuable finding of the round after the three above.
+- Mutants are judged by exit code alone, so "caught for the wrong reason" counts as caught —
+  a syntactically broken mutant inflates n/n.
+- Functions outside `FN_PREFIXES`/`FN_NAMES` are visible only by their absence from a printed
+  list: `ver_num`, `resolve` and `arm_compiles` in `test_tool_versions.sh` are never mutated.
+  Deleting `resolve`'s `arm-none-eabi-*` early return leaves the suite green while defeating
+  the exact `PATH`-shadowing trap that file's header says the line exists for.
+- `first_pattern` takes the first quoted string whatever its role. In `missing_verify` it
+  grabs awk's `-F'|'`, yielding zero alternatives with no "no pattern found" report.
+- The harness docstring's claim that gutting `report()` makes every mutant *survive* is
+  backwards — it makes the base file fail, and the accounting `rc != 0` gate is the real
+  catch. Same class of imprecise prose that step 0a existed to remove.
+- `tests/test_repo_shape.sh:220` prints `ok:   rejection cases: $rejected` unconditionally
+  and then tests it — **the exact shape step 0c bans**, reintroduced by this round when the
+  floor was removed.
+- An interrupted harness leaves `mut_*.sh` in `tests/` carrying real `RULE` markers.
+- `R-ERR-05` sits between `R-ERR-03` and `R-ERR-04` in the catalogue, breaking numeric order.

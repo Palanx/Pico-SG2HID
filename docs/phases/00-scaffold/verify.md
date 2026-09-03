@@ -42,8 +42,41 @@ that cries wolf gets switched off by whoever is annoyed by it, and then it prote
 nothing.
 
 This is not paranoia for its own sake. Broken checks here have only ever been caught by
-their own rejection cases — reading the code looked fine every time
-(`docs/phases/00-scaffold/notes.md` keeps the running list).
+deliberately breaking something and watching what the output does — reading the code looked
+fine every time (`docs/phases/00-scaffold/notes.md` keeps the running list).
+
+### The part that took nine rounds
+
+A rejection case proves a check *can* fire. It does not prove the check is still **pointed at
+this repository** — and that turned out to be four separate holes, each of which looked
+perfectly fine in the source:
+
+1. The rejection case ran its own private copy while the real scan had been replaced by "do
+   nothing". `tests/test_secrets.sh` printed `ok:` for a scan of this repo and a scan of its
+   history when neither was happening any more.
+2. A pattern listing thirty forbidden things had rejection cases for two of them. The other
+   twenty-eight could be deleted one at a time and every test still passed.
+3. The line deciding *whether anything counts as a violation* could be gutted, because the
+   cases each re-decided it for themselves instead of asking it.
+4. A rule could be found, printed as `FAIL:`, and still not make the suite exit non-zero.
+
+None of these was found by reading. Every one was found by breaking something on purpose and
+noticing that nothing complained. So that is now a check of its own —
+`tests/test_checks_are_live.py`, which is why `make test` takes about a minute. It reads the
+other checks' source, generates a broken version for every forbidden thing each one looks
+for, runs each broken version, and **requires the suite to notice**. Concretely: it deletes
+one item from a list of thirty and demands that some test fails. If none does, that item was
+being watched by nobody, and the build stops with its name.
+
+That is the difference between this phase and its first eight attempts. Before, a human
+noticed a hole and added a case for it. Now the machine finds the holes and refuses to build
+until each one has a case. Add a new forbidden thing to any check tomorrow and it will tell
+you, on the next run, that nothing tests it yet.
+
+Two things it cannot do, so you know the edges: it does not check the Python file's internal
+logic (only that its rules get reported), and it cannot verify itself — for that it keeps a
+deliberately incomplete example under `tests/fixtures/` whose known hole it must report every
+run. If it ever goes blind, that example stops being reported and it fails on its own floor.
 
 ## Check it yourself — 5 minutes, no hardware
 

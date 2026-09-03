@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""Prove the other checks are still connected to the repository they claim to check.
+
+This file checks no rule. It checks the checks, and it is the phase's answer to the defect
+that survived rounds 1-8: a check reporting success while the thing it names never ran.
+There is no product code under src/ yet, so almost every check passes vacuously — a check
+that has been silently disconnected looks exactly like one that works, and eight rounds of
+reading the code did not tell them apart. Only mutating the source ever did.
+
+Three properties, all DERIVED FROM THE SOURCE rather than from a list somebody maintains.
+That is the whole point: a hand-written list of cases is what rounds 7 and 8 produced, and
+it covered one check function out of eight.
+
+  1. accounting  — every rule id a check file declares in its header produces a result line
+                   when that file runs for real, and every rule id in its output is declared.
+                   A deleted call site becomes a missing rule instead of a silent pass.
+  2. neutering   — making any one check function find nothing must make its file fail.
+  3. alternation — removing any one alternative from any check function's pattern must make
+                   its file fail. Generated from the pattern text, so an alternative added
+                   tomorrow is covered tomorrow.
+
+Properties 2 and 3 catch a gutted shared helper for free: break report()'s failure branch
+and EVERY generated mutant survives, so this file fails on all of them at once.
+
+belay-debt: the .py check under tests/ is covered by property 1 only — its internals are not
+mutated, and its nine failure modes rest on nine hand-written rejection cases, which is the
+weaker form. Upgrade when a rule arrives whose check is not a grep; owner 01-ps2-codec.
+"""
+
+import concurrent.futures
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TESTS = os.path.join(ROOT, "tests")
+SELF = os.path.basename(__file__)
+
+# Mutating this one is declared out of scope (see spec §Out of scope); it is still held to
+# the accounting property, which is what proves its rules are reported at all.
+NO_MUTATE = {"test_style.sh"}
+
+# A check function is one whose name starts with these, or is exactly one of these. Stated
+# as a convention so the set is discovered, not listed. The discovered set is printed, so a
+# function outside the convention is visible rather than silently unmutated.
+FN_PREFIXES = ("find_", "check_")
+FN_NAMES = ("sweep", "scan", "missing_verify")
+
+# The shell checks write "# RULE …"; the .py check declares its marker in a docstring
+# with no comment prefix. Both are the declaration — accept either rather than making
+# one file rewrite its header to satisfy the reader of it.
+# A LIVE line declares the literal prefix of the result line that proves one real-run
+# call happened: "# LIVE R-SEC-01 (history)", "# LIVE R-TOOL-01: clang-tidy". Whatever
+# follows the id on the line is that prefix, so the declaration is the output.
+DECL = re.compile(r"^#?\s*(RULE|LIVE)\s+(R-[A-Z]+-\d{2})(.*)$", re.M)
+RESULT = re.compile(r"^\s*(ok|FAIL):\s*(.*)$", re.M)
+RULE_IN_LINE = re.compile(r"R-[A-Z]+-\d{2}")
+SKIPPED = re.compile(r"^\s*skip:", re.M)
+
+failures = []
+notes = []
+
+
+def fail(msg):
+    print("  FAIL: " + msg)
+    failures.append(msg)
+
+
+def check_files():
+    out = []
+    for name in sorted(os.listdir(TESTS)):
+        if name == SELF or not name.startswith("test_"):
+            continue
+        if name.endswith(".sh") or name.endswith(".py"):
+            out.append(name)
+    return out
+
+
+def run(path, cwd=ROOT):
+    cmd = ["sh", path] if path.endswith(".sh") else [sys.executable, path]
+    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=300)
+    return p.returncode, p.stdout + p.stderr
+
+
+# --- function extraction --------------------------------------------------------------
+
+def is_check_fn(name):
+    return name.startswith(FN_PREFIXES) or name in FN_NAMES
+
+
+def find_functions(text, unparsable=None):
+    """Return [(name, start, end)] spanning the whole definition, body braces included."""
+    out = []
+    if unparsable is None:
+        unparsable = []
+    for m in re.finditer(r"^([A-Za-z_][A-Za-z0-9_]*)\(\s*\)\s*\{", text, re.M):
+        name = m.group(1)
+        if not is_check_fn(name):
+            continue
+        # Quote-aware, and it has to be: find_err03's regex contains a literal \{ and the
+        # naive counter read it as a nesting brace, walked off the end of the file, and
+        # dropped the function from the set — reporting "52/52 caught" while R-ERR-03 was
+        # never mutated at all. A harness with that hole is the defect it exists to catch.
+        depth, i, quote = 0, m.end() - 1, None
+        while i < len(text):
+            c = text[i]
+            if quote:
+                if c == quote:
+                    quote = None
+            elif c in "'\"":
+                quote = c
+            elif c == "\\":
+                i += 2
+                continue
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        if depth != 0:
+            # Never skip silently: an unparsable definition is an unmutated check.
+            unparsable.append(name)
+            continue
+        out.append((name, m.start(), i + 1))
+    return out
+
+
+def neutered(text, span):
+    """Replace a function definition with one that finds nothing and reports success."""
+    name, start, end = span
+    return text[:start] + "%s( ) { return 0; }" % name + text[end:]
+
+
+# --- pattern extraction and alternation enumeration -----------------------------------
+
+def first_pattern(defn):
+    """The check's regex: the first single-quoted string in the body, per the house shape."""
+    body = defn[defn.index("{") + 1:]
+    m = re.search(r"'([^']*)'", body)
+    if not m:
+        return None
+    return m.group(1), m.start(1) + (len(defn) - len(body))
+
+
+def alternatives(pat):
+    """Every |-separated alternative at every nesting depth.
+
+    Returns [(start, end)] into pat. Depth matters: find_arch01 is one top-level branch
+    wrapping two groups of 7 and 24 prefixes, and splitting only at depth 0 would generate
+    one mutant for a pattern with thirty-odd forbidden forms — which is precisely the gap
+    round 8 shipped.
+    """
+    spans = []
+    # group_stack holds (group_content_start, [split positions]) for each open '('
+    stack = [(0, [])]
+    i, n = 0, len(pat)
+    while i < n:
+        c = pat[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "[":
+            j = i + 1
+            if j < n and pat[j] == "^":
+                j += 1
+            if j < n and pat[j] == "]":
+                j += 1
+            while j < n and pat[j] != "]":
+                j += 2 if pat[j] == "\\" else 1
+            i = j + 1
+            continue
+        if c == "(":
+            stack.append((i + 1, []))
+        elif c == ")":
+            if len(stack) > 1:
+                start, splits = stack.pop()
+                spans.extend(_segments(start, splits, i))
+        elif c == "|":
+            stack[-1][1].append(i)
+        i += 1
+    start, splits = stack[0]
+    spans.extend(_segments(start, splits, n))
+    return [s for s in spans if s[1] > s[0]]
+
+
+def _segments(start, splits, end):
+    """A group with k splits has k+1 alternatives; one alternative alone is not a choice."""
+    if not splits:
+        return []
+    bounds = [start] + [s + 1 for s in splits]
+    ends = [s for s in splits] + [end]
+    return list(zip(bounds, ends))
+
+
+def drop_alternative(pat, span):
+    """Remove one alternative together with one adjacent '|'.
+
+    Never leave an empty alternative: '(a||b)' matches everything and the file would fail
+    for the wrong reason, which reads as a passing mutation test and is worse than no test.
+    """
+    s, e = span
+    if e < len(pat) and pat[e] == "|":
+        return pat[:s] + pat[e + 1:]
+    if s > 0 and pat[s - 1] == "|":
+        return pat[:s - 1] + pat[e:]
+    return None  # the only alternative in its group: nothing to remove
+
+
+# --- the three properties --------------------------------------------------------------
+
+def property_accounting(names):
+    ok = 0
+    for name in names:
+        path = os.path.join(TESTS, name)
+        text = open(path).read()
+        decls = DECL.findall(text)
+        rules = {d[1] for d in decls if d[0] == "RULE"}
+        labels = {(d[1] + d[2]).strip() for d in decls if d[0] == "LIVE" and d[2].strip()}
+        if not rules:
+            fail("%s declares no rule in its header" % name)
+            continue
+        rc, out = run(path)
+        if rc != 0:
+            fail("%s does not pass on the real tree (rc=%d)" % (name, rc))
+            continue
+        if SKIPPED.search(out) and not RESULT.search(out):
+            notes.append("unproven: %s (skipped — an external tool is absent)" % name)
+            continue
+        reported = set()
+        for _kind, rest in RESULT.findall(out):
+            reported.update(RULE_IN_LINE.findall(rest))
+        missing = sorted(rules - reported)
+        if missing:
+            fail("%s declares %s but never reports a result for them — a call site is gone"
+                 % (name, ", ".join(missing)))
+            continue
+        undeclared = sorted(reported - rules)
+        if undeclared:
+            fail("%s reports %s, which its header does not declare"
+                 % (name, ", ".join(undeclared)))
+            continue
+        # Exact result line, never a substring. "(history)" appears in
+        # "ok: R-SEC-01 false-positive case (history)" too, so a substring test was satisfied
+        # by an unrelated line and the deleted real scan went on passing — the near-miss this
+        # whole file exists to make impossible, found by mutating for it.
+        reported_lines = [rest.strip() for _kind, rest in RESULT.findall(out)]
+        # A declared label must PREFIX EXACTLY ONE result line. Never a bare substring:
+        # "(history)" also appears in "R-SEC-01 false-positive case (history)", so a
+        # substring test was satisfied by an unrelated line and a deleted real scan went on
+        # passing. Uniqueness is what stops a label from drifting onto a neighbour's line.
+        missing_labels = sorted(
+            l for l in labels
+            if sum(1 for line in reported_lines if line.startswith(l)) != 1
+        )
+        if missing_labels:
+            fail("%s declares the live call(s) %s but the run produced no such line"
+                 % (name, ", ".join(missing_labels)))
+            continue
+        ok += 1
+        print("  ok:   accounting: %-28s %d rule(s), %d live label(s)"
+              % (name, len(rules), len(labels)))
+    return ok
+
+
+def mutate_and_run(name, mutant, label):
+    """Write a mutant beside the original and require the file to reject it.
+
+    Returns (label, survived). Nothing is printed here: these run in a pool, and a gate
+    whose output order changes between runs is a gate nobody can diff.
+    """
+    with tempfile.NamedTemporaryFile("w", dir=TESTS, prefix="mut_", suffix=".sh",
+                                     delete=False) as fh:
+        fh.write(mutant)
+        tmp = fh.name
+    try:
+        rc, _out = run(tmp)
+    finally:
+        os.unlink(tmp)
+    return label, rc == 0
+
+
+def run_mutants(jobs):
+    """Run every mutant, in parallel, and report in submission order.
+
+    One mutant is one subprocess that mostly waits on other subprocesses, so this is I/O
+    bound and threads are enough. Serially this step is the whole suite's wall clock, and it
+    grows with every alternative any later phase adds to any pattern.
+    """
+    if not jobs:
+        return 0, 0, []
+    workers = min(len(jobs), (os.cpu_count() or 2) * 2)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda j: mutate_and_run(j[0], j[1], j[2]), jobs))
+    survivors = [(label, meta) for (label, survived), (_n, _m, _l, meta)
+                 in zip(results, jobs) if survived]
+    for label, _meta in survivors:
+        fail("%s — the mutant passes, so nothing demonstrates it" % label)
+    return len(jobs) - len(survivors), len(jobs), [m for _l, m in survivors]
+
+
+def property_neutering(names):
+    jobs = []
+    for name in names:
+        if name in NO_MUTATE or not name.endswith(".sh"):
+            continue
+        text = open(os.path.join(TESTS, name)).read()
+        unparsable = []
+        fns = find_functions(text, unparsable)
+        if unparsable:
+            fail("%s: could not parse the definition of %s — an unparsed check is an "
+                 "unmutated check" % (name, ", ".join(unparsable)))
+        if not fns:
+            fail("%s: no check function found — the naming convention does not reach it"
+                 % name)
+            continue
+        print("  ok:   functions in %-26s %s" % (name, ", ".join(f[0] for f in fns)))
+        for fn in fns:
+            jobs.append((name, neutered(text, fn),
+                         "%s: neutering %s is not caught" % (name, fn[0]), None))
+    caught, total, _gaps = run_mutants(jobs)
+    return caught, total
+
+
+def property_alternation(names):
+    jobs = []
+    for name in names:
+        if name in NO_MUTATE or not name.endswith(".sh"):
+            continue
+        text = open(os.path.join(TESTS, name)).read()
+        for fn_name, start, end in find_functions(text):
+            got = first_pattern(text[start:end])
+            if not got:
+                continue
+            pat, off = got
+            for span in alternatives(pat):
+                reduced = drop_alternative(pat, span)
+                if reduced is None:
+                    continue
+                mutant = text[:start + off] + reduced + text[start + off + len(pat):]
+                alt = pat[span[0]:span[1]]
+                jobs.append((name,
+                             mutant,
+                             "%s: dropping '%s' from %s is not caught" % (name, alt, fn_name),
+                             (name, fn_name, alt)))
+    return run_mutants(jobs)
+
+
+# --- the bootstrap floor ----------------------------------------------------------------
+
+def bootstrap():
+    """A harness that is silently broken reports no gaps — which is the failure it exists to
+    catch, one level up. It cannot test itself without a regress, so it gets a fixture with a
+    known-uncovered alternative and must report exactly that one."""
+    fixture = os.path.join(ROOT, "tests", "fixtures", "incomplete_check.sh")
+    if not os.path.exists(fixture):
+        fail("bootstrap fixture missing: tests/fixtures/incomplete_check.sh")
+        return
+    text = open(fixture).read()
+    found = []
+    for fn_name, start, end in find_functions(text):
+        defn = text[start:end]
+        got = first_pattern(defn)
+        if not got:
+            continue
+        pat, off = got
+        for span in alternatives(pat):
+            reduced = drop_alternative(pat, span)
+            if reduced is None:
+                continue
+            mutant = text[:start + off] + reduced + text[start + off + len(pat):]
+            with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(fixture),
+                                             prefix="mut_", suffix=".sh",
+                                             delete=False) as fh:
+                fh.write(mutant)
+                tmp = fh.name
+            try:
+                rc, _ = run(tmp)
+            finally:
+                os.unlink(tmp)
+            if rc == 0:
+                found.append(pat[span[0]:span[1]])
+    if len(found) == 1:
+        print("  ok:   bootstrap: fixture gap reported as expected (%s)" % found[0])
+    else:
+        fail("bootstrap: expected exactly 1 uncovered alternative in the fixture, got %d %s"
+             % (len(found), found))
+
+
+def main():
+    names = check_files()
+    if not names:
+        fail("no check files found under tests/")
+        return 1
+
+    property_accounting(names)
+
+    caught, total = property_neutering(names)
+    if total and caught == total:
+        print("  ok:   neutered: %d/%d caught" % (caught, total))
+    elif total:
+        fail("neutered: %d/%d caught" % (caught, total))
+
+    caught, total, gaps = property_alternation(names)
+    if total and caught == total:
+        print("  ok:   alternations: %d/%d caught" % (caught, total))
+    elif total:
+        fail("alternations: %d/%d caught — no rejection case covers: %s"
+             % (caught, total, "; ".join("%s/%s '%s'" % g for g in gaps)))
+
+    bootstrap()
+
+    for note in notes:
+        print("  " + note)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
