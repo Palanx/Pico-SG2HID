@@ -10,7 +10,9 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )
-HOOK="$ROOT/.claude/hooks/boundary-check.sh"
+# Overridable so the spec's own step-0 check ("point HOOK at a stub that exits 3 and
+# this file must exit non-zero") is runnable as written; defaults to the real hook.
+HOOK="${HOOK:-$ROOT/.claude/hooks/boundary-check.sh}"
 
 fail=0
 rejected=0

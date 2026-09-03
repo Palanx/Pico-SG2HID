@@ -20,7 +20,8 @@
 # and string literals are stripped by neither. That is enough to catch the
 # realistic violation (someone writes the forbidden thing) and will produce a false
 # positive on a forbidden token inside a /* */ block or a string. Upgrade path if it ever
-# bites: clang-query, which needs the compile_commands.json that .clang-tidy also wants.
+# bites: clang-query, which needs the compile_commands.json that .clang-tidy also wants,
+# so 03-pio-bus is the earliest phase that can land it.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )

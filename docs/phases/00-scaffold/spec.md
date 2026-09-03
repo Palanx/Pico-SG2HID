@@ -64,6 +64,21 @@ names in that step.** A floor cannot contradict its own enumeration, still fails
 case disappears, and does not have to be edited when a later round adds one. Where a
 number appears twice anyway, the Plan step is authoritative.
 
+### Files this phase writes that no Plan step names
+
+Two files change inside this phase without appearing in any Plan step, and neither is this
+phase escaping its scope. Stated here because a reviewer holding only `CLAUDE.md` and this
+spec cannot otherwise decide:
+
+- **`docs/phases/PHASES.md`** — the workflow commands write the `status` column, and the
+  row's coarse `acceptance` *text* may be corrected when it has drifted from this spec's
+  Goal (`/expand-phase` §Failure modes allows exactly that; it is how "the eleven rules"
+  became "the fourteen rules"). What is append-only is the *cut*: a row's id, goal and
+  dependencies are superseded by new rows, never edited or deleted.
+- **`docs/index/`** — the repo index is regenerated inside the phase, so `_overview.md`,
+  `scripts.md` and `tests.md` carry the six new test files. `/validate-phase` step 6
+  exempts the directory structurally; this line makes the exemption visible from the spec.
+
 ## Context pointers
 
 - `CLAUDE.md` — the session contract; §"Rules are bound to tests" states the binding this phase implements.
@@ -212,7 +227,8 @@ No dependency phases, so there is no dependency `notes.md` to absorb.
    `enum class E : uint8_t`, a fixed underlying type and not a base (R-CLEAN-09).
    One `RULE` marker per rule in the header, one `FAIL:` line per rule naming the offending
    path.
-   — check: `sh tests/test_repo_shape.sh` → exit 0, eight `ok:` lines, rejection cases
+   — check: `sh tests/test_repo_shape.sh` → exit 0, one `ok:` line per rule (eight rules,
+   plus the two count lines, which share the `ok:` prefix), rejection cases
    `>= 10`, accept cases `>= 11`.
 
 6. **Write `tests/test_phase_docs.sh`** (R-PROC-02) — touches that file. For every row in

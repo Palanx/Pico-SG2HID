@@ -88,10 +88,10 @@ Expect `OK` again.
 
 ### 3. Try a few more, if you want
 
-Same pattern as §2 — break it, run it, put it back — one rule at a time. Run each line on
-its own and read the output before moving to the next. The order matters: two of these
-write the same filename, so if you paste all four at once only the last one is still on
-disk when `make test` runs, and the other three never fire.
+Same pattern as §2 — break it, run it, put it back — one rule at a time. Each line
+creates its scratch file, runs the suite and removes the file again, so they are
+self-contained; run them one at a time anyway and read the output before the next, or the
+four `FAIL:` lines scroll past together.
 
 ```
 printf '#include "pico/stdlib.h"\n' > src/core/scratch.h  ; make test ; rm -f src/core/scratch.h
@@ -112,6 +112,12 @@ printf 'bool flag = true;\n'        > src/core/scratch.cpp; make test ; rm -f sr
 printf '// TODO: fix\n'             > src/core/scratch.cpp; make test ; rm -f src/core/scratch.cpp
 ```
 `R-CLEAN-05` — a `TODO` must say what closes it, e.g. `// TODO(09-guitar-observe): …`.
+
+The first two also print a second, unrelated failure —
+`FAIL: R-STYLE-02 / R-CLEAN-02` with `file not found`. That is not your scratch file
+breaking a naming rule: clang-tidy cannot resolve *any* `#include` until the project has a
+real build to read, which does not exist until phase `03-pio-bus`. Ignore it here; the
+line that matters is the one naming the rule you broke.
 
 Each one should fail naming that rule, and `make test` should say `OK` again as soon as
 the file is removed. When you are finished:
