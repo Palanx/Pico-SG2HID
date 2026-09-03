@@ -12,8 +12,12 @@ That is the whole point: a hand-written list of cases is what rounds 7 and 8 pro
 it covered one check function out of eight.
 
   1. accounting  — every rule id a check file declares in its header produces a result line
-                   when that file runs for real, and every rule id in its output is declared.
-                   A deleted call site becomes a missing rule instead of a silent pass.
+                   THAT ONLY THE REAL RUN PRODUCES, and every rule id in its output is
+                   declared. "The id appears somewhere in the output" is the criterion that
+                   let rounds 1-9 pass: every check ships rejection and accept cases and
+                   their lines carry the rule id too, so a file whose real run has been
+                   deleted still reports the id. A case line says it is a case; the real
+                   run's lines are the ones that do not.
   2. neutering   — making any one check function find nothing must make its file fail.
   3. alternation — removing any one alternative from any check function's pattern must make
                    its file fail. Generated from the pattern text, so an alternative added
@@ -58,6 +62,13 @@ DECL = re.compile(r"^#?\s*(RULE|LIVE)\s+(R-[A-Z]+-\d{2})(.*)$", re.M)
 RESULT = re.compile(r"^\s*(ok|FAIL):\s*(.*)$", re.M)
 RULE_IN_LINE = re.compile(r"R-[A-Z]+-\d{2}")
 SKIPPED = re.compile(r"^\s*skip:", re.M)
+# The one criterion this whole file turns on. Asking "does any line carry this rule id" is
+# satisfied by every check that has a rejection case, which is all of them — so it is true
+# whether or not the real run still happens, and it is why deleting the real sweep from
+# test_boundaries.sh or the real run from test_phase_docs.sh went unnoticed. The question
+# has to be asked of the real run's own lines, and the house convention is that a case line
+# says which case it is. Stated over the output, so it holds for a check written tomorrow.
+CASE_LINE = re.compile(r"(rejection|false-positive|accept|wiring)\s+cases?", re.I)
 
 failures = []
 notes = []
@@ -230,31 +241,30 @@ def property_accounting(names):
         if SKIPPED.search(out) and not RESULT.search(out):
             notes.append("unproven: %s (skipped — an external tool is absent)" % name)
             continue
-        reported = set()
+        real_lines, case_lines = [], []
         for _kind, rest in RESULT.findall(out):
-            reported.update(RULE_IN_LINE.findall(rest))
+            (case_lines if CASE_LINE.search(rest) else real_lines).append(rest.strip())
+        reported = set()
+        for line in real_lines:
+            reported.update(RULE_IN_LINE.findall(line))
         missing = sorted(rules - reported)
         if missing:
-            fail("%s declares %s but never reports a result for them — a call site is gone"
-                 % (name, ", ".join(missing)))
+            fail("%s declares %s, reported by nothing but its own cases — the real run is "
+                 "gone" % (name, ", ".join(missing)))
             continue
-        undeclared = sorted(reported - rules)
+        undeclared = sorted({r for line in real_lines + case_lines
+                             for r in RULE_IN_LINE.findall(line)} - rules)
         if undeclared:
             fail("%s reports %s, which its header does not declare"
                  % (name, ", ".join(undeclared)))
             continue
-        # Exact result line, never a substring. "(history)" appears in
-        # "ok: R-SEC-01 false-positive case (history)" too, so a substring test was satisfied
-        # by an unrelated line and the deleted real scan went on passing — the near-miss this
-        # whole file exists to make impossible, found by mutating for it.
-        reported_lines = [rest.strip() for _kind, rest in RESULT.findall(out)]
-        # A declared label must PREFIX EXACTLY ONE result line. Never a bare substring:
-        # "(history)" also appears in "R-SEC-01 false-positive case (history)", so a
-        # substring test was satisfied by an unrelated line and a deleted real scan went on
-        # passing. Uniqueness is what stops a label from drifting onto a neighbour's line.
+        # A label pins ONE real-run line. Exactly one, and never a substring: "(history)"
+        # also occurs inside "R-SEC-01 false-positive case (history)", so a substring test
+        # was satisfied by a case line while the real scan it named had been deleted.
+        # Uniqueness is what stops a label from drifting onto a neighbour's line.
         missing_labels = sorted(
             l for l in labels
-            if sum(1 for line in reported_lines if line.startswith(l)) != 1
+            if sum(1 for line in real_lines if line.startswith(l)) != 1
         )
         if missing_labels:
             fail("%s declares the live call(s) %s but the run produced no such line"
@@ -266,14 +276,14 @@ def property_accounting(names):
     return ok
 
 
-def mutate_and_run(name, mutant, label):
+def mutate_and_run(path, mutant, label):
     """Write a mutant beside the original and require the file to reject it.
 
     Returns (label, survived). Nothing is printed here: these run in a pool, and a gate
     whose output order changes between runs is a gate nobody can diff.
     """
-    with tempfile.NamedTemporaryFile("w", dir=TESTS, prefix="mut_", suffix=".sh",
-                                     delete=False) as fh:
+    with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(path), prefix="mut_",
+                                     suffix=".sh", delete=False) as fh:
         fh.write(mutant)
         tmp = fh.name
     try:
@@ -284,19 +294,28 @@ def mutate_and_run(name, mutant, label):
 
 
 def run_mutants(jobs):
-    """Run every mutant, in parallel, and report in submission order.
+    """Run every mutant, in parallel, and return the survivors in submission order.
 
     One mutant is one subprocess that mostly waits on other subprocesses, so this is I/O
     bound and threads are enough. Serially this step is the whole suite's wall clock, and it
     grows with every alternative any later phase adds to any pattern.
+
+    It reports nothing itself: a survivor is a defect for the two properties below and the
+    expected result for bootstrap(), which is what lets the fixture run through this exact
+    code path instead of a copy of it.
     """
     if not jobs:
-        return 0, 0, []
+        return []
     workers = min(len(jobs), (os.cpu_count() or 2) * 2)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(lambda j: mutate_and_run(j[0], j[1], j[2]), jobs))
-    survivors = [(label, meta) for (label, survived), (_n, _m, _l, meta)
-                 in zip(results, jobs) if survived]
+    return [(label, meta) for (label, survived), (_p, _m, _l, meta)
+            in zip(results, jobs) if survived]
+
+
+def mutation_score(jobs):
+    """Run the mutants; every survivor is a mutation nothing demonstrates."""
+    survivors = run_mutants(jobs)
     for label, _meta in survivors:
         fail("%s — the mutant passes, so nothing demonstrates it" % label)
     return len(jobs) - len(survivors), len(jobs), [m for _l, m in survivors]
@@ -319,51 +338,24 @@ def property_neutering(names):
             continue
         print("  ok:   functions in %-26s %s" % (name, ", ".join(f[0] for f in fns)))
         for fn in fns:
-            jobs.append((name, neutered(text, fn),
+            jobs.append((os.path.join(TESTS, name), neutered(text, fn),
                          "%s: neutering %s is not caught" % (name, fn[0]), None))
-    caught, total, _gaps = run_mutants(jobs)
+    caught, total, _gaps = mutation_score(jobs)
     return caught, total
 
 
-def property_alternation(names):
+def alternation_jobs(path):
+    """Every one-alternative-removed mutant of one check file, as run_mutants() jobs.
+
+    bootstrap() calls this too. That is the point: the fixture goes through the same
+    extraction, the same removal and the same runner as the real files, so a break in any
+    of them shows up on the floor instead of hiding behind a second copy of the loop.
+    """
+    name = os.path.basename(path)
+    text = open(path).read()
     jobs = []
-    for name in names:
-        if name in NO_MUTATE or not name.endswith(".sh"):
-            continue
-        text = open(os.path.join(TESTS, name)).read()
-        for fn_name, start, end in find_functions(text):
-            got = first_pattern(text[start:end])
-            if not got:
-                continue
-            pat, off = got
-            for span in alternatives(pat):
-                reduced = drop_alternative(pat, span)
-                if reduced is None:
-                    continue
-                mutant = text[:start + off] + reduced + text[start + off + len(pat):]
-                alt = pat[span[0]:span[1]]
-                jobs.append((name,
-                             mutant,
-                             "%s: dropping '%s' from %s is not caught" % (name, alt, fn_name),
-                             (name, fn_name, alt)))
-    return run_mutants(jobs)
-
-
-# --- the bootstrap floor ----------------------------------------------------------------
-
-def bootstrap():
-    """A harness that is silently broken reports no gaps — which is the failure it exists to
-    catch, one level up. It cannot test itself without a regress, so it gets a fixture with a
-    known-uncovered alternative and must report exactly that one."""
-    fixture = os.path.join(ROOT, "tests", "fixtures", "incomplete_check.sh")
-    if not os.path.exists(fixture):
-        fail("bootstrap fixture missing: tests/fixtures/incomplete_check.sh")
-        return
-    text = open(fixture).read()
-    found = []
     for fn_name, start, end in find_functions(text):
-        defn = text[start:end]
-        got = first_pattern(defn)
+        got = first_pattern(text[start:end])
         if not got:
             continue
         pat, off = got
@@ -372,22 +364,46 @@ def bootstrap():
             if reduced is None:
                 continue
             mutant = text[:start + off] + reduced + text[start + off + len(pat):]
-            with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(fixture),
-                                             prefix="mut_", suffix=".sh",
-                                             delete=False) as fh:
-                fh.write(mutant)
-                tmp = fh.name
-            try:
-                rc, _ = run(tmp)
-            finally:
-                os.unlink(tmp)
-            if rc == 0:
-                found.append(pat[span[0]:span[1]])
-    if len(found) == 1:
-        print("  ok:   bootstrap: fixture gap reported as expected (%s)" % found[0])
+            alt = pat[span[0]:span[1]]
+            jobs.append((path,
+                         mutant,
+                         "%s: dropping '%s' from %s is not caught" % (name, alt, fn_name),
+                         (name, fn_name, alt)))
+    return jobs
+
+
+def property_alternation(names):
+    jobs = []
+    for name in names:
+        if name in NO_MUTATE or not name.endswith(".sh"):
+            continue
+        jobs.extend(alternation_jobs(os.path.join(TESTS, name)))
+    return mutation_score(jobs)
+
+
+# --- the bootstrap floor ----------------------------------------------------------------
+
+def bootstrap():
+    """A harness that is silently broken reports no gaps — which is the failure it exists to
+    catch, one level up. It cannot test itself without a regress, so it gets a fixture with a
+    known-uncovered alternative and must report exactly that one.
+
+    It runs through alternation_jobs() and run_mutants(), the same two functions property 3
+    drives the real check files with. An inlined copy of that loop was the earlier shape and
+    it could report "fixture gap as expected" while the real properties were blind — a floor
+    that cannot fail is not a floor.
+    """
+    fixture = os.path.join(ROOT, "tests", "fixtures", "incomplete_check.sh")
+    if not os.path.exists(fixture):
+        fail("bootstrap fixture missing: tests/fixtures/incomplete_check.sh")
+        return
+    survivors = run_mutants(alternation_jobs(fixture))
+    if len(survivors) == 1:
+        print("  ok:   bootstrap: fixture gap reported as expected (%s)"
+              % survivors[0][1][2])
     else:
         fail("bootstrap: expected exactly 1 uncovered alternative in the fixture, got %d %s"
-             % (len(found), found))
+             % (len(survivors), [s[1][2] for s in survivors]))
 
 
 def main():

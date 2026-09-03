@@ -233,29 +233,45 @@ is where the phase's remaining risk lives.
    the new `tests/test_checks_are_live.py` and the header of each check file. Each check file
    already declares its rules as `# RULE <id> — …` header comments. The harness runs each
    check file for real, captures its output, and requires that **every declared id appears in
-   at least one `ok:` or `FAIL:` line**, and that every `ok:`/`FAIL:` line naming a rule id
-   declares that id in the header. Both directions: an undeclared id in the output is as much
-   a drift as a declared id with no line.
-   A rule whose check makes more than one independent real-run call needs one label per call,
-   or deleting one call is invisible — R-SEC-01 is exactly that case (working tree *and*
-   history; `notes.md` F2). So a check file may declare `# LIVE <id><rest>` lines
+   at least one `ok:`/`FAIL:` line that the real run alone produces**, and that every
+   `ok:`/`FAIL:` line naming a rule id declares that id in the header. Both directions: an
+   undeclared id in the output is as much a drift as a declared id with no line.
+   **"The id appears in some line" is not that criterion, and rounds 1-9 passed under it.**
+   Every check ships rejection and accept cases and their lines name the rule too, so the
+   question to ask is the inverse of round 9's: *does a line that is not the real run carry
+   this id?* — and the answer is yes for every check in this phase, which is why deleting the
+   real `sweep` from `tests/test_boundaries.sh` or the real run from
+   `tests/test_phase_docs.sh` left both files, and the harness, green. The harness separates
+   the two by the house convention that a case line says which case it is (`rejection case`,
+   `false-positive case`, `accept case`, `wiring case`), and a declared id reported by nothing
+   but case lines is a deleted real run, not a pass. The convention lives in the harness as
+   one regex over the output, so it reaches a check written tomorrow and costs no declaration
+   in the six check files.
+   One gap the convention cannot close: a rule whose check makes **more than one independent
+   real-run call**, where deleting one call still leaves a real-run line carrying the id —
+   R-SEC-01 (working tree *and* history; `notes.md` F2) and R-TOOL-01 (four probes). Those
+   need one label per call. So a check file may declare `# LIVE <id><rest>` lines
    alongside its `RULE` lines, where everything after the id is the literal prefix of the
    result line that proves the call happened (`# LIVE R-SEC-01 (history)`,
    `# LIVE R-TOOL-01: clang-tidy`). Each declared label must prefix **exactly one** result
-   line. Not a substring, and not merely at-least-one: `(history)` also occurs inside
-   `R-SEC-01 false-positive case (history)`, so a substring test was satisfied by an
-   unrelated line and the deleted scan went on passing. `RULE` without `LIVE` means one call
-   is enough. R-SEC-01 (tree, history) and R-TOOL-01 (four tool probes) are the two rules
-   that need them.
+   line, **and that line must be one of the real run's**. Not a substring, and not merely
+   at-least-one: `(history)` also occurs inside `R-SEC-01 false-positive case (history)`, so
+   a substring test was satisfied by a case line while the scan it named had been deleted.
+   `RULE` without `LIVE` means one real-run call, which the case-line convention already
+   pins. R-SEC-01 (tree, history) and R-TOOL-01 (four tool probes) are the two rules that
+   need labels.
    **A skipped file is unproven, not passing.** `OPTIONAL_TOOLS=1` turns a missing external
    tool into a skip, and a skipped check produces no result lines; the harness must report
    `unproven: <file> (skipped)` and must not count it as satisfied.
    — check: `python3 tests/test_checks_are_live.py` → exit 0, printing one `ok:` line per check
-   file with its rule-and-label count; then, with the `report R-ERR-04 "$( find_err04 "$1" )"`
-   line deleted from a copy of `tests/test_repo_shape.sh`, the harness exits non-zero naming
-   `R-ERR-04` as declared but never reported; and with the real `scan git "$ROOT"` block
-   deleted from a copy of `tests/test_secrets.sh`, it exits non-zero naming the missing
-   `(history)` label.
+   file with its rule-and-label count; and, on a copy of the repository, each of these four
+   deletions makes it exit non-zero. The first two are the ones that survived round 9, and a
+   criterion that catches only some of the four has moved the defect rather than closed it:
+   the real `sweep "$ROOT"` block in `tests/test_boundaries.sh` (→ `R-ARCH-02` reported by
+   nothing but its own cases), the real `missing_verify "$ROOT/…"` block in
+   `tests/test_phase_docs.sh` (→ the same, for `R-PROC-02`), the
+   `report R-ERR-04 "$( find_err04 "$1" )"` line in `tests/test_repo_shape.sh`, and the real
+   `scan git "$ROOT"` block in `tests/test_secrets.sh` (→ the missing `(history)` label).
 
 3. **Harness property 2 — neutering: a check that finds nothing must fail its file.** Touches
    the harness. For every check function in every shell check file — located by a declared
