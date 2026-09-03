@@ -1187,3 +1187,20 @@ is the thing under test rather than an unasserted line.
 - `report`'s `head -8` silently truncates a long violation list.
 - §Goal says each of the nine traceability messages names "the id and the file"; the
   duplicate-id and unparsable-line messages name neither. Prose looseness, not a defect.
+
+## Standing note for round 8 — the escape counter, and the frozen package
+
+Belay is frozen at `9e1e7b2` for the rest of this phase. Package fixes found from here go
+to `~/.claude-belay/feedback/` and land after the phase closes, never during it: six
+mid-phase re-installs meant rounds 6 and 7 were judged against different versions of
+`/validate-phase`, which is the failure `scripts/installs-stale.sh` warns about — a
+mid-session update mutates the gates a running session is being judged by (P3).
+
+**One consequence to act on, not re-derive.** At `9e1e7b2`, `/validate-phase`'s
+iteration-3+ escape says to count the `## Validation` sections in this file. There are
+seven, so read literally it fires on every round from here. Do not fire it. The escape
+already fired once, at round 5; the round-6 spec is its output, and against *that* spec
+round 8 is validation #3 with round 7 having returned a single code defect, not a spec
+collapse. The counter failing to reset after a re-expansion is a package defect, filed on
+round 7's `upstream:` line and fixed upstream in belay `5aa5a3c`, which this project does
+not have and will not take until the phase is done.

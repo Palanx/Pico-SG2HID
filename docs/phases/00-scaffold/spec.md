@@ -67,8 +67,9 @@ number appears twice anyway, the Plan step is authoritative.
 ### Files this phase writes that no Plan step names
 
 Two files change inside this phase without appearing in any Plan step, and neither is this
-phase escaping its scope. Stated here because a reviewer holding only `CLAUDE.md` and this
-spec cannot otherwise decide:
+phase escaping its scope. `CLAUDE.md` states the general rule as of belay `436b7a3`, so a
+reviewer holding only that file and this spec can now decide it without this section; what
+follows is the phase-specific detail, not the rule itself:
 
 - **`docs/phases/PHASES.md`** — the workflow commands write the `status` column, and the
   row's coarse `acceptance` *text* may be corrected when it has drifted from this spec's
