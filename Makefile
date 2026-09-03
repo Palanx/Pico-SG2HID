@@ -26,7 +26,7 @@ test: $(CPP_BINS)
 	@fail=0; \
 	for t in $(CPP_BINS) ; do echo "--- $$t"       ; "$$t"           || fail=1; done; \
 	for t in $(SH_TESTS) ; do echo "--- $$t"       ; OPTIONAL_TOOLS=1 sh "$$t" || fail=1; done; \
-	for t in $(PY_TESTS) ; do echo "--- $$t"       ; python3 "$$t"   || fail=1; done; \
+	for t in $(PY_TESTS) ; do echo "--- $$t"       ; OPTIONAL_TOOLS=1 python3 "$$t" || fail=1; done; \
 	if [ $$fail -ne 0 ]; then echo "FAIL"; exit 1; fi; \
 	echo "OK"
 

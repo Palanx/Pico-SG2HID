@@ -46,11 +46,14 @@ SELF = os.path.basename(__file__)
 # the accounting property, which is what proves its rules are reported at all.
 NO_MUTATE = {"test_style.sh"}
 
-# A check function is one whose name starts with these, or is exactly one of these. Stated
-# as a convention so the set is discovered, not listed. The discovered set is printed, so a
-# function outside the convention is visible rather than silently unmutated.
-FN_PREFIXES = ("find_", "check_")
-FN_NAMES = ("sweep", "scan", "missing_verify")
+# There is no naming convention any more, and that is the fix rather than a shortcut. A
+# convention needs a list, the list needs maintaining, and the round-9 list had grown a
+# fifth name §Plan step 3 never declared while `arm_compiles` — the whole of R-TOOL-02 —
+# `ver_num` and `resolve` fell outside it, never mutated and reported nowhere, because the
+# harness printed only the set it *discovered*. Measured before removing it: neutering each
+# of the 25 parsable functions in the five shell checks makes its file fail, helpers and
+# case drivers included. So every function defined in a check file is mutated, and nothing
+# has to be kept in step with a list.
 
 # The shell checks write "# RULE …"; the .py check declares its marker in a docstring
 # with no comment prefix. Both are the declaration — accept either rather than making
@@ -62,6 +65,7 @@ DECL = re.compile(r"^#?\s*(RULE|LIVE)\s+(R-[A-Z]+-\d{2})(.*)$", re.M)
 RESULT = re.compile(r"^\s*(ok|FAIL):\s*(.*)$", re.M)
 RULE_IN_LINE = re.compile(r"R-[A-Z]+-\d{2}")
 SKIPPED = re.compile(r"^\s*skip:", re.M)
+SKIP_LINE = re.compile(r"^\s*skip:\s*(.*)$", re.M)
 # The one criterion this whole file turns on. Asking "does any line carry this rule id" is
 # satisfied by every check that has a rejection case, which is all of them — so it is true
 # whether or not the real run still happens, and it is why deleting the real sweep from
@@ -90,16 +94,20 @@ def check_files():
 
 
 def run(path, cwd=ROOT):
+    # OPTIONAL_TOOLS=1 unconditionally, and it is not a convenience. A check whose external
+    # tool is absent is a hard FAIL without it, so the harness — which re-runs every check as
+    # a subprocess — turned a missing gitleaks into "test_secrets.sh does not pass on the real
+    # tree" and made `make test` fail on the clean clone the PHASES.md row promises (C++23 and
+    # python3, nothing else). It also made §Plan step 2's `unproven:` branch unreachable: the
+    # file failed before it could be reported skipped. The harness asks whether a check is
+    # wired to the tree, never whether this machine has the tool.
+    env = dict(os.environ, OPTIONAL_TOOLS="1")
     cmd = ["sh", path] if path.endswith(".sh") else [sys.executable, path]
-    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=300)
+    p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=300, env=env)
     return p.returncode, p.stdout + p.stderr
 
 
 # --- function extraction --------------------------------------------------------------
-
-def is_check_fn(name):
-    return name.startswith(FN_PREFIXES) or name in FN_NAMES
-
 
 def find_functions(text, unparsable=None):
     """Return [(name, start, end)] spanning the whole definition, body braces included."""
@@ -108,9 +116,8 @@ def find_functions(text, unparsable=None):
         unparsable = []
     for m in re.finditer(r"^([A-Za-z_][A-Za-z0-9_]*)\(\s*\)\s*\{", text, re.M):
         name = m.group(1)
-        if not is_check_fn(name):
-            continue
-        # Quote-aware, and it has to be: find_err03's regex contains a literal \{ and the
+        # Quote-aware AND comment-aware, and it has to be both: find_err03's regex contains
+        # a literal \{ and the
         # naive counter read it as a nesting brace, walked off the end of the file, and
         # dropped the function from the set — reporting "52/52 caught" while R-ERR-03 was
         # never mutated at all. A harness with that hole is the defect it exists to catch.
@@ -120,6 +127,15 @@ def find_functions(text, unparsable=None):
             if quote:
                 if c == quote:
                     quote = None
+            elif c == "#" and text[i - 1] in " \t\n":
+                # A comment, skipped whole. `arm_compiles( )` carries the line "R-TOOL-01's
+                # own floor" — one apostrophe, which opened a quote state that never closed,
+                # so the walker ran to EOF and dropped the function. R-TOOL-02's entire check
+                # was therefore never mutated and never reported: the defect this file exists
+                # to catch, sitting in this file.
+                nl = text.find("\n", i)
+                i = len(text) if nl < 0 else nl
+                continue
             elif c in "'\"":
                 quote = c
             elif c == "\\":
@@ -148,13 +164,31 @@ def neutered(text, span):
 
 # --- pattern extraction and alternation enumeration -----------------------------------
 
-def first_pattern(defn):
-    """The check's regex: the first single-quoted string in the body, per the house shape."""
+def patterns(defn):
+    """A finder's regexes: every single-quoted string in a ONE-LINE body, at most two.
+
+    The house shape is `find_xxx( ) { hits '<pattern>' '<exclusions>' $( core_files "$1" ); }`
+    — one line, and both strings are check patterns. Two things follow, and both were holes.
+
+    *Both* strings, not the first: round 9 took only the first, so `find_clean03`'s exclusion
+    list was never mutated and dropping `can|` from `(is|has|can|should)_` left the file and
+    the harness green while `bool can_fire = true;` silently became a false positive. A hole
+    in the exclusion half is a hole; what catches it is an accept case rather than a rejection
+    case, which is why the property needed no other change to reach it.
+
+    One-line bodies only, and that is what keeps this derived instead of listed. A
+    multi-line body is a helper, and its quoted strings are `sed` and `printf` expressions,
+    not check patterns: `hits`'s own `s|//.*||` and `s|^|${hits_f}:|` split on `|` like a
+    regex and yield mutants that are "caught" because sed breaks, which inflates the count
+    while proving nothing about coverage. Functions with no pattern are printed, so a finder
+    that stops being a one-liner is visible rather than silently unmutated.
+    """
     body = defn[defn.index("{") + 1:]
-    m = re.search(r"'([^']*)'", body)
-    if not m:
-        return None
-    return m.group(1), m.start(1) + (len(defn) - len(body))
+    if "\n" in body.rstrip().rstrip("}").rstrip():
+        return []
+    base = len(defn) - len(body)
+    return [(m.group(1), m.start(1) + base)
+            for m in list(re.finditer(r"'([^']*)'", body))[:2]]
 
 
 def alternatives(pat):
@@ -224,7 +258,13 @@ def drop_alternative(pat, span):
 # --- the three properties --------------------------------------------------------------
 
 def property_accounting(names):
-    ok = 0
+    """Returns the set of file names that could not be proven, for the mutation properties.
+
+    A file that skipped anything is not mutated. Every mutant of it would skip too, exit 0
+    and be counted a survivor — the build would fail on a clean clone for the opposite of the
+    real reason. Unproven is stated, never silent (the `unproven:` notes at the end).
+    """
+    ok, unproven = 0, set()
     for name in names:
         path = os.path.join(TESTS, name)
         text = open(path).read()
@@ -238,8 +278,15 @@ def property_accounting(names):
         if rc != 0:
             fail("%s does not pass on the real tree (rc=%d)" % (name, rc))
             continue
-        if SKIPPED.search(out) and not RESULT.search(out):
-            notes.append("unproven: %s (skipped — an external tool is absent)" % name)
+        # ANY skip, not only a whole-file skip. `test_tool_versions.sh` probes four tools
+        # and reports each on its own line, so with one absent it emits `skip:` AND `ok:`
+        # lines: the old "skipped and produced no result line" test was false for it, and the
+        # missing tool's `# LIVE R-TOOL-01: <tool>` label then prefixed zero lines and failed
+        # the file. A partial skip is a partial proof, which is not a proof.
+        skips = [s.strip() for s in SKIP_LINE.findall(out)]
+        if skips:
+            notes.append("unproven: %s (%d skip: %s)" % (name, len(skips), "; ".join(skips)))
+            unproven.add(name)
             continue
         real_lines, case_lines = [], []
         for _kind, rest in RESULT.findall(out):
@@ -273,7 +320,7 @@ def property_accounting(names):
         ok += 1
         print("  ok:   accounting: %-28s %d rule(s), %d live label(s)"
               % (name, len(rules), len(labels)))
-    return ok
+    return unproven
 
 
 def mutate_and_run(path, mutant, label):
@@ -321,10 +368,10 @@ def mutation_score(jobs):
     return len(jobs) - len(survivors), len(jobs), [m for _l, m in survivors]
 
 
-def property_neutering(names):
+def property_neutering(names, unproven):
     jobs = []
     for name in names:
-        if name in NO_MUTATE or not name.endswith(".sh"):
+        if name in NO_MUTATE or name in unproven or not name.endswith(".sh"):
             continue
         text = open(os.path.join(TESTS, name)).read()
         unparsable = []
@@ -333,7 +380,7 @@ def property_neutering(names):
             fail("%s: could not parse the definition of %s — an unparsed check is an "
                  "unmutated check" % (name, ", ".join(unparsable)))
         if not fns:
-            fail("%s: no check function found — the naming convention does not reach it"
+            fail("%s: no function found — a check file that defines none cannot be mutated"
                  % name)
             continue
         print("  ok:   functions in %-26s %s" % (name, ", ".join(f[0] for f in fns)))
@@ -353,31 +400,37 @@ def alternation_jobs(path):
     """
     name = os.path.basename(path)
     text = open(path).read()
-    jobs = []
+    jobs, patternless = [], []
     for fn_name, start, end in find_functions(text):
-        got = first_pattern(text[start:end])
-        if not got:
+        pats = patterns(text[start:end])
+        if not pats:
+            patternless.append(fn_name)
             continue
-        pat, off = got
-        for span in alternatives(pat):
-            reduced = drop_alternative(pat, span)
-            if reduced is None:
-                continue
-            mutant = text[:start + off] + reduced + text[start + off + len(pat):]
-            alt = pat[span[0]:span[1]]
-            jobs.append((path,
-                         mutant,
-                         "%s: dropping '%s' from %s is not caught" % (name, alt, fn_name),
-                         (name, fn_name, alt)))
-    return jobs
+        for pat, off in pats:
+            for span in alternatives(pat):
+                reduced = drop_alternative(pat, span)
+                if reduced is None:
+                    continue
+                mutant = text[:start + off] + reduced + text[start + off + len(pat):]
+                alt = pat[span[0]:span[1]]
+                jobs.append((path,
+                             mutant,
+                             "%s: dropping '%s' from %s is not caught"
+                             % (name, alt, fn_name),
+                             (name, fn_name, alt)))
+    return jobs, patternless
 
 
-def property_alternation(names):
+def property_alternation(names, unproven):
     jobs = []
     for name in names:
-        if name in NO_MUTATE or not name.endswith(".sh"):
+        if name in NO_MUTATE or name in unproven or not name.endswith(".sh"):
             continue
-        jobs.extend(alternation_jobs(os.path.join(TESTS, name)))
+        file_jobs, patternless = alternation_jobs(os.path.join(TESTS, name))
+        jobs.extend(file_jobs)
+        if patternless:
+            print("  ok:   no check pattern in %-19s %s"
+                  % (name, ", ".join(patternless)))
     return mutation_score(jobs)
 
 
@@ -397,7 +450,8 @@ def bootstrap():
     if not os.path.exists(fixture):
         fail("bootstrap fixture missing: tests/fixtures/incomplete_check.sh")
         return
-    survivors = run_mutants(alternation_jobs(fixture))
+    fixture_jobs, _patternless = alternation_jobs(fixture)
+    survivors = run_mutants(fixture_jobs)
     if len(survivors) == 1:
         print("  ok:   bootstrap: fixture gap reported as expected (%s)"
               % survivors[0][1][2])
@@ -412,15 +466,15 @@ def main():
         fail("no check files found under tests/")
         return 1
 
-    property_accounting(names)
+    unproven = property_accounting(names)
 
-    caught, total = property_neutering(names)
+    caught, total = property_neutering(names, unproven)
     if total and caught == total:
         print("  ok:   neutered: %d/%d caught" % (caught, total))
     elif total:
         fail("neutered: %d/%d caught" % (caught, total))
 
-    caught, total, gaps = property_alternation(names)
+    caught, total, gaps = property_alternation(names, unproven)
     if total and caught == total:
         print("  ok:   alternations: %d/%d caught" % (caught, total))
     elif total:

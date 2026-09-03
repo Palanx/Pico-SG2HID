@@ -10,8 +10,10 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )
-# Overridable so the spec's own step-0 check ("point HOOK at a stub that exits 3 and
-# this file must exit non-zero") is runnable as written; defaults to the real hook.
+# Overridable so the stub case below is runnable as written: the spec (§Plan step 6, not
+# step 0 — an earlier comment here said step 0 and no such check is in it) requires a hook
+# that cannot run to be reported as "the hook did not run", never as a breach, and the only
+# way to test that is to point HOOK at a stub. Defaults to the real hook.
 HOOK="${HOOK:-$ROOT/.claude/hooks/boundary-check.sh}"
 
 fail=0

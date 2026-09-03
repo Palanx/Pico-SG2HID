@@ -151,7 +151,7 @@ reject R-CLEAN-09 find_clean09 src/core/x.h   'struct A : B { };'
 # Anchoring std::string must not stop it matching the thing it is there for.
 reject R-ARCH-03  find_arch03  src/core/x.cpp 'std::string s;'
 # Cases for alternations that had none when round 7 mutation-tested this file. They are not
-# a claim that every alternation is covered — counting that is tests/test_checks_are_live.sh's
+# a claim that every alternation is covered — counting that is tests/test_checks_are_live.py's
 # job, and it is what names the next alternative to add a case for. Adding one here without
 # running that harness proves nothing about the ones still uncovered.
 reject R-ARCH-03  find_arch03  src/core/x.cpp 'void* p = malloc( 4 );'
@@ -217,8 +217,15 @@ reject R-CLEAN-09 find_clean09 src/core/x.h   'virtual void poll( );'
 # No floor. A count next to "every alternative is covered" is the round-8 defect: the two
 # drift and the number is the one that stops being true. Sufficiency is asserted by
 # tests/test_checks_are_live.py, which derives what is needed from the patterns themselves.
-echo "  ok:   rejection cases: $rejected"
-[ "$rejected" -gt 0 ] || fail=1
+# No floor to compare against (see above), but a run that produced no case at all is a
+# broken file, not a passing one — and the verdict has to reach the prefix. `ok:` above a
+# comparison that may reject the same number is the shape §Plan step 0c bans.
+if [ "$rejected" -gt 0 ]; then
+    echo "  ok:   rejection cases: $rejected"
+else
+    echo "  FAIL: rejection cases: $rejected — no case ran"
+    fail=1
+fi
 
 # A rule that fires on legitimate code is as broken as one that never fires. These must
 # NOT be reported.
@@ -246,10 +253,16 @@ accept "freestanding <span>"          find_arch01  src/core/x.h   '#include <spa
 accept "freestanding <expected>"      find_arch01  src/core/x.h   '#include <expected>'
 accept "<string_view> is not <string>" find_arch01 src/core/x.h   '#include <string_view>'
 accept "enum with a fixed underlying type" find_clean09 src/core/x.h 'enum class Mode : uint8_t { kDigital };'
-if [ "$accepted" -ge 11 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 11)"
+# The other two prefixes R-CLEAN-03 exempts. Demanded by tests/test_checks_are_live.py once
+# it started mutating the EXCLUSION string as well as the pattern: dropping `can|` or
+# `should|` from '(is|has|can|should)_' left this file green, and these are what fail when it
+# happens. An accept case is what covers an exclusion alternative — a rejection case cannot.
+accept "can_ prefixed bool"            find_clean03 src/core/x.cpp 'bool can_fire = true;'
+accept "should_ prefixed bool"         find_clean03 src/core/x.cpp 'bool should_retry = false;'
+if [ "$accepted" -ge 13 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 13)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 11)"
+    echo "  FAIL: false-positive cases: $accepted (floor 13)"
     fail=1
 fi
 

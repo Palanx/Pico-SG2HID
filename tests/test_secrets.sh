@@ -113,7 +113,7 @@ rm -rf "$tmp"
 # BOTH halves — the tree scan comes back clean and the history scan still fires.
 # It does NOT protect the real history scan above: deleting that call leaves this file green,
 # because this case builds its own fixture. The LIVE label in the header is what protects it,
-# and tests/test_checks_are_live.sh is what enforces the label.
+# and tests/test_checks_are_live.py is what enforces the label.
 tmp=$( mktemp -d ) || exit 1
 (
     cd "$tmp" || exit 1

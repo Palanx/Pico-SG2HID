@@ -2110,3 +2110,131 @@ Four of the round-10 validation findings were spec text, not code, and were fixe
   cases, the two secret-scan cases, the four tool probes and the eleven accept cases. Accept
   coverage is enumerated rather than generated because mutating what a check *finds* says
   nothing about what it must *ignore* (`undecidable` b).
+
+## Implementation — 2026-09-03 (round 11, against the round-10 validation)
+
+Six code findings were open: `contradicts` 1, 3, 5 and 6 from the round-10 review, round-9's
+`contradicts` 2b, and the one item round 10's own spec fix created. Round-9's `undecidable`
+(a) is closed too, because the fix for `contradicts` 3 ran straight into it. All six are
+closed and each was verified by mutation or measurement, never by reading the output.
+
+**`contradicts` 5 — the clean-clone floor.** `Makefile` gave `OPTIONAL_TOOLS=1` to the
+`SH_TESTS` loop only, and the harness's `run()` passed no `env`, so every check the harness
+re-ran as a subprocess treated a missing external tool as a hard failure. `run()` now sets
+`OPTIONAL_TOOLS=1` unconditionally — the harness asks whether a check is wired to the tree,
+never whether this machine has gitleaks — and the `PY_TESTS` loop sets it too. The
+partial-skip half is closed with it: the old test was `SKIPPED.search(out) and not
+RESULT.search(out)`, false for `test_tool_versions.sh` when some tools resolve and others do
+not, which left an absent tool's `# LIVE R-TOOL-01: <tool>` label prefixing zero lines and
+failed the file. **Any** `skip:` line now makes a file `unproven:`, and an unproven file is
+excluded from both mutation properties — every mutant of a skipping file would skip too, exit
+0 and count as a survivor, failing the build for the opposite of the real reason. Measured on
+a simulated clean clone (`PATH` = a shim holding only `python3`, plus the system directories,
+so no gitleaks and no `arm-none-eabi-g++`):
+
+```
+before   make test  rc=2   FAIL: test_secrets.sh does not pass on the real tree (rc=1)
+                           FAIL: test_style.sh does not pass on the real tree (rc=1)
+                           FAIL: test_tool_versions.sh does not pass on the real tree (rc=1)
+after    make test  rc=0   4 skip: lines, 3 unproven: lines, OK
+```
+
+That simulation is now an acceptance criterion (§Acceptance criteria, clean-clone block), so
+it cannot regress silently.
+
+**`contradicts` 3 — the naming convention is gone, and the hole under it was worse than
+reported.** The convention was replaced by "every function the file defines", after measuring
+that neutering **each** of the 25 parsable functions in the five shell checks makes its file
+exit non-zero — finders, shared helpers and case drivers alike, so there was nothing for a
+convention to exclude. Then the 26th: `arm_compiles` was *unparsable*, not merely
+out-of-convention. The brace walker was quote-aware but not comment-aware, and the comment
+line "R-TOOL-01's own floor" opens a single-quote state that never closes, so the walker ran
+to end of file and dropped the function. R-TOOL-02's entire check had therefore never been
+mutated and the harness said nothing, because it printed only the set it *discovered* — the
+defect this file exists to catch, sitting in this file, for the second time (the first was
+`\{` in `find_err03`, recorded in round 9). The walker skips comments now. Neutering went
+from **12/12 to 26/26**.
+
+**Round-9 `undecidable` (a), reached by the same fix.** With every function mutated,
+`first_pattern` was still taking only the first quoted string, so `find_clean03`'s exclusion
+list was never touched. Confirmed live: dropping `can|` from `(is|has|can|should)_` left the
+file and the harness green while `bool can_fire = true;` silently became a false positive.
+`patterns()` now takes **both** quoted strings of a **one-line** body. One line is what keeps
+the scope derived instead of listed: a finder is a one-liner by the house shape, and a
+multi-line body is a helper whose quoted strings are `sed`/`printf` expressions —
+`hits`'s own `s|//.*||` splits on `|` like a regex and produced two mutants that were
+"caught" only because sed broke, which inflates the count while proving nothing. The change
+immediately demanded two accept cases (`bool can_fire`, `bool should_retry`), which is step 4
+working as written; alternations went **55/55 → 59/59** and the accept floor 11 → 13.
+
+**Round-9 `contradicts` 2b — the shared verdict in `tests/test_phase_docs.sh`.** `[ -n
+"$found" ]` was written out three times, so gutting only the real run's copy left file and
+harness at rc=0. The file now has `report` (the shared verdict), `run_all` (finder → verdict →
+return code) and one wiring case asserting that the verdict reaches the return code *and*
+names the rule. Verified: `if [ -n "$2" ]; then` → `if false; then` now fails the rejection
+case and the wiring case together.
+
+**`contradicts` 6 — three false statements deleted.** Two comments named
+`tests/test_checks_are_live.sh`, a file that does not exist (`tests/test_secrets.sh:116`,
+`tests/test_repo_shape.sh:154`); `tests/test_boundaries.sh:13` attributed the `HOOK`-stub
+requirement to §Plan step 0, which contains no such check — it is step 6, and the comment now
+says so and says why the override exists.
+
+**The item round 10's own spec fix created.** `tests/test_repo_shape.sh:220` printed
+`ok:   rejection cases: $rejected` above `[ "$rejected" -gt 0 ] || fail=1`. Now inside the
+branch, with a `FAIL:` line for a run that produced no case at all.
+
+**`contradicts` 1 — §Out of scope was wrong, not the code, and the measurement decides it.**
+§Out of scope said "parallelising is an optimisation nobody has yet needed" while an
+acceptance criterion caps the suite at 2m0s. Serially (`workers = 1`) the harness alone takes
+**3m11s** for its 85 mutants; with the thread pool the whole suite is **50.6s**. A mutant is a
+subprocess that spends its life waiting on other subprocesses, so the pool is I/O concurrency
+and the cap cannot be met without it. §Out of scope now says so with both numbers, keeps
+everything past the cap out of scope, and names the shared `case_tmp` in
+`tests/test_repo_shape.sh` for the same reason.
+
+Harness on the clean tree: accounting `ok:` for all seven check files, `neutered: 26/26`,
+`alternations: 59/59`, `bootstrap: fixture gap reported as expected (forbidden_beta)`.
+`tests/test_repo_shape.sh`: 55 rejection cases, 13 accept cases, `wiring cases: 8/8`.
+
+## Deviations (round 11)
+
+- **Five spec amendments, all of them the spec being wrong rather than the code.** §Out of
+  scope (parallelism, with the 3m11s/50.6s measurement); §Plan step 3 (the naming convention
+  removed, with the "all 25 die" measurement that justifies removing it); §Plan step 4 (both
+  quoted strings of a one-line finder, and why one-line is the scope rule); §Plan step 6's
+  accept enumeration (11 → 13 names); and the §Acceptance criteria paragraph on which floors
+  remain (11 → 13). Recorded here because an amended spec requires it.
+- **Three acceptance criteria added, not amended.** The two round-9 survivors are permanent
+  liveness cases now — delete the real `sweep` from `tests/test_boundaries.sh`, delete the
+  real `run_all` call from `tests/test_phase_docs.sh`, each must fail `make test` — plus
+  gutting `test_phase_docs.sh`'s shared verdict, plus the clean-clone block, plus a negative
+  half for the two new accept prefixes. A finding that cost three rounds and is not in the
+  acceptance criteria is a finding that returns.
+- **`tests/test_phase_docs.sh` was rewritten rather than patched.** Routing every case through
+  one verdict meant a `report`/`run_all` pair and a wiring case; the finder `missing_verify`
+  is unchanged. The file is 98 lines against 74.
+- **Files touched:** `tests/test_checks_are_live.py`, `tests/test_phase_docs.sh`,
+  `tests/test_repo_shape.sh`, `tests/test_boundaries.sh`, `tests/test_secrets.sh`, `Makefile`
+  (all named in the Plan: steps 1, 2, 3, 4, 6) and `docs/phases/00-scaffold/spec.md`.
+- **Nothing was done about `contradicts` 1's sibling question**, whether a mutant judged only
+  by exit code can be "caught for the wrong reason". The two `hits` mutants that raised it are
+  no longer generated, so the concrete instance is gone; the general question is untouched and
+  stays in §For later phases.
+
+## For later phases (added round 11)
+
+- **The mutant judgement is still exit-code-only.** A mutant that breaks a file syntactically
+  counts as caught. Round 11 removed the two instances that existed (the `sed` expressions in
+  `hits`) by scoping patterns to one-line bodies, but nothing stops a future check from
+  reintroducing the class. The fix, if it is ever worth it, is to require a `FAIL:` line
+  naming a rule rather than a non-zero exit — measured and rejected as unnecessary today
+  because both instances produced 61 `FAIL:` lines and were therefore indistinguishable from
+  a genuine catch by that test. Owner: the first phase whose check is not a grep.
+- **An interrupted `make test` still leaves `tests/mut_*.sh` behind** — the harness unlinks in
+  a `finally` that SIGTERM skips. Observed three rounds running. A `trap` in the Makefile or a
+  `.gitignore` line closes it; neither is owned by any step of this spec.
+- **`tests/test_boundaries.sh:111` prints `rejection cases: 2/2` with no `ok:`/`FAIL:`
+  prefix**, so the liveness harness's accounting cannot see it and §Plan step 0c's rule does
+  not reach it either. Not a defect today — the floor is asserted on the next line — but it is
+  the only case count in the suite that is invisible to the harness.
