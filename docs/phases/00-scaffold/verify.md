@@ -102,8 +102,8 @@ Expect it to fail, and expect a result line naming `R-ARCH-03` and the file it f
 violation in.
 
 Do not match the rest of that line against anything written here. **This document tells you
-only what a run does — whether it passed, which rule it named, which file — and never anything
-about the text it prints, including how much of it there is**, on purpose: a check's exact wording changes whenever it gains a case, and
+what a run does — whether it passed, which rule it named, which file — and never what a
+result line looks like, including how many of them there are**, on purpose: a check's exact wording changes whenever it gains a case, and
 a document that quoted one would be wrong more often than right. The rule id is the part that
 lasts, and it is the part you look for.
 
@@ -181,7 +181,7 @@ catalogue never declared, a rule marked "cannot be automated" that quietly has a
 — each one built as a broken
 example and each one required to be caught. This one check is the exception to the machinery
 described above: the machine does not generate its coverage, so its nine examples were written
-by hand and a tenth way of coming loose would need a tenth written by hand too. That is known,
+by hand, and a new way of coming loose would need a new one written by hand too. That is known,
 deliberate, and owed to phase `01-ps2-codec`.
 
 ### 5. Watch a rule get caught and *still* let the build pass — then watch that get caught
@@ -231,9 +231,9 @@ cp /tmp/rs.bak tests/test_repo_shape.sh ; rm -f /tmp/rs.bak ; make test
 
 Expect `OK`. All fourteen rules are covered this way, and `R-SEC-01` twice over, because its
 check scans two different things — the files as they are now, and the project's history — and
-so has two wires to prove. Cut any one of them and `make test` fails; that is the whole of the
-guarantee, and it is the reason you can trust an `OK` from a suite whose rules mostly have
-nothing to look at yet.
+so has two wires to prove. Cut any one of them and `make test` fails. That is one of the four
+ways this suite refuses to pass while something is broken, and it is the last of them to have
+been closed.
 
 ## What the toolchain checks decide, and why one of them compiles a file
 
@@ -241,9 +241,10 @@ Two of the fourteen are about the tools rather than the code.
 
 `R-TOOL-01` compares the tools it covers against a **floor** — the oldest version the rule
 will accept.
-It compares whole versions and not the leading number, so `12.10` is not read as older than
-`12.9`. If a tool is not installed at all, `make test` skips it instead of failing: the host
-tests are required to run with nothing but a C++23 compiler and `python3`.
+It compares the whole version and not just the leading number, so a floor can care about the
+minor number too. If one of these tools is not installed at all, `make test` skips it instead
+of failing: the host tests are required to run with nothing but a C++23 compiler and
+`python3`.
 
 `R-TOOL-02` is the one check here that exists purely because of a mistake this project
 already made. There were briefly two ARM compilers installed. The one that was easy to

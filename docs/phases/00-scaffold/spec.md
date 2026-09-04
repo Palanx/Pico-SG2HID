@@ -228,8 +228,8 @@ only C++23 and `python3`; exits non-zero — naming the rule id and the offendin
 any of the fourteen violations is introduced by hand; exits non-zero when any function in a
 Table 5 *mutated* file is neutered, when any alternative of any check pattern is removed,
 when any real-run call site is deleted, and — also naming the rule — when the `fail=1` on any
-of the fourteen rules' failure paths is removed; that last branch names the rule because the
-wiring case whose assertion fails is the thing that reports it (Table 2, WC). The last of those is Table 2's WC column and is the clause rounds
+of the fourteen rules' failure paths is removed; that last branch names the rule
+because the wiring case whose assertion fails is the thing that reports it. The last of those is Table 2's WC column and is the clause rounds
 9-11 could not make true for more than nine rules at a time.
 One more fact belongs to this clause rather than to a Plan step, because `verify.md` is
 required to teach it: on a machine where `clang-tidy` resolves, a scratch file carrying an
@@ -272,6 +272,10 @@ list is the enumeration and a number beside it would be §How counts are stated'
   stating them together is the clause being quoted, not a layout being described — and that
   includes saying they arrive together in one report, which is the form the guarantee takes.
   What the clause does not carry is their order, their spacing, or what else sits with them.
+  **The same holds for a check that binds two rules**: the clause names both ids in one
+  guarantee, so saying both arrive in one naming is the clause. Their separator is not, and
+  §Plan step 2's rows record it for `test_style.sh` as source shape, never as something
+  `verify.md` may repeat.
 - **Widening the clause is how `verify.md` earns the right to state something new.** A round
   that wants the operator told a new fact adds it to *Observable behaviour* first, where the
   Plan and the Acceptance criteria can both see it. That is the amendment; there is no second
@@ -514,8 +518,10 @@ is where the phase's remaining risk lives.
    round wrote down — round 12's two `undecidable` verdicts are both this gap, and its
    Table 5 ✓ is unreproducible without the rows below. It declares **three** ids and has
    **nine** emission sites across two independent `if`/`elif`/`else` chains — five in one and
-   four in the other, no site shared between them. Exactly one site per chain fires on any
-   run, so a run produces exactly **two** result lines, one per row below. Measured by reading
+   four in the other, no site shared between them. Exactly one site per chain fires on any run,
+   so a run **on a machine where both clang tools resolve** produces exactly **two** result
+   lines, one per row below; where one does not, that chain's site emits `skip:`, which is not
+   a result line, and the file is unproven per the rule above. Measured by reading
    the file, not by running it, since most of these branches need a tool absent or a source
    present — so this is a **dated measurement of one file's source**, not a count a check
    prints. §How counts are stated governs the second kind: a printed count needs a floor
@@ -564,9 +570,16 @@ is where the phase's remaining risk lives.
    `RULE` without `LIVE` means one real-run call, which the case-line convention already
    pins. R-SEC-01 (tree, history) and R-TOOL-01 (four tool probes) are the two rules that
    need labels.
-   **A skipped file is unproven, not passing.** `OPTIONAL_TOOLS=1` turns a missing external
-   tool into a skip, and a skipped check produces no result lines; the harness must report
-   `unproven: <file> (skipped)` and must not count it as satisfied.
+   **A *result line* is an `ok:` or a `FAIL:` line, and a `skip:` line is not one** — the
+   accounting criterion is stated over `ok:`/`FAIL:` lines throughout and this names it once,
+   because two different rows of this spec turned on the answer.
+   **Any skip makes the file unproven, not passing** — *any* skip line, not only a wholly
+   skipped file. `OPTIONAL_TOOLS=1` turns a missing external tool into a skip; a check that
+   probes several tools emits `skip:` for the absent one and `ok:` for the rest, and that is a
+   partial proof, which is not a proof. The harness must report `unproven: <file>` naming the
+   skips and must not count it as satisfied. This is what keeps a machine where only one of the
+   two clang tools resolves from reading as accounting drift: the file is unproven, not short a
+   declared id.
    — check: `python3 tests/test_checks_are_live.py` → exit 0, printing one `ok:` line per check
    file with its rule-and-label count; and, on a copy of the repository, each of these four
    deletions makes it exit non-zero. The first two are the ones that survived round 9, and a
@@ -756,15 +769,13 @@ is where the phase's remaining risk lives.
    nor adds the diagnostic's wording.
    **What `verify.md` may assert is not this step's to define, and round 13's whole finding
    was that it had been treated as if it were.** The authority is §Goal, *What `verify.md` may
-   assert about the suite* — the *Observable behaviour* clause is the complete set of facts
-   about a run that this document may state, and everything else about a check's output is out
-   whether quoted or described. Three wordings were tried here first (properties; a sourced
-   vocabulary table; a decides/formats axis) and each split on a different sentence, because a
-   Plan step cannot ground a claim the Goal never made. This step implements that clause; it
-   does not restate it, and it must not narrow or widen it.
-      The rule id is the one literal that stays, because the id is the durable name and §Plan
-   step 2's accounting property is what guarantees the check prints it. Commands stay
-   literal: they are runnable, and this step's check runs them.
+   assert about the suite*, and this step does not paraphrase it — a paraphrase is how the
+   scope word went missing three times over. Read it there. Three wordings were tried here
+   first (properties; a sourced vocabulary table; a decides/formats axis) and each split on a
+   different sentence, because a Plan step cannot ground a claim the Goal never made. This step
+   implements that clause and may neither narrow nor widen it.
+   Commands are the one thing this step adds to it, and they stay literal: they are runnable,
+   and this step's check runs them.
    What this costs: `verify.md` cannot teach the operator to read a specific line's layout.
    Everything §Goal guarantees survives, and a round that needs more amends the clause.
    **Why the property and not "keep the sample current".** This document has gone stale on

@@ -2962,3 +2962,40 @@ spec failing, and it broke downward only after the authority moved to §Goal.
   outcome — but it means the clean-clone run proves strictly less about R-STYLE-01, R-STYLE-02
   and R-CLEAN-02 than a developer machine does, and no phase currently owns closing that.
 
+## Deviations (round 13, sixth review pass — post-commit)
+
+Committed at `23df358`; these corrections sit on top of it. The sixth pass returned **2+4**,
+the lowest of the round, and neither `contradicts` was substantive — both were sentences that
+describe the rule rather than apply it:
+
+- **`verify.md` §2's self-rule falsified itself.** It said the document never states "anything
+  about the text it prints", while §Goal's clause puts `make test`'s `OK` **inside** and the
+  document states it three times. Scoped to *what a result line looks like, including how many
+  there are*, which is the rule the clause actually draws.
+- **§Plan step 8 was paraphrasing the clause and dropping its scope word.** Its restatement
+  said "the complete set of facts about a run" where §Goal says "about the **output** of a
+  run" — the word §Goal states first precisely because three wordings got it wrong — and it
+  asserted "the rule id is the one literal that stays", which the very next sentence breaks
+  for commands and which §Goal breaks for `OK`. The step now points at the clause and
+  paraphrases nothing; commands are named as the one thing the step adds.
+- **Two ids arriving in one naming is now settled** the way the id and the path already were.
+  The clause named both `R-STYLE-02` and `R-CLEAN-02` in one guarantee but only settled
+  co-arrival for the id-and-path pair, so `verify.md` saying the check names them "together"
+  was unarbitrable. Their separator stays out.
+- **"Result line" is defined once, in §Plan step 2: an `ok:` or a `FAIL:` line, and a `skip:`
+  line is not one.** Two rows of this spec turned on the answer in opposite directions.
+- **The unproven rule is stated as the harness implements it.** The spec said "a skipped
+  *file* is unproven"; `tests/test_checks_are_live.py` marks a file unproven on **any** skip
+  line, and its comment says why — *"A partial skip is a partial proof, which is not a
+  proof."* The reviewer read the file-level wording and derived a machine where one clang tool
+  resolves and the other does not, concluding `make test` would fail inside the clean-clone
+  floor. It does not — the code was right and the spec's wording was not, which is the
+  opposite of the usual direction and worth recording as such.
+- `verify.md`'s version-comparison example (`12.10` versus `12.9`) asserted an ordering §Plan
+  step 6 does not found; it founds "the whole version, not the leading integer". Reworded to
+  what is founded.
+
+Review counts for the whole round: `4+4`, `8+5`, `3+6`, `5+8`, `5+3`, `2+4`. Both columns fell
+only after the authority moved to §Goal, and the last pass's `contradicts` were both about the
+prose describing the rule rather than about anything the rule governs.
+
