@@ -2449,3 +2449,104 @@ run and left no orphans behind.
 - **`tests/test_style.sh` is the only file in the accounting set that nothing else covers**
   (Table 5). Its three rules are not among the fourteen and it is never mutated, so if the
   phase that owns clang-tidy ever changes it, accounting is the only thing that will notice.
+
+## Validation — 2026-09-04 (round 12)
+
+- criteria: **44 passed / 0 failed.** 14 main (`make test` OK, `make lint` 0, harness
+  accounting for all seven Table 5 files + `neutered: 30/30` + `alternations: 59/59` +
+  `bootstrap: fixture gap reported as expected`, traceability 9/9, boundaries
+  `rejection cases: 2/2`, repo_shape 55 rejection + 13 accept + `wiring cases: 8/8`,
+  phase_docs rejection + wiring + false-positive, secrets both `LIVE` labels and both wiring
+  cases, tool_versions six `ok:` lines and two wiring cases, `planned: 00-scaffold` 0,
+  `STYLE_OPTIONAL` 0 in both, both docs non-empty, `time make test` **74.1s** against the 2m
+  cap); 8 liveness mutations; **6 wiring mutations, each exiting non-zero naming its own
+  rule**; 4 floors (`n/2`, `n/4`, `n/9` all floors now, grep count 5); 1 clean-clone block
+  (rc=0, 4 `skip:`, 3 `unproven:`, 0 "does not pass on the real tree"); 2 orphan checks
+  (clean run and killed run, no `mut_*.sh` either time); 12 adversarial; 2 negative half
+- project gates: test pass, lint pass, typecheck **gap** —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never overwrites.`
+- boundary sweep: **not swept: no file in the set is under a declared layer.** 13 active
+  `deny` lines, prefixes `src/{core,hal,usb,app,emu}/`, 0 of the 26 files in the set match
+- index: was **STALE** at `d0a41d4`, rebuilt to `da1e8a6`, `--check` clean
+- independent review: **contradicts — one, confirmed, and confirming it found a second
+  instance of the same defect; undecidable — two, both the same missing statement**
+- closure test: **fail.** Mechanical half passes — four sections non-blank, and all 20
+  non-exempt files in the set are named in the spec, the four that steps W and T touch now
+  carrying 11-21 mentions each where the pre-re-expansion spec named them zero times. It
+  fails on the two `undecidable` verdicts
+- upstream: **none.** No package-owned file misbehaved, and the provenance table added in
+  round 10 again drew no reviewer question — second round running. The open entry
+  (`~/.claude-belay/feedback/pico-sg2hid.md`, `commands/validate-phase.md`, 2026-09-02)
+  stands on its own terms
+- verdict: **returned to implementation**, and one spec edit alongside it. This is validation
+  **#1** against the round-12 spec (the counter reset at the `escaped to /expand-phase`
+  verdict of round 11), so the iteration-3+ escape does not apply
+
+### What the round-12 spec bought
+
+Worth recording because it is the first round in twelve where the review found nothing
+structural. The reviewer checked and cleared, by name, the things that failed in rounds 4-11:
+the fourteen `planned:` → `test:` flips are exactly Table 1's fourteen; every mutation anchor
+in the liveness and wiring blocks matches the shipped source verbatim; the three equalities
+Table 4 marks are floors and `wiring cases` stays `-eq 8` as that table says; the 59
+alternation spans decompose per finder and each has a covering case; `test_boundaries.sh`
+kept `sweep( )`'s `case` as its verdict instead of growing a `report( )`, which the Context
+pointer explicitly forbids. Tables made those decidable; prose did not.
+
+### The one `contradicts`, and the second instance found while confirming it
+
+**`docs/phases/00-scaffold/verify.md` tells the operator to expect output the checks no
+longer emit.** §Plan steps 0d and 8 require its sample output to match what the checks emit
+today, which makes this an implementation failure, not a taste note.
+
+- §4 says "Expect two lines: the catalogue is consistent, and `rejection cases: 9/9`."
+  `tests/test_rule_traceability.py` prints **three** since §Plan step W added its wiring case
+  to that file in this same round:
+  ```
+    ok:   R-PROC-01 (catalogue consistent in both directions)
+    ok:   R-PROC-01 rejection cases: 9/9
+    ok:   R-PROC-01 wiring case (the verdict reaches the exit code)
+  ```
+- **Found while confirming the above, not reported by the reviewer:** §3 quotes the collateral
+  clang-tidy failure as `FAIL: R-STYLE-02 / R-CLEAN-02`. `tests/test_style.sh` separates those
+  two ids with a **comma**, not a slash — `ok:   R-STYLE-02, R-CLEAN-02 (no checkable sources
+  yet)` on the clean tree. An operator grepping for the quoted string finds nothing.
+
+`verify.md` gained no wiring-case paragraph either, so the operator has no way to check by
+hand the property this round exists to deliver. That is the same class and is owed with it.
+
+### The two `undecidable`, which are one missing statement
+
+Both come from `tests/test_style.sh` being the one file in Table 5 whose output the spec never
+describes. The reviewer could not decide whether verify.md's §3 sample matches what that check
+emits, nor whether Table 5's accounting ✓ for it holds, because the spec says only "a `FAIL:`
+line naming the rule" (singular) while the file declares **three** ids and emits them across
+**two** lines, the second carrying two ids at once:
+
+```
+  ok:   R-STYLE-01 (no C++ sources yet)
+  ok:   R-STYLE-02, R-CLEAN-02 (no checkable sources yet)
+```
+
+That shape is exactly what the accounting property has to tolerate — one result line naming
+two rules — and nothing in §Goal or §Plan says so. Table 5 asserts the ✓ as a measurement the
+reviewer cannot reproduce. The fix is a row or a sentence stating `test_style.sh`'s
+result-line shape and that accounting accepts several ids on one line; it is a spec edit, and
+§Plan step 2's wording is where it belongs.
+
+### Taste, not blocking (round 12)
+
+- `Makefile`'s `OPTIONAL_TOOLS=1` on the `PY_TESTS` loop is inert today: no `.py` check reads
+  the variable, and the harness sets it for its own children unconditionally. Harmless, and
+  it becomes load-bearing the first time a `.py` check needs an external tool.
+- Every wiring case runs its aggregate **twice** — once discarding output to read `fail`, once
+  capturing text. Eight times in `test_repo_shape.sh`, and in `test_secrets.sh` that is four
+  extra `gitleaks` pairs per run. With the suite at 74.1s against a 2m cap this is the first
+  taste note here with a budget attached.
+- `property_accounting` `continue`s after the first defect per file, so a file with two
+  accounting defects surfaces them one round at a time.
+- `src_files( )` / `core_files( )` are one-line bodies whose quoted strings are `find` globs,
+  not check patterns; they fall inside §Plan step 4's stated scope and generate no jobs only
+  because they contain no `|`.
+- `R-ERR-05` still sits between R-ERR-03 and R-ERR-04 in the catalogue (logged round 9).
+- `tests/fixtures/incomplete_check.sh` is mode 100644 (§Out of scope parks `.sh` modes).
