@@ -2550,3 +2550,415 @@ result-line shape and that accounting accepts several ids on one line; it is a s
   because they contain no `|`.
 - `R-ERR-05` still sits between R-ERR-03 and R-ERR-04 in the catalogue (logged round 9).
 - `tests/fixtures/incomplete_check.sh` is mode 100644 (§Out of scope parks `.sh` modes).
+
+## Implementation — 2026-09-04 (round 13, against the round-12 validation)
+
+Two routes and one decision, in that order. Route 1 is a spec edit with no command behind
+it; route 2 is this command; the decision is what stops route 2 from returning in round 14.
+
+### Route 1 — the spec gap round 12 returned as two `undecidable`
+
+`tests/test_style.sh` was the one file in Table 5 whose output no round had written down, so
+its accounting ✓ was a measurement the reviewer could not reproduce. §Plan step 2 now carries
+it as two rows, measured by **reading** the file rather than running it — most of its branches
+need a tool absent or a source present, so no single run exhibits them:
+
+- `R-STYLE-01` alone on **5** emission sites (`ok:` ×2, `FAIL:` ×2, one skip-or-fail).
+- `R-STYLE-02` **and** `R-CLEAN-02` always together on **4** sites (`ok:` ×2, `FAIL:` ×1, one
+  skip-or-fail). Nine sites, three ids, at most two lines per run.
+
+And the consequence nothing in the spec had stated: **accounting accepts several ids on one
+line.** `property_accounting` applies `RULE_IN_LINE` to each result line and counts every id
+it finds, so one line discharges two declarations. A criterion reading "one line per declared
+rule" would fail this file, which is why §Goal says *produces a result line* and not *produces
+its own*. Table 5's row now points at those rows instead of asserting the ✓ bare.
+
+### The premise round 12 got wrong, found while writing route 1
+
+Round 12's validation recorded a second instance alongside the `verify.md` §4 defect:
+
+> §3 quotes the collateral clang-tidy failure as `FAIL: R-STYLE-02 / R-CLEAN-02`.
+> `tests/test_style.sh` separates those two ids with a **comma**, not a slash […] An operator
+> grepping for the quoted string finds nothing.
+
+**That is false, and the correction is worth more than the finding was.** The file uses both
+separators, chosen by branch, not by file:
+
+```
+git stash list >/dev/null; mkdir -p src/core
+printf '#include "pico/stdlib.h"\n' > src/core/scratch.h
+sh tests/test_style.sh          # rc=1, and the FAIL line is verbatim what verify.md §3 quoted
+rm -f src/core/scratch.h; rmdir src/core src
+```
+
+Comma on the two `ok:` lines, ` / ` on the `FAIL:` and the skip-or-fail one. §3 describes the
+broken tree and quoted the `FAIL:` branch; round 12 checked it against the clean tree's `ok:`
+line. So `verify.md` arrived at this round with **one** confirmed defect (§4's line count),
+not two, plus the missing wiring-case paragraph.
+
+It is still evidence for the decision below, and the strongest available: a reviewer holding
+the literal output beside the document got it wrong anyway, because *which* literal line is
+correct depends on a branch the document does not fix. "Keep the sample current" cannot be
+executed by a reader who does not know which branch produced the sample.
+
+### The decision — `verify.md` states properties, never a transcript
+
+`verify.md` has gone stale on quoted output in **four rounds out of twelve** (rounds 2, 3, 9,
+12; the entries are above). Every time, the round that broke it was a round that changed a
+check — which is every round — and every time the fix applied was the instance: update the
+sample. It is F2 at the level of the documentation.
+
+Two options were on the table. **(b)** generate `verify.md` from the tree, so the round that
+desynchronises it fails. **(a)** forbid literal output in that file and state properties
+instead. (a) shipped. (b) buys the same property for the price of a generator plus a template,
+and a generated operator document stops being written for the operator, which is the only
+thing this file is for.
+
+(a) is not "be careful": §Plan step 8 now bans, by name, a line count, a quoted result line, a
+quoted path and the text a check prints after the rule id — and §Acceptance criteria carries
+the grep that decides it. The grep extracts every `ok:`/`skip:`/`FAIL:` run up to the next
+backtick and requires each to be a bare prefix (prose naming the shape) or `FAIL: <id>` with
+nothing after the id. Measured against the file as it arrived: **3**. Against the file as it
+ships: **0**. What the grep cannot see is a line *count* — "expect two lines" quotes nothing —
+and that is exactly the half round 12 reported, so it is written down as read, not run.
+
+It also removes a defect no round named. Round 2 fixed §2 by pinning the absolute path the
+check prints, and what shipped was `/path/to/pico-sg2hid/…`: a **placeholder** inside a block
+the surrounding sentence sold as real output. Neither a transcript nor a property, and the
+shape no literal-output rule can ever settle — the moment a sample has to be
+machine-independent it has stopped being the sample.
+
+### Route 2 — `verify.md` rewritten under that rule
+
+- **§2** — the fenced two-line sample is gone; it now says a line prefixed `FAIL:` naming
+  `R-ARCH-03`, with the offending file, line and text indented under it, and tells the
+  operator not to match the rest against anything in the document, with the reason.
+- **§3** — the collateral clang-tidy failure is described (a second `FAIL:` line naming both
+  ids, complaining a header was not found) instead of quoted, with a parenthesis explaining
+  that the two ids always travel together and that the separator differs between the success
+  and failure branches. That parenthesis is the operator-facing half of route 1.
+- **§4** — no line count. It says one `ok:` line per thing proved, each naming `R-PROC-01`,
+  and that the number grows as the check gains cases. Measured: three lines today, all three
+  naming `R-PROC-01`.
+- **§5, new — the wiring case**, which is the property this round of the phase exists to
+  deliver and which the operator had no way to check by hand. It explains the split between
+  a check *saying* a rule broke and *voting* that the run failed, then has the operator cut
+  one wire and watch the suite fail anyway. Measured end to end: replacing
+  `report R-ERR-04 "$( find_err04 "$1" )" || fail=1` with the same line minus `|| fail=1`
+  gives `make test` rc=2, a `FAIL:` line naming `R-ERR-04` and saying its verdict never
+  reached the exit code, and the file's wiring tally dropping below its floor. Restored, `OK`.
+- **§What the toolchain checks print** — the two-line sample of `R-TOOL-01`/`R-TOOL-02` output
+  is replaced by the property (floor first, version found in brackets after it), which is what
+  the paragraph below it was already explaining in words.
+
+## Deviations (round 13)
+
+- **Three spec amendments, all ordered by the operator, none inferred from the tree.**
+  (i) §Plan step 2 gained `test_style.sh`'s result-line rows and the "several ids on one line"
+  statement; Table 5's prose now points at them. (ii) §Plan step 8 gained the no-transcript
+  rule, its rationale and its grep, and §Acceptance criteria gained the grep itself.
+  (iii) §Plan step 0d's clause "any sample output must match what the checks emit today" —
+  the instance-level rule this decision replaces — now defers to step 8.
+- **One of the two defects handed to this round is not a defect.** Recorded above with the
+  reproduction. `verify.md` §3's quoted string was verbatim correct for the branch it
+  describes; round 12's finding compared it against a different branch. The paragraph was
+  rewritten anyway, because quoting *any* branch is what step 8 now forbids.
+- **§5's wording was corrected after measuring it.** The first draft promised "the failing
+  line names `R-ERR-04` and the words *wiring case*". The mutation produces **two** `FAIL:`
+  lines — the rule's, then the tally's — and the words *wiring case* are on the second. Also
+  corrected: a first draft claimed the suite prints one wiring-case line per rule. It prints
+  eight lines for fourteen rules — one tally covering the eight in `test_repo_shape.sh`, one
+  each for the rest, and **two** for `R-SEC-01`, whose check has two real-run calls.
+- **A fourth spec amendment, forced by the first independent review of this round.** Step 8
+  originally stated the decision as "properties, not transcripts" plus three example shapes.
+  The reviewer returned four `undecidable` verdicts that are one thing: the rule moved the
+  failure from *the quote is stale* to *the description is unverifiable*, because the spec
+  tabulates the result lines of exactly one file — `test_style.sh`, route 1's own subject.
+  Every other output claim in `verify.md` was unarbitrable from the spec alone.
+  Two ways out, and the obvious one is wrong: tabulating all seven Table 5 files reproduces
+  F2 one level up, in `spec.md`, where the same rounds would desynchronise it. What shipped
+  instead is a **closed vocabulary, sourced item by item** — the rule id (accounting), the
+  case-kind words (step 2's house convention, which by construction reaches a check written
+  tomorrow), a count line and the number it is held to (Table 4), WC's two assertions
+  (§Goal, Table 2), and `test_style.sh`'s two-ids-on-one-line (route 1's rows). Everything
+  else about a check's output is banned **whether quoted or described**, because a described
+  format goes stale as fast as a quoted one and the §Acceptance criteria grep only sees the
+  quoted kind. The vocabulary is universal and machine-enforced, so it needs no per-file
+  table and nothing to keep current.
+- **Files touched:** `docs/phases/00-scaffold/spec.md` (routes 1 and the decision),
+  `docs/phases/00-scaffold/verify.md` (route 2), this file. No check file changed;
+  `tests/test_repo_shape.sh` was mutated and restored for the §5 measurement, and
+  `git diff` over `tests/` is empty.
+
+## Debt (round 13)
+
+- No new `belay-debt:` comment. The one shortcut this round takes is stated in the spec
+  rather than hidden: the no-transcript grep is a floor under the ban, not the whole of it —
+  it cannot see a line count in prose, so that half stays a reading.
+
+## For later phases (added round 13)
+
+- **The no-transcript rule is written into this phase's spec, and R-PROC-02 makes every phase
+  write a `verify.md`.** Nothing carries it forward: `docs/constraints.md` has no rule about
+  what a `verify.md` may contain, and this one lives in `docs/phases/00-scaffold/spec.md`
+  §Plan step 8 where the next phase will not read it. Either it becomes a rule with a binding
+  (the grep is already written and is a two-line `test:`) or the next `/expand-phase` copies
+  it into its own step. **That is an operator decision, not an implementation detail**, which
+  is why it is here and not in `docs/constraints.md`.
+- **Every wiring case still runs its aggregate twice** — once discarding output to read
+  `fail`, once capturing text. Round 12 logged it as taste with a budget; this round measured
+  the budget and left it alone on the operator's instruction. Eight double runs in
+  `tests/test_repo_shape.sh`, and in `tests/test_secrets.sh` four extra `gitleaks` pairs per
+  run. **Measured this round: `make test` real 1:10.5** (78.2s user, 179.5s system, 365% cpu)
+  against the 2m cap in §Acceptance criteria, versus 74.1s recorded in round 12 — inside the
+  noise of each other, and both a full 45s under the cap. The upgrade, when the cap is
+  actually threatened, is one capture consumed twice, not an optimisation pass; and §Out of
+  scope's standing answer applies first: raise the cap in a re-expansion or cut mutants.
+- **`property_accounting` still `continue`s after the first defect per file** (logged round
+  12), so a file with two accounting defects surfaces them one round at a time. Round 13 hit
+  no instance of this; it stays logged because `test_style.sh` is the file most likely to
+  produce one, being the only accounting-set member nothing else covers.
+
+## Validation — 2026-09-04 (round 13)
+
+- criteria: **16 passed / 0 failed.** `make test` OK, `make lint` 0, harness accounting for
+  all seven Table 5 files (`test_style.sh` reported as 3 rule(s), which is route 1's rows
+  confirmed by the machine) + `neutered: 30/30` + `alternations: 59/59` + bootstrap gap
+  reported, traceability 9/9, boundaries 2/2, repo_shape 55 rejection + 13 accept +
+  `wiring cases: 8/8`, secrets both floors, tool_versions 4/4, `planned: 00-scaffold` 0,
+  `STYLE_OPTIONAL` 0 in both files, the new no-transcript grep **0**, orphan mutants 0.
+  `time make test` real **1:12.4** against the 2m cap.
+- project gates: test **pass**, lint **pass**, typecheck **gap** —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run
+  /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json —
+  the project-owned file re-detection never overwrites.`
+- boundary sweep: **not swept: no file in the set is under a declared layer.** 13 active
+  `deny` rules exist; the phase's three files are all under `docs/`, and the declared layer
+  prefixes are `src/core/`, `src/hal/`, `src/usb/`, `src/app/`, `src/emu/`.
+- independent review: **contradicts** — see below. Three passes were run, and the count of
+  findings is itself the result.
+- closure test: **fail** — the `undecidable` verdicts below are missing pointers by
+  definition, and the file set is otherwise clean (`spec.md` and `notes.md` are exempt;
+  `verify.md` is named in §Plan step 8).
+- upstream: none. `.claude/workflow/installed` is present and no file it names misbehaved.
+- verdict: **returned to implementation** by the letter, and **the escape is what this round
+  actually recommends** — see "Why the next round should not be round 14" below.
+
+### Three review passes, and why the count is the finding
+
+| pass | reviewed | contradicts | undecidable |
+|---|---|---|---|
+| 1 | step 8 as *"properties of the output, never a transcript"* + three example shapes | 4 | 4 |
+| 2 | step 8 as a **five-row sourced vocabulary table** | 8 | 5 |
+| 3 | step 8 as **one axis: what a check *decides* vs how it *formats*** | 3 | 6 |
+
+Three formulations of the same clause in one round, each written to close the previous
+pass's `undecidable` verdicts, and each one splitting on the same sentence. Pass 3 named the
+place exactly:
+
+> the offending path *is* what the line contains after the rule id, so a single fact is on
+> both sides of the axis.
+
+That is `verify.md` §2's core sentence — a result line naming `R-ARCH-03` and the file the
+violation is in. `decides` licenses it (§Goal's *Observable behaviour* guarantees the id and
+the path); `formats` bans it (the path is the text after the id). No wording of §Plan step 8
+separates them, because **the authority the clause needs does not exist at §Goal.** §Goal
+says what the suite must do; it has never said what `verify.md` may assert about it, and
+step 8 has now been asked to invent that authority three times in one round.
+
+### What was fixed, and what was left standing
+
+Fixed, because each is a defect independent of the axis question:
+
+- **pass 1** — §5 counted lines four lines below the sentence banning line counts (the grep
+  cannot see it, which is why the ban is prose as well); §4 claimed the traceability check
+  gains *lines* as it gains cases, when Table 4 says a tenth case moves `n/9` to `n/10`
+  inside one line; §5 promised a `grep` for *wiring case* returning one line per rule when
+  `wiring cases: 8/8` contains the substring and the real count is 8 — the identical hazard
+  §Plan step 2 documents for `(history)`; §3 said the `skip:` branch was a failure.
+- **pass 2** — `in red` (presentation, guaranteed nowhere); "`R-SEC-01` prints two" (a line
+  count); "names `R-PROC-01` in each of them" (accounting guarantees *at least one* line per
+  id, not one per proof); the `R-TOOL-01`/`R-TOOL-02` line composition, which was the deleted
+  quote reconstituted as prose; round-numbered self-narration in a file step 8 requires to be
+  durable.
+- **pass 3** — §Plan step 0d still defined the requirement as "properties of the output",
+  the formulation step 8 names as its own discarded first attempt; `verify.md` said "also
+  print a **second** … line" (count and order) and said it unconditionally, when on the clean
+  clone the spec's own §Acceptance block describes there is no clang-tidy and no such line at
+  all; "the hole that survived **eight** attempts" contradicts §Goal's "rounds 1-11" and is
+  session-scoped besides; Table 5's added sentence asserted an **ordering** ("the second
+  naming two ids") that §Plan step 2's rows deliberately do not carry, since no single run
+  exhibits every branch.
+
+Left standing, and this is the finding, not an omission: **pass 3's U1, U2, U3 and U4.** They
+are one question wearing four hats — by what authority does `verify.md` assert anything about
+the suite's behaviour? A fourth wording of step 8 would close some and open others, which is
+what the first three did.
+
+### Why the next round should not be round 14
+
+Round 13 was set up to stop `verify.md` going stale a third round running, and decision (a)
+did stop the failure it was aimed at: the transcripts are gone, the grep that keeps them gone
+is in §Acceptance criteria, and it reads **0** where it read 3. What (a) could not do is
+supply an authority §Goal does not have, and three review passes is the evidence.
+
+By the letter this is validation **#2** against the round-12 spec (the counter reset at round
+11's `escaped to /expand-phase` verdict at :2270), so the iteration-3+ escape has not fired
+and the status stays `in-progress`. By the substance, a fourth attempt at the same clause in
+`/implement-phase` is exactly what the escape exists to prevent, and the question it would be
+attempting — what an operator document may assert, and on whose authority — is a §Goal
+question that `/expand-phase` owns.
+
+**This is an operator decision and is deliberately not taken here.** Two routes:
+
+1. `/expand-phase 00-scaffold` — re-expand with the missing requirement stated at §Goal:
+   what `verify.md` may assert, sourced, so §Plan step 8 stops inventing it. Requires the
+   status flipped to `pending` first, which `/validate-phase` only does at iteration 3+.
+2. `/validate-phase 00-scaffold` again — validation #3, where the escape fires on its own if
+   the fourth wording fails like the first three. One more round of cost to reach the same
+   place, with the chance that a fourth wording holds.
+
+The recommendation is (1). The cost of being wrong about it is one re-expansion; the cost of
+being wrong about (2) is round 14 finding the same sentence.
+
+## Implementation — 2026-09-04 (round 13, continued: the §Goal amendment)
+
+The operator rejected both routes the validation offered and named a third that is better
+than either: **the defect is one sentence, so amend §Goal in place** — a re-expansion would
+rewrite six tables that had just passed review for the first time in thirteen rounds, and
+`/implement-phase` cannot write a Goal.
+
+- **§Goal gained a section, *What `verify.md` may assert about the suite, and on whose
+  authority*.** The *Observable behaviour* paragraph is now declared to be the complete set of
+  facts `verify.md` may state about a run; everything else about a check's output is out,
+  quoted or described. It settles the four things the three step-8 wordings kept splitting on:
+  the id and the path are **one fact** the clause guarantees together (so stating them
+  together is the clause, not a layout); widening the clause is the only route to letting the
+  operator be told something new; `make test`'s own result is inside the clause because it is
+  the exit code; and `verify.md`'s references to its own sections are not claims about the
+  suite.
+- **The clang-tidy fact moved into *Observable behaviour* rather than becoming an exception to
+  it.** §Plan step 8 mandates that `verify.md` teach the collateral R-STYLE-02 / R-CLEAN-02
+  failure, and every previous wording had to carve it out as a special case — a rule that
+  mandates a fact and bans stating it is not a rule. It is now a guaranteed observable with
+  its condition attached (*where `clang-tidy` resolves*; where it does not, the check is
+  skipped and the failure does not appear), which also closed the last review's finding that
+  `verify.md` stated it unconditionally against a clean clone that has no clang-tidy.
+- **§Plan step 8 shrank to an implementation of that clause** and now says so explicitly,
+  including that it may not narrow or widen it. The three discarded wordings are named there
+  in one line so a future round does not retry one of them. §Plan step 0d points at the clause
+  too, instead of at whichever wording was current.
+- **Step 8's own check no longer demands a prefix the clause does not license.** It read
+  "each produces the `FAIL:` line it promises"; it now reads "a failing run naming the rule it
+  promises", because §Goal guarantees the id and not the line that carries it.
+- **`verify.md` §5 lost two sentences** that were on the allowed side of every previous
+  wording and are still not in the clause: the wiring-case tally falling below its number, and
+  the per-file shape of how the fourteen wiring cases are reported. What replaced them is the
+  clause verbatim — cut any one of the fourteen wires and `make test` fails.
+
+## Deviations (round 13, the §Goal amendment)
+
+- **§Goal was amended, which no earlier round of this phase did.** Every previous spec
+  amendment here touched a Plan step, a table or the Acceptance criteria. This one adds a Goal
+  clause, on the operator's explicit instruction, after three independent reviews established
+  that no Plan-step wording could ground the claim. Recorded because it is the largest kind of
+  amendment this workflow allows short of a re-expansion.
+- **Three step-8 wordings were written and discarded inside one round** — properties, a
+  five-row sourced vocabulary table, a decides/formats axis — at the cost of two review
+  passes. All three are named in the spec, not deleted silently, so round 14 does not retry
+  one.
+- **Process error, mine: `verify.md` was edited while review pass 2 was reading the diff it
+  had been given.** Three of that pass's thirteen findings (its C3, U3, and the floor/equality
+  half of U4) point at text that had already changed. The evidence of that pass is
+  contaminated; passes 1 and 3 ran against frozen diffs. The rule for the next round is that
+  the diff handed to the reviewer is frozen until the verdict returns.
+- **The reviewer was wrong once, and it is worth recording which way.** Pass 3's U4 claimed
+  the spec disagrees with itself in three places about whether `wiring cases: n/8` is a floor.
+  It does not: Table 4 marks it `= 8` and §Acceptance criteria's floors block does not list
+  it. The claim `verify.md` was making at the time had already been corrected to "has to equal
+  eight" before that pass began.
+
+## For later phases (added round 13, the §Goal amendment)
+
+- **"The spec asserts something the reviewer cannot ground" is a shape, not an incident, and
+  this is its second instance.** Round 11 failed on a universal stated in prose with no
+  enumeration beside it; round 13 failed on a normative clause with no authority behind it.
+  Both times the wrong instinct was to reword the Plan step — round 11 amended eleven times,
+  round 13 three times in one sitting — and both times the fix was to move the claim to where
+  a reviewer can establish it: round 11 to a table with one row per member, round 13 to a
+  §Goal clause.
+  **The rule, which is what the next phase needs and not the case:** before writing a
+  quantified or normative statement in a spec, name in the same breath where a reviewer
+  holding only `CLAUDE.md`, that spec and the diff establishes it. If the honest answer is
+  "because this Plan step says so", the statement is not a Plan step's to make — it belongs in
+  the Goal, or in a table with one row per member.
+  `01-ps2-codec` is where this bites next: it quantifies over `tests/vectors/` ("every literal
+  vector decodes correctly") and over protocol rules ("R-PROTO-01..04 move to `test:`"). Both
+  are universals over sets the spec will have to enumerate, and its acceptance will make
+  normative claims about what a decoder may do with a malformed frame, which is the same shape
+  as this round's clause.
+
+## Deviations (round 13, the §Goal amendment — second and third correction passes)
+
+Two further review passes ran against the amended Goal. The clause held: neither pass found a
+structural gap in it, and every finding was a first-order consequence of it that had not been
+applied. What each pass forced:
+
+- **The clause's scope was wrong in its first form** (pass 4). It declared *Observable
+  behaviour* the complete set of facts `verify.md` may state "about a run", full stop, which
+  read strictly makes `CLAUDE.md` §Teach, don't just deliver unsatisfiable and read loosely
+  governs nothing. It now scopes itself to a run's **output**, and says in the same breath that
+  facts about what a check *is*, *decides* or how it is *built* are outside it and are founded
+  on a Plan step or a table like every other claim in this spec. "This check compares each tool
+  against a floor" is the first kind; "its line puts the floor before the version found" is the
+  second.
+- **Four edges settled by name** (pass 4): `make test`'s `OK` is the exit code's rendering; a
+  single check file's own exit status is inside, because step 8's procedures run checks
+  directly; a line's **prefix** is outside, and the §Acceptance grep's whitelist of bare
+  prefixes is the grep's tolerance and never a licence; the skip is inside for a tool
+  `OPTIONAL_TOOLS` governs — not a universal over "tools", since §Plan step 6 makes the
+  boundary hook a hard `FAIL` on purpose.
+- **`verify.md` stopped naming result-line prefixes anywhere**, including in the historical
+  narrative about the four holes, which had described them as printing `ok:` and `FAIL:`. Four
+  sentences rewritten. The file now names no prefix at all, which is what the clause says.
+- **`Observable behaviour` was widened once, on the declared route** (pass 5). Its naming
+  guarantee was attached only to the hand-introduced-violation branch, while §5 tells the
+  operator to expect the `fail=1`-removal branch to name `R-ERR-04` — measured true, and true
+  by construction, since the wiring case whose assertion fails is what reports it (Table 2,
+  WC). Widening the clause is settlement 2's only route and it was taken rather than deleting
+  a fact the operator needs.
+- **One lie to the operator, written in this round and caught by pass 5.** §4 said that adding
+  a tenth traceability failure mode obliges the check to gain a case "before the build will
+  pass again". False: Table 5 marks that file `mutated ✗` and Table 4 gives it a floor of
+  `>= 9`, so a tenth mode with no case leaves the build green. It promised exactly the
+  enforcement §Goal *What this phase does NOT prove* declares as debt owed to `01-ps2-codec`.
+  It now says so.
+- **"Four things this settles", followed by six bullets** — §How counts are stated's own defect,
+  introduced inside the section written to prevent it. The number is gone; the list is the
+  enumeration.
+- **Table 5's ✓ for `test_style.sh` is now stated as conditional.** It was measured on a machine
+  where both clang tools resolve. On the clean-clone floor R-PROC-04 promises, `OPTIONAL_TOOLS=1`
+  turns both of that file's sites into skips, it emits no `ok:`/`FAIL:` line, and §Plan step 2's
+  own rule makes it `unproven` — which is the correct outcome and not a ✓. Pass 5 found this;
+  no earlier round had.
+
+Review counts across the round, recorded because the trend is the evidence:
+`4+4`, `8+5`, `3+6`, `5+8`, `5+3`. The `undecidable` column is the one that matters — it is the
+spec failing, and it broke downward only after the authority moved to §Goal.
+
+## For later phases (added round 13, correction passes)
+
+- **`tests/test_style.sh`'s source shape is a dated measurement with nothing watching it.**
+  §Plan step 2's rows record three ids across nine emission sites in two exclusive chains,
+  measured by reading the file. §How counts are stated does not reach it: that rule governs
+  counts a *check prints*, and these describe a file's source. Nothing in the suite fails the
+  day `test_style.sh` gains a branch, and its accounting ✓ would silently start meaning
+  something else. The phase that owns `clang-tidy` — `03-pio-bus`, the first with a
+  `compile_commands.json` — is where this becomes cheap to fix, because that is the phase that
+  will change the file. Until then the rows are true of the tree they name and of no other.
+- **The clean-clone floor and the accounting ✓ are in tension for exactly one file.** On a
+  machine with no LLVM, `test_style.sh` is `unproven`, and it is the only Table 5 member whose
+  rules nothing else covers. That is not a defect — §Plan step 2 says `unproven` is the honest
+  outcome — but it means the clean-clone run proves strictly less about R-STYLE-01, R-STYLE-02
+  and R-CLEAN-02 than a developer machine does, and no phase currently owns closing that.
+

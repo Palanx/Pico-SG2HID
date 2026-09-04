@@ -170,7 +170,16 @@ itself. That is seven files, not the six that bind the fourteen rules, and round
 `test_style.sh` is in the accounting set and out of everything else. It follows that its
 three ids must each produce a result line the real run alone emits, exactly like the
 fourteen — accounting is a property of the file set, not of the fourteen rules. Nothing else
-about it is this phase's business.
+about it is this phase's business. **Its ✓ above is only reproducible against the nine
+emission sites §Plan step 2 now tabulates**, **and it is conditional**: it was measured on a
+machine where both clang tools resolve. Where they do not, the `Makefile`'s `OPTIONAL_TOOLS=1`
+turns both sites into skips, the file produces no `ok:`/`FAIL:` line, and §Plan step 2's own
+rule applies — it is reported `unproven`, which is the correct outcome and not a ✓. On the
+clean-clone floor R-PROC-04 promises, that is the state this file is in. With the tools
+present: three ids, exactly two result lines per run, one of which names two ids at once, `,` on the `ok:` lines and ` / ` on the `FAIL:` and `skip:`
+ones. Those rows record ids per line, site counts, prefixes and separators — and no ordering,
+because no run exhibits every branch and an order measured from one run would be a fact about
+that run. Round 12 returned two `undecidable` verdicts here for want of the rows.
 
 ### Table 6 — round 11's §For later phases items: in scope or not
 
@@ -218,9 +227,79 @@ Observable behaviour: `make test` exits 0 on the clean repo and on a clean clone
 only C++23 and `python3`; exits non-zero — naming the rule id and the offending path — when
 any of the fourteen violations is introduced by hand; exits non-zero when any function in a
 Table 5 *mutated* file is neutered, when any alternative of any check pattern is removed,
-when any real-run call site is deleted, and when the `fail=1` on any of the fourteen rules'
-failure paths is removed. The last of those is Table 2's WC column and is the clause rounds
+when any real-run call site is deleted, and — also naming the rule — when the `fail=1` on any
+of the fourteen rules' failure paths is removed; that last branch names the rule because the
+wiring case whose assertion fails is the thing that reports it (Table 2, WC). The last of those is Table 2's WC column and is the clause rounds
 9-11 could not make true for more than nine rules at a time.
+One more fact belongs to this clause rather than to a Plan step, because `verify.md` is
+required to teach it: on a machine where `clang-tidy` resolves, a scratch file carrying an
+`#include` **also** fails the check binding R-STYLE-02 and R-CLEAN-02, over a header it
+cannot find — a tooling
+result, not the rule under test, because no `compile_commands.json` exists before
+`03-pio-bus`. Where the tool does not resolve, that check is skipped and the failure does not
+appear at all.
+
+### What `verify.md` may assert about the suite, and on whose authority
+
+`docs/phases/00-scaffold/verify.md` is the operator's only entry point (R-PROC-02) and it
+necessarily makes claims about what the suite does. Round 13 found that this spec had never
+said which claims are legitimate, and §Plan step 8 was asked to invent that authority three
+times in one round; each wording split on a different sentence, because the authority does
+not belong to a Plan step. It is stated here, once:
+
+**The *Observable behaviour* paragraph above is the complete set of facts `verify.md` may
+state about the *output* of a run.** That scope is the whole of the clause and is stated
+first, because getting it wrong in either direction is what three earlier wordings did: facts
+about what a check *is*, what it *decides*, and how it is *built* are not run output and are
+not governed here at all — they are founded the way every other claim in this spec is founded,
+on a Plan step or a table, and `verify.md` needs them to satisfy `CLAUDE.md` §Teach, don't
+just deliver. "This check compares each tool against a floor" is a fact about what the check
+decides (§Plan step 6). "Its line puts the floor before the version found" is a fact about the
+output, and is governed.
+Within that scope the clause is closed. `verify.md` may say that a run exits zero or non-zero
+and under which condition;
+it may name the rule id and the offending path; it may say which of the mutations listed there
+makes the suite fail; it may state the clang-tidy fact and its condition. Anything a reader
+could only learn by looking at a check's `echo` — how many lines it emits, in what order, what
+a line holds besides the id and the path, colour, indentation, the separator between two ids —
+is outside the clause, and is outside it **whether quoted or described**, because a described
+format goes stale exactly as fast as a quoted one.
+
+This settles, so that no Plan step has to, each of the following — no count here, because the
+list is the enumeration and a number beside it would be §How counts are stated's own defect:
+
+- **The id and the path are one fact, not two.** The clause guarantees them together, so
+  stating them together is the clause being quoted, not a layout being described — and that
+  includes saying they arrive together in one report, which is the form the guarantee takes.
+  What the clause does not carry is their order, their spacing, or what else sits with them.
+- **Widening the clause is how `verify.md` earns the right to state something new.** A round
+  that wants the operator told a new fact adds it to *Observable behaviour* first, where the
+  Plan and the Acceptance criteria can both see it. That is the amendment; there is no second
+  route and there are no exceptions, which is why the clang-tidy fact was folded into the
+  clause above rather than declared an exception to it.
+- **`make test`'s own result is inside the clause** — it is the exit code, and its `OK`
+  banner is that exit code's rendering, expected by name on §Acceptance criteria's first line.
+  A check's result lines are not, beyond the id and the path the clause names.
+- **A single check file's own exit status is inside the clause too**, on the same footing:
+  §Plan step 8 requires `verify.md`'s procedures to be runnable literally and in order, and
+  several of them run one check directly. What is *not* inside is the prefix a result line
+  carries — `ok:`, `skip:`, `FAIL:` are text a line holds, so `verify.md` says a run failed
+  and named a rule, never that a line began with a particular word. The §Acceptance grep
+  whitelists a bare prefix because a grep cannot tell prose from a transcript; the whitelist
+  is the grep's tolerance, never a licence.
+- **The skip is inside the clause, for a tool `OPTIONAL_TOOLS` governs**: such a tool, when
+  absent, is reported and skipped rather than failing, which is the clean-clone promise
+  §Acceptance criteria and R-PROC-04 both carry. It is not a universal over "tools": §Plan
+  step 6 makes `.claude/hooks/boundary-check.sh` a hard `FAIL` when it cannot run, precisely
+  because it is tracked repository content and not an external tool. `verify.md` may state the
+  skip; it may not state it of anything step 6 exempts.
+- **`verify.md`'s references to its own structure are not claims about the suite.** Its
+  numbered sections and its own lists are the document's, and counting them is not counting
+  a check's output.
+
+The mechanical floor under all of this is the grep in §Acceptance criteria, and it is a floor
+and not the rule: it sees quoted output and cannot see a described format, so the clause above
+is what a reviewer applies and the grep is what a machine catches.
 
 ### What this phase does NOT prove, and who owns it
 
@@ -392,7 +471,8 @@ is where the phase's remaining risk lives.
      paragraph tells the operator that the real run and the rejection case calling the same
      function is "what makes an `ok:` line evidence that something ran". It is evidence that
      the *function* works. Rewrite it around the harness, and keep it a durable operator
-     reference: any sample output must match what the checks emit today.
+     reference — which means it states only what §Goal's *Observable behaviour* clause
+     guarantees, per §Goal *What `verify.md` may assert about the suite*.
    - **(0e) The §Style authorization must name a check this phase writes.** Step 9 of the
      round-8 spec authorized correcting a `docs/constraints.md` §Style paragraph "when a check
      this phase writes proves it wrong", but the clang-tidy measurement behind that paragraph
@@ -430,6 +510,36 @@ is where the phase's remaining risk lives.
    produces**, and that every
    `ok:`/`FAIL:` line naming a rule id declares that id in the header. Both directions: an
    undeclared id in the output is as much a drift as a declared id with no line.
+   **`tests/test_style.sh`'s result-line shape**, the one file in Table 5 whose output no
+   round wrote down — round 12's two `undecidable` verdicts are both this gap, and its
+   Table 5 ✓ is unreproducible without the rows below. It declares **three** ids and has
+   **nine** emission sites across two independent `if`/`elif`/`else` chains — five in one and
+   four in the other, no site shared between them. Exactly one site per chain fires on any
+   run, so a run produces exactly **two** result lines, one per row below. Measured by reading
+   the file, not by running it, since most of these branches need a tool absent or a source
+   present — so this is a **dated measurement of one file's source**, not a count a check
+   prints. §How counts are stated governs the second kind: a printed count needs a floor
+   because the enumeration behind it grows. These rows are the first kind, the same shape as
+   every *today* column in §Goal's tables, and like those they carry no floor and are true of
+   the tree they were taken against. Nothing detects the day `test_style.sh` gains a branch;
+   that gap is real, is not this phase's to close, and is recorded in `notes.md`
+   §For later phases:
+
+   | ids on the line | emission sites | prefixes | separator between the ids |
+   |---|---|---|---|
+   | `R-STYLE-01` alone | 5 — tool absent, config invalid, no sources, formatting differs, clean | `ok:` ×2, `FAIL:` ×2, and one skip-or-fail site of its own: `skip:` under `OPTIONAL_TOOLS=1`, `FAIL:` without it | n/a |
+   | `R-STYLE-02` **and** `R-CLEAN-02` together | 4 — tool absent, no checkable sources, a diagnostic, clean | `ok:` ×2, `FAIL:` ×1, and a **second, distinct** skip-or-fail site of the same shape | **`,` on the `ok:` lines, ` / ` on the `FAIL:` and `skip:` ones** |
+
+   Two things follow, and neither is stated anywhere else. **Accounting accepts several ids
+   on one line**: the harness applies `RULE_IN_LINE` to each result line and counts every id
+   it finds, so one line discharges two declarations and this file's three ids are satisfied
+   by two lines. A criterion reading "one line per declared rule" would fail it, which is why
+   §Goal's phrasing is *produces a result line*, not *produces its own*. And **`,` versus
+   ` / ` is a branch, not a typo.** Anything quoting one of these lines is quoting one branch
+   out of nine and is wrong for the rest — round 12 checked §3 of `verify.md` (which quotes
+   the `FAIL:` branch, and is verbatim correct) against the clean tree's `ok:` line, and
+   reported a defect that is not there. That is the concrete reason §Plan step 8 forbids
+   `verify.md` quoting a result line at all.
    **"The id appears in some line" is not that criterion, and rounds 1-9 passed under it.**
    Every check ships rejection and accept cases and their lines name the rule too, so the
    question to ask is the inverse of round 9's: *does a line that is not the real run carry
@@ -639,14 +749,59 @@ is where the phase's remaining risk lives.
    what was built, why a test that passes on an empty repo is worth anything, why a check can
    pass while enforcing nothing, and a hands-on procedure — break one rule on purpose, watch
    `make test` name it, put it back. It is a **durable operator reference, not a session
-   report**: any sample output must match what the checks emit today, each break/run/restore
-   cycle must be runnable literally and in order, and anything true only while this phase was
-   being written belongs in `notes.md`. Include the clang-tidy limitation where an operator
-   will actually meet it: a scratch file with an `#include` also fails R-STYLE-02 with
-   `file not found`, which is a tooling result and not the rule under test.
+   report**: each break/run/restore cycle must be runnable literally and in order, and
+   anything true only while this phase was being written belongs in `notes.md`. Include the
+   clang-tidy limitation where an operator will actually meet it — the fact, its two ids and its
+   condition are §Goal's *Observable behaviour*, and this step neither narrows them to one id
+   nor adds the diagnostic's wording.
+   **What `verify.md` may assert is not this step's to define, and round 13's whole finding
+   was that it had been treated as if it were.** The authority is §Goal, *What `verify.md` may
+   assert about the suite* — the *Observable behaviour* clause is the complete set of facts
+   about a run that this document may state, and everything else about a check's output is out
+   whether quoted or described. Three wordings were tried here first (properties; a sourced
+   vocabulary table; a decides/formats axis) and each split on a different sentence, because a
+   Plan step cannot ground a claim the Goal never made. This step implements that clause; it
+   does not restate it, and it must not narrow or widen it.
+      The rule id is the one literal that stays, because the id is the durable name and §Plan
+   step 2's accounting property is what guarantees the check prints it. Commands stay
+   literal: they are runnable, and this step's check runs them.
+   What this costs: `verify.md` cannot teach the operator to read a specific line's layout.
+   Everything §Goal guarantees survives, and a round that needs more amends the clause.
+   **Why the property and not "keep the sample current".** This document has gone stale on
+   quoted output in **four** rounds out of twelve, always because the round that broke it was
+   a round that changed a check — which is every round (`notes.md`): round 2, a sample
+   failure the code could not produce; round 3, an R-TOOL-01 sample whose floor and found
+   version round 2 had swapped; round 9, a §3 claim not checkable from its inputs; round 12,
+   a two-line promise against a three-line check plus a wiring paragraph that was never
+   written. Each time the fix applied was the instance — update the sample — and each time it
+   returned. That is F2 at the documentation level, and the class-level fix is to stop
+   quoting. It also removes a defect no round named: round 2 fixed §2 by pinning the absolute
+   path the check prints, and what shipped is `/path/to/pico-sg2hid/…` — a **placeholder**
+   inside a block the surrounding sentence sells as what the check really prints. It is
+   neither a transcript nor a property, and it is the shape a literal-output rule can never
+   settle, because the moment the sample has to be machine-independent it stops being the
+   sample. Two things settle it against "be careful": the
+   §Acceptance criteria grep below, which is decidable by a reviewer who reads nothing else,
+   and round 12's own experience of the alternative — a reviewer holding the literal output
+   against §3 still got it wrong, because *which* literal line is correct depends on a
+   branch the document does not fix (§Plan step 2, `test_style.sh`'s nine emission sites).
+   The rejected alternative was **generating `verify.md` from the tree**, so that the round
+   desynchronising it fails. It buys the same property for the cost of a generator plus a
+   template, and a generated operator document stops being written for the operator, which
+   is the only thing this file is for.
    — check: `sh tests/test_phase_docs.sh` → exit 0;
    `test -s docs/phases/00-scaffold/verify.md`; every command `verify.md` prints can be pasted
-   into a shell in the order given, and each produces the `FAIL:` line it promises.
+   into a shell in the order given, and each command the document says should fail produces a
+   failing run naming the rule it promises — *naming the rule*, not printing a particular
+   prefix, because §Goal's clause guarantees the id and not the line that carries it; and the
+   no-transcript rule is a grep, not a reading: extract every `ok:`/`skip:`/`FAIL:` run in
+   the file up to the next backtick and require each to be either a bare prefix (prose
+   naming the shape) or `FAIL: <id>` with nothing after the id — §Acceptance criteria has
+   the exact command and its expected **`0`**. It catches the two shapes rounds 12 and 13
+   found: a fenced sample of a check's real output, and an inline quote carrying the text
+   after the id. What it does **not** catch is a line *count* in prose — "expect two lines"
+   quotes nothing — so that half is read, not run, and it is the half round 12 reported. The
+   grep is the floor under the ban, not the whole of it.
 
 9. **Correct the `PHASES.md` row's acceptance text** — touches `docs/phases/PHASES.md`. The
    row promises "every check ships a rejection case proving it fails on a bad tree". Round 8
@@ -713,6 +868,10 @@ sh tests/test_tool_versions.sh                     # expect: exit 0, names each 
 grep -c 'planned: 00-scaffold' docs/constraints.md # expect: 0
 grep -c 'STYLE_OPTIONAL' Makefile tests/test_style.sh   # expect: 0 in both files
 test -s docs/phases/00-scaffold/verify.md          # expect: exit 0
+# verify.md quotes no result line: the only one allowed anywhere in it is a bare `FAIL: <id>`,
+# and a backtick-quoted bare prefix ("one `ok:` line per rule") is prose, not a transcript.
+grep -oE '(ok:|skip:|FAIL:)[^`]*' docs/phases/00-scaffold/verify.md \
+  | grep -vcE '^(ok:|skip:|FAIL:|FAIL: R-[A-Z]+-[0-9]{2}) *$'                 # expect: 0
 test -s docs/phases/00-scaffold/notes.md           # expect: exit 0
 time make test                                     # expect: real under 2m0s (the harness runs each check once per generated mutant)
 ```
