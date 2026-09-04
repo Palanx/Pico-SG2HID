@@ -19,76 +19,205 @@
 
 After this phase, `make test` runs a suite that turns fourteen rules currently marked
 `planned: 00-scaffold` into rules with deterministic tests; the rule catalogue can no longer
-drift from its tests without the build failing; **and the suite proves, by mutating its own
-source, that each of those tests is still connected to the repository it claims to check.**
+drift from its tests without the build failing; and the suite proves, by mutating its own
+source, that each of those tests is still connected to the repository it claims to check.
 
-The third clause is the phase's reason to exist and the one rounds 1-8 kept failing. There is
+The third clause is the phase's reason to exist and the one rounds 1-11 kept failing. There is
 no product code under `src/` yet, so almost every check passes vacuously: a check that has
-been silently disconnected is indistinguishable from a check that is working, and eight
-rounds of reading the code did not distinguish them — only deliberately breaking something
-and watching the output ever did.
+been silently disconnected is indistinguishable from a check that is working, and reading the
+code never once distinguished them — only deliberately breaking something and watching the
+output did.
 
-What exists afterwards that does not exist now:
+### The rule this spec is written under: no universal in prose
 
-- **A liveness harness, `tests/test_checks_are_live.py`** — one new file, in `python3` because splitting a regex into its alternatives at every nesting depth is a parser and the shell is the wrong tool for one; `python3` is inside the floor R-PROC-04 guarantees, so this costs no dependency, and the whole
-  answer to the third clause. It does not check the repository; it checks the other checks,
-  by deriving mutations **from their source** rather than from a list somebody maintains.
-  Three properties, none of them an enumeration (details and the exact mutation forms in
-  §Plan steps 2-4):
-  1. **Accounting.** Every rule id declared in a check file's header produces a result line
-     when that file runs for real. A deleted call site becomes a missing rule, not a silent
-     pass.
-  2. **Neutering.** Making any single check function find nothing must make its file exit
-     non-zero. A pattern that stops matching is caught whether or not anyone wrote a case
-     for it.
-  3. **Alternation.** Removing any one alternative from any check function's pattern must
-     make its file exit non-zero. This is what rounds 7 and 8 tried to reach by hand and
-     got to one finder out of eight; generated from the pattern text, it cannot go stale
-     when an alternative is added.
-  Properties 2 and 3 do **not** reach the reporting path on their own, and an earlier draft
-  of this spec claimed they did. They mutate what a check *finds*; a case that calls the
-  finder directly still passes when the code deciding "is this a violation" is gutted, and
-  when the verdict never reaches the exit code. Two structural requirements in the check
-  files close that, and they are why the harness is not the whole answer (§Plan step 6):
-  every rejection and accept case runs **through** the shared `report` function rather than
-  re-deciding for itself, and each rule gets a **wiring case** driving the real aggregate on
-  a tree carrying exactly that rule's violation, requiring both the rule's name in the output
-  and a failing exit.
-- **Six checks under `tests/`** — five `.sh` and one `.py` — plus the harness above, all
-  picked up by the Makefile's `tests/test_*.{cpp,sh,py}` glob with no Makefile edit.
+Rounds 9-11 amended this spec eleven times, and each amendment produced the next round's
+finding somewhere the amendment did not reach. The cause is one shape, repeated: §Goal
+asserted a universal in prose — "each rule gets a wiring case", "every rejection and accept
+case runs through the shared `report` function" — while the Plan illustrated it with a
+mechanism living in one file out of five. Each round closed one more file and the next round
+returned the same finding under a new verdict name: `undecidable` in round 9, scoped away by
+the operator in round 10, `contradicts` in round 11.
+
+So this spec states **no universal in prose.** Every "each rule", "every check", "all files"
+below is a table with one row per member and a measured current state. A requirement that
+does not apply to a member gets a row saying so and why — a declared exception is decidable
+by the starved reviewer in `/validate-phase` step 5, an omission is not. A universal that
+cannot be enumerated is not a Goal and does not appear here.
+
+The measurements in the tables' *today* columns were taken against the tree at `5c1422c`, by
+mutation where a mutation can settle it. They are there so the Plan can state a gap; the
+*must* columns come from the `PHASES.md` row's Goal, never from what the code happens to do.
+
+### Table 1 — the fourteen rules and where each is checked
+
+The membership every other table indexes. `tests/test_style.sh` is deliberately absent: it
+binds R-STYLE-01, R-STYLE-02 and R-CLEAN-02, which predate this phase and are not among the
+fourteen. Its place in the harness's file set is Table 5.
+
+| # | rule | check file |
+|---|---|---|
+| 1 | R-ARCH-01 | `tests/test_repo_shape.sh` |
+| 2 | R-ARCH-03 | `tests/test_repo_shape.sh` |
+| 3 | R-ERR-03 | `tests/test_repo_shape.sh` |
+| 4 | R-ERR-04 | `tests/test_repo_shape.sh` |
+| 5 | R-CLEAN-03 | `tests/test_repo_shape.sh` |
+| 6 | R-CLEAN-05 | `tests/test_repo_shape.sh` |
+| 7 | R-CLEAN-09 | `tests/test_repo_shape.sh` |
+| 8 | R-PROTO-05 | `tests/test_repo_shape.sh` |
+| 9 | R-ARCH-02 | `tests/test_boundaries.sh` |
+| 10 | R-PROC-02 | `tests/test_phase_docs.sh` |
+| 11 | R-SEC-01 | `tests/test_secrets.sh` |
+| 12 | R-TOOL-01 | `tests/test_tool_versions.sh` |
+| 13 | R-TOOL-02 | `tests/test_tool_versions.sh` |
+| 14 | R-PROC-01 | `tests/test_rule_traceability.py` |
+
+### Table 2 — the two structural requirements, per rule
+
+Both exist because the harness cannot reach them: its properties mutate what a check *finds*,
+and a check can find correctly while the code deciding "is this a violation" is gutted, or
+while the verdict never reaches the exit code.
+
+- **SV — single verdict.** The decision "is this output a violation" is written **once** per
+  rule, and the real run and every case consume that one decision. Measured by gutting that
+  decision and requiring the file to fail; a file where the real run and the cases each
+  re-decide passes that mutation and is marked ✗.
+- **WC — wiring case.** The real aggregate is driven over a tree carrying exactly that rule's
+  violation, and the case requires **both** the rule's name in the output **and** a failing
+  exit. Measured by removing the `fail=1` on that rule's failure path and requiring the file
+  to fail anyway.
+
+| # | rule | SV today | how the verdict is shared | WC today | must |
+|---|---|---|---|---|---|
+| 1-8 | the eight in `test_repo_shape.sh` | ✓ | `report( )` | ✓ (`wiring cases: 8/8`) | hold |
+| 9 | R-ARCH-02 | ✓ | `sweep( )`'s `case` on the hook's 0/1/2 | **✗** | add |
+| 10 | R-PROC-02 | ✓ | `report( )` | ✓ | hold |
+| 11 | R-SEC-01 | ✓ | `scan( )`'s return, consumed at all six sites | **✗** | add |
+| 12 | R-TOOL-01 | ✓ | `check_version( )`'s floor comparison | **✗** | add |
+| 13 | R-TOOL-02 | ✓ | `arm_compiles( )`'s return | **✗** | add |
+| 14 | R-PROC-01 | ✓ | `check( )`'s problem list | **✗** | add |
+
+**SV is 14/14 and stays that way; WC is 9/14 and must reach 14/14.** Round 11's reviewer
+reported SV as 2/5 files, and the measurement does not support it: gutting
+`check_version`'s floor comparison fails two rejection cases, and gutting `sweep`'s breach
+arm fails the core→hal case. What made SV look broken is that the old §Goal named a *function*
+(`report`) instead of stating the property, so a file satisfying the property by another
+mechanism read as a violation. The requirement is the property; the mechanism column above is
+per file and is not required to be the same function.
+
+WC is the real gap and all five absences are live. Measured, each against a full `make test`:
+
+```
+tests/test_secrets.sh:69        fail=1 -> :        make test rc=0   R-SEC-01 unbound
+tests/test_boundaries.sh:66     fail=1 -> :        make test rc=0   R-ARCH-02 unbound
+tests/test_tool_versions.sh:104 drop || fail=1     make test rc=0   R-TOOL-01 unbound
+```
+
+R-TOOL-02 and R-PROC-01 are the same shape and are listed as owed on that basis, not measured
+separately; §Plan step W says the implementer measures them before and after.
+
+### Table 3 — the liveness harness's three properties and their scope
+
+| property | applies to | scope is decided by | today |
+|---|---|---|---|
+| accounting | every file in Table 5 | Table 5, explicitly | 7 of 7 |
+| neutering | every function defined in a Table 5 file marked *mutated* | discovery, no name list | 26/26 |
+| alternation | both quoted strings of every **one-line** function body in those files | the house shape, no name list | 59/59 |
+
+The two generated properties carry no floor, by §How counts are stated: their claim is
+universal and machine-derived, so a number beside them would be the round-8 defect. The
+counts above are the current output, recorded as a measurement, not as a threshold.
+
+### Table 4 — every count line, its floor, and the enumeration the floor equals
+
+§How counts are stated requires a floor to equal a by-name list. Three of round 11's four
+`undecidable` verdicts were floors with no list. Every count line the suite prints:
+
+| file | count line | floor | the enumeration it equals |
+|---|---|---|---|
+| `test_repo_shape.sh` | `rejection cases: n` | none — guard `n > 0` only | universal, generated by the harness; the guard only catches "no case ran at all" |
+| `test_repo_shape.sh` | `false-positive cases: n (floor 13)` | `>= 13` | the thirteen names in §Plan step 6 |
+| `test_repo_shape.sh` | `wiring cases: n/8` | `= 8` | rules 1-8 of Table 1 |
+| `test_boundaries.sh` | `rejection cases: n/2` | **`= 2` today, must be `>= 2`** | core→hal is refused; a hook that cannot run is not a violation |
+| `test_secrets.sh` | `rejection cases: n (floor 2)` | `>= 2` | working tree: a planted token is reported; history: a deleted token is still found |
+| `test_secrets.sh` | `false-positive cases: n (floor 2)` | `>= 2` | working tree: a plain file is not a secret; history: a clean history is not a secret |
+| `test_tool_versions.sh` | `rejection cases: n/4` | **`= 4` today, must be `>= 4`** | clang-format below its floor; a cross-compiler with no target libc; a banner with no parsable version; python3 below a floor with a minor number |
+| `test_rule_traceability.py` | `R-PROC-01 rejection cases: n/9` | **`= 9` today, must be `>= 9`** | the nine failure modes listed in the deliverables below |
+
+The three exact equalities break when a case is added, which is the opposite of what a floor
+is for. §Acceptance criteria says `n >= 2` for `test_boundaries.sh` while the file asserts
+`-eq 2`; that disagreement is round 11's `undecidable` (c) and is resolved here in favour of
+the floor.
+
+### Table 5 — the accounting property's file set
+
+`check_files()` takes every `tests/test_*.{sh,py}` the Makefile globs, minus the harness
+itself. That is seven files, not the six that bind the fourteen rules, and round 11's
+`undecidable` (d) was the gap between those two numbers.
+
+| file | accounting | mutated | rules it declares | among the fourteen |
+|---|---|---|---|---|
+| `test_repo_shape.sh` | ✓ | ✓ | 8 | yes |
+| `test_boundaries.sh` | ✓ | ✓ | R-ARCH-02 | yes |
+| `test_phase_docs.sh` | ✓ | ✓ | R-PROC-02 | yes |
+| `test_secrets.sh` | ✓ | ✓ | R-SEC-01 | yes |
+| `test_tool_versions.sh` | ✓ | ✓ | R-TOOL-01, R-TOOL-02 | yes |
+| `test_rule_traceability.py` | ✓ | ✗ — not a shell file; its logic is covered by nine rejection cases, the weaker form, owner `01-ps2-codec` | R-PROC-01 | yes |
+| `test_style.sh` | ✓ | ✗ — §Out of scope; this phase only renamed a variable in it | R-STYLE-01, R-STYLE-02, R-CLEAN-02 | **no** |
+
+`test_style.sh` is in the accounting set and out of everything else. It follows that its
+three ids must each produce a result line the real run alone emits, exactly like the
+fourteen — accounting is a property of the file set, not of the fourteen rules. Nothing else
+about it is this phase's business.
+
+### Table 6 — round 11's §For later phases items: in scope or not
+
+Left open, this is round 11's `undecidable` (d)'s sibling and would return.
+
+| item | in scope | why |
+|---|---|---|
+| mutants judged by exit code alone, so "caught for the wrong reason" counts as caught | **no** | both concrete instances were removed in round 11 by scoping patterns to one-line bodies; the general fix needs a check that is not a grep. Owner `01-ps2-codec` |
+| an interrupted `make test` leaves `tests/mut_*.sh` behind | **yes** | observed three rounds running, and the orphans land where the traceability walk and the gitleaks tree scan read. §Plan step T |
+| `test_boundaries.sh` prints its count with no `ok:`/`FAIL:` prefix, so the harness cannot see it | **yes** | the same file is being opened for its wiring case and its floor. §Plan step W |
+
+### What exists afterwards that does not exist now
+
+- **A liveness harness, `tests/test_checks_are_live.py`** — one file, in `python3` because
+  splitting a regex into its alternatives at every nesting depth is a parser and the shell is
+  the wrong tool for one; `python3` is inside the floor R-PROC-04 guarantees, so it costs no
+  dependency. It does not check the repository; it checks the other checks, deriving
+  mutations **from their source** rather than from a list. Its three properties and their
+  scope are Table 3; the two things it cannot reach are Table 2.
+- **Six checks binding the fourteen rules** (Table 1), plus `test_style.sh` in the accounting
+  set (Table 5), all picked up by the Makefile's `tests/test_*.{cpp,sh,py}` glob with no
+  Makefile edit.
 - **`tests/test_rule_traceability.py`**, which parses `docs/constraints.md` §Invariants under
-  ADR-0005's grammar and fails on drift in either direction: a `test:` path that does not
-  exist, a `test:` path lacking its `RULE <id>` marker, a marker naming an undeclared id, a
-  `manual:` rule carrying a marker anyway, a `planned:` phase that does not exist in
-  `docs/phases/PHASES.md`, a `planned:` phase that is already `done`, a duplicate id, an
-  unparsable rule line, and an id `CLAUDE.md` mentions that the catalogue does not declare.
-  Nine failure modes, each with its own message naming the id and the file.
-- **Five shell checks over the shape of the repository** — layer boundaries, `core` purity,
-  no heap, no exceptions, boolean naming, TODO references, no inheritance in `core`, no
-  `.value()`, test-vector provenance, per-phase `verify.md`, absence of secrets, and minimum
-  tool versions.
+  ADR-0005's grammar and fails on drift in either direction. Nine failure modes, each with its
+  own message naming the id and the file — and they are the enumeration Table 4's last row
+  points at: a `test:` path that does not exist; a `test:` path present but carrying no
+  marker; a marker naming an undeclared rule; a `manual:` rule carrying a marker anyway; a
+  `planned:` phase absent from `docs/phases/PHASES.md`; a `planned:` phase already `done`; a
+  duplicate rule id; an unparsable rule line; an id `CLAUDE.md` cites that the catalogue does
+  not declare.
 - **A rejection case on every check, and an accept case wherever the pattern could plausibly
-  misfire on legitimate code.** These remain the mechanism that *catches*: the harness only
-  proves they are sufficient, and reports precisely which alternative has none. A check
-  without its rejection case is not finished; a rejection case that would also pass when the
-  check cannot run is not a rejection case.
-- **Fourteen rules in `docs/constraints.md` moved from `planned: 00-scaffold` to
-  `test: <path>`**, each test file carrying the matching `RULE <id>` marker comment.
-- Where a rule has two clauses that no single binding can honestly cover — one checkable now,
-  one a property of code this phase is forbidden to write — **splitting it is in scope**, and
-  the half that cannot be checked becomes a new rule with a `planned: <phase-id>` binding.
-  That happened once: R-ERR-03 kept the source clause (no `throw`/`try`/`catch` under `src/`)
-  and its flags clause became **R-ERR-05** (firmware builds pass `-fno-exceptions -fno-rtti`),
-  `planned: 03-pio-bus`. A split leaves the count at fourteen bindings moved — the new rule is
-  debt this phase declares, not a fifteenth binding it delivers.
+  misfire on legitimate code.** These remain the mechanism that *catches*; the harness only
+  proves they are sufficient and names the alternative that has none. The counts and their
+  enumerations are Table 4.
+- **Fourteen rules moved from `planned: 00-scaffold` to `test: <path>`**, each test file
+  carrying the matching `RULE <id>` marker comment.
+- Where a rule has two clauses no single binding can honestly cover, **splitting it is in
+  scope** and the unbindable half becomes a new rule with a `planned: <phase-id>` binding.
+  That happened once: R-ERR-03 kept the source clause and its flags clause became
+  **R-ERR-05** (`-fno-exceptions -fno-rtti`), `planned: 03-pio-bus`. The count stays at
+  fourteen — the new rule is debt this phase declares, not a fifteenth binding it delivers.
 - **`docs/phases/00-scaffold/verify.md`**, the operator-facing procedure (R-PROC-02).
 
-Observable behaviour: `make test` exits 0 on the clean repo; exits non-zero — naming the rule
-id and the offending path — when any of the fourteen violations is introduced by hand; and
-exits non-zero when any check function is neutered, any alternative of any check pattern is
-removed, or any real-run call site is deleted. The §Acceptance criteria adversarial block is
-the first of those, written out; the harness is the second and third, run by `make test`
-itself.
+Observable behaviour: `make test` exits 0 on the clean repo and on a clean clone carrying
+only C++23 and `python3`; exits non-zero — naming the rule id and the offending path — when
+any of the fourteen violations is introduced by hand; exits non-zero when any function in a
+Table 5 *mutated* file is neutered, when any alternative of any check pattern is removed,
+when any real-run call site is deleted, and when the `fail=1` on any of the fourteen rules'
+failure paths is removed. The last of those is Table 2's WC column and is the clause rounds
+9-11 could not make true for more than nine rules at a time.
 
 ### What this phase does NOT prove, and who owns it
 
@@ -129,6 +258,15 @@ from the opposite cause — a *universal* claim ("every alternation of every fin
 written next to a universal claim about the same thing.** Where coverage is universal it is
 generated and asserted by the harness, and the Plan step says which mechanism generates it;
 where coverage is enumerated it is a floor and the claim above it is scoped to those names.
+
+**Round 12 adds the clause the eleven amendments of rounds 9-11 were missing.** The rule
+above was satisfied by every one of those amendments and the finding still came back, because
+it governs *counts* and the defect was in *universals*: a claim over a set, written as prose,
+whose members were never listed. So: **a universal claim is a table with one row per member,
+or it is not made.** §Goal's tables are that; a Plan step may say "every X" only when it
+points at the table whose rows are the Xs. The three exact equalities in Table 4 become
+floors for the same reason — an equality is a count that breaks when the enumeration grows,
+which is a floor written backwards.
 
 ### Files this phase writes that no Plan step names
 
@@ -188,6 +326,25 @@ rule — reachable from the Context pointers or the Plan, or the phase escaped i
 - `.claude/hooks/boundary-check.sh` — read its header before wrapping it. One file path in, **exactly two exit codes**: `2` a forbidden dependency, `0` everything else (clean *or* no rule reached the file). No third code is produced and none may be added, so sweeping the tree is the wrapper's job.
 - `.claude/hooks/lib/common.sh` — line 22, `ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"`. The hook reads `$ROOT/.claude/workflow/boundaries.rules`, so a fixture tree is only judged if it carries its own copy of the rules file and the hook is invoked with `CLAUDE_PROJECT_DIR` pointing at the fixture.
 - `tests/test_repo_shape.sh` — read it before building the harness: it is the file steps 3 and 4 mutate most, and it shows where a check function's pattern sits syntactically. Each is a one-line shell function whose body passes its extended regex as the **first single-quoted string** (`find_arch01( ) { hits '<pattern>' '<exclusions>' $( core_files "$1" ); }`), which is what makes "extract the pattern from the source" a five-line job rather than a parser. `tests/test_secrets.sh` and `tests/test_boundaries.sh` show the other two shapes the harness must handle: a check function taking a subcommand plus a root (`scan`), and one returning a distinguished code (`sweep`).
+- `tests/test_checks_are_live.py` — the liveness harness. Read `property_accounting`,
+  `find_functions`, `patterns` and `bootstrap` before touching Table 3's properties; its
+  module docstring carries the three properties and the `belay-debt:` note. §Plan step T may
+  touch it instead of the `Makefile`.
+- `tests/test_boundaries.sh` — R-ARCH-02 (Table 1 row 9). §Plan step W adds its wiring case,
+  turns `rejection cases: n/2` into a prefixed result line and its `-eq 2` into `>= 2`. Its
+  verdict is `sweep( )`'s `case` on the hook's 0/1/2, which is what SV means here — do not
+  add a `report( )` to make it look like `tests/test_repo_shape.sh`.
+- `tests/test_secrets.sh` — R-SEC-01 (row 11). §Plan step W adds its wiring case; the fixture
+  it needs is already built by the rejection case below the real scans. Its two `LIVE` labels
+  are what bind the tree and history scans separately (§Plan step 2).
+- `tests/test_tool_versions.sh` — R-TOOL-01 and R-TOOL-02 (rows 12-13), four `LIVE` labels and
+  four rejection stubs. §Plan step W adds two wiring cases and makes `n/4` a floor. `resolve`,
+  `ver_num`, `check_version` and `arm_compiles` are all mutated by Table 3's neutering
+  property — `arm_compiles` only since round 11, when the harness's brace walker learned to
+  skip comments.
+- `tests/test_rule_traceability.py` — R-PROC-01 (row 14) and the nine failure modes that are
+  Table 4's last enumeration. `check()` is its shared verdict and `make_repo` builds the
+  fixture §Plan step W's wiring case needs. Not mutated by Table 3 (Table 5 says why).
 - `tests/test_style.sh` — the pattern every check follows: `RULE` markers in the header, a skip for a missing external tool, one `fail` accumulator, a `FAIL:` line naming the rule.
 - `Makefile` — `test` globs `tests/test_*.cpp|.sh|.py` and sets `OPTIONAL_TOOLS=1`, so a missing external tool becomes a skip. `CXXFLAGS` already carries `-UNDEBUG`. `lint` runs `tests/test_style.sh` **and nothing else**, so a check needing `gitleaks` or the ARM toolchain can never break `make lint`.
 - `docs/phases/PHASES.md` — the phase table the traceability test reads to validate `planned:` targets, whose `status` column drives R-PROC-02, and whose `00-scaffold` row step 9 corrects.
@@ -259,11 +416,15 @@ is where the phase's remaining risk lives.
    — check: `grep -c STYLE_OPTIONAL Makefile tests/test_style.sh` → `0` in both;
    `grep -c UNDEBUG Makefile` → `1`; `make test` → exit 0.
 
-2. **Harness property 1 — accounting: every declared rule produces a result line.** Touches
-   the new `tests/test_checks_are_live.py` and the header of each check file. Each check file
+2. **Harness property 1 — accounting: every rule declared by a file in Table 5 produces a
+   result line.** Touches the new `tests/test_checks_are_live.py` and the header of each file
+   in **Table 5** — seven files, including `tests/test_style.sh`, whose three ids are not
+   among the fourteen and are held to this property anyway because accounting is a property
+   of the file set, not of the fourteen. Each check file
    already declares its rules as `# RULE <id> — …` header comments. The harness runs each
-   check file for real, captures its output, and requires that **every declared id appears in
-   at least one `ok:`/`FAIL:` line that the real run alone produces**, and that every
+   check file for real, captures its output, and requires that **every id declared by a
+   Table 5 file appears in at least one `ok:`/`FAIL:` line that the real run alone
+   produces**, and that every
    `ok:`/`FAIL:` line naming a rule id declares that id in the header. Both directions: an
    undeclared id in the output is as much a drift as a declared id with no line.
    **"The id appears in some line" is not that criterion, and rounds 1-9 passed under it.**
@@ -429,15 +590,16 @@ is where the phase's remaining risk lives.
      including `<cstdint>` for `-mcpu=cortex-m0plus -mthumb` and **passes those two flags and
      no others** — `-std=c++23` is the GCC 13+ spelling, so a compiler at R-TOOL-01's own floor
      of 12 would fail and be misreported as lacking a target C library.
-   - **Two structural requirements the harness cannot supply, and the reason it is not the
-     whole answer.** Every rejection and accept case runs *through* the shared `report`
-     function and asserts its verdict, rather than re-deciding "is the finder's output
-     non-empty" for itself — a case that bypasses `report` leaves the line deciding what
-     counts as a violation load-bearing for nothing. And each rule gets a **wiring case**:
-     the real aggregate (`run_all`) driven over a tree carrying exactly that rule's
-     violation, requiring both the rule's name in the output *and* the run to end failed.
-     Without it, dropping one `|| fail=1` prints the `FAIL:` line and still exits 0. Both
-     were found by mutating for them after the harness reported all-green.
+   - **The two structural requirements the harness cannot supply are SV and WC, and their
+     per-rule state is Table 2 — not this paragraph.** This is where round 11's `contradicts`
+     came from: the requirement used to be stated here in prose, naming `report( )` and
+     `run_all`, two mechanisms that exist in one file each, so a file satisfying the property
+     by another means read as a violation and four files silently satisfying neither read as
+     nothing at all. The definitions live in §Goal, the members live in Table 2's rows, and
+     **the mechanism column is per file and is not required to be the same function**:
+     `report( )`, `sweep( )`'s exit-code `case`, `scan( )`'s return, `check_version( )`'s
+     floor comparison and `check( )`'s problem list each satisfy SV in their own file. What
+     a Plan step may say here is which rows are owed, and §Plan step W says it.
    - **The thirteen accept cases, by name, because a floor must equal an enumeration.**
      `tests/test_repo_shape.sh` fails below `false-positive cases: 13`, and §How counts are
      stated forbids a count with no list beside it — round 10 returned that floor as
@@ -491,6 +653,43 @@ is where the phase's remaining risk lives.
    goal and dependencies untouched.
    — check: `grep -n '^| 00-scaffold' docs/phases/PHASES.md` shows the corrected text;
    `python3 tests/test_rule_traceability.py` → exit 0 (it reads this table).
+
+W. **Close the wiring-case gap: Table 2's WC column reaches 14/14** — touches
+   `tests/test_boundaries.sh` (R-ARCH-02), `tests/test_secrets.sh` (R-SEC-01),
+   `tests/test_tool_versions.sh` (R-TOOL-01, R-TOOL-02) and
+   `tests/test_rule_traceability.py` (R-PROC-01). Five rules, one step, because they are one
+   defect: the rule's verdict is printed and never reaches the exit code, so deleting the
+   `fail=1` on its failure path leaves the suite green.
+   A wiring case is the shape §Goal defines and `tests/test_repo_shape.sh` already implements
+   eight times: drive **the real aggregate** — not the finder — over a tree carrying exactly
+   that rule's violation, then require **both** that the captured output names the rule
+   **and** that the aggregate returned non-zero. Two assertions; either alone is satisfied by
+   the defect.
+   `test_boundaries.sh` and `test_secrets.sh` already build such a tree for their rejection
+   cases, so the case is the assertion, not the fixture. `test_tool_versions.sh` has its four
+   stubs. `test_rule_traceability.py` has `make_repo`. Nothing here needs a new fixture.
+   Same step, same files, two items Table 6 puts in scope:
+   `tests/test_boundaries.sh`'s `rejection cases: n/2` gets an `ok:`/`FAIL:` prefix so the
+   harness's accounting can see it, and its `-eq 2` becomes `>= 2`; `test_tool_versions.sh`'s
+   `n/4` and `test_rule_traceability.py`'s `n/9` become floors too (Table 4).
+   — check: **before**, one at a time, each must leave `make test` at exit 0 — that is the
+   defect, and an implementer who cannot reproduce it has not found the right line:
+   `fail=1` → `:` at `tests/test_secrets.sh:69`; the same at `tests/test_boundaries.sh:66`;
+   `|| fail=1` dropped from the `clang-tidy` call in `tests/test_tool_versions.sh`; the
+   equivalent for R-TOOL-02 and for R-PROC-01. **After**, every one of those five must make
+   `make test` exit non-zero, naming its rule. Then `sh tests/test_boundaries.sh` prints
+   `ok:   rejection cases: n/2` and `grep -rn 'ok:   .*rejection cases' tests/ | wc -l` → `5`,
+   all five inside a floor-passing branch.
+
+T. **The orphaned mutants** — touches `Makefile` (or `tests/test_checks_are_live.py`). A
+   `make test` killed mid-run leaves `tests/mut_*.sh` behind: the harness unlinks each mutant
+   in a `finally`, which `SIGTERM` skips. Observed in rounds 9, 10 and 11, and the orphans sit
+   where `tests/test_rule_traceability.py` walks for `RULE` markers and where the gitleaks
+   tree scan reads. A `trap` that removes `tests/mut_*.sh`, or the same removal at harness
+   start-up; not a `.gitignore` line, which hides them instead of removing them.
+   — check: `python3 tests/test_checks_are_live.py` → exit 0 and `ls tests/mut_*.sh` finds
+   nothing afterwards; then kill a run mid-flight (`timeout 5 make test` or Ctrl-C) and
+   `ls tests/mut_*.sh` still finds nothing.
 
 10. **Record the round** — touches `docs/phases/00-scaffold/notes.md`. Append this round's
     outcome and deviations; never rewrite the earlier rounds.
@@ -608,6 +807,60 @@ cp /tmp/pd.bak tests/test_phase_docs.sh
 rm -f /tmp/rs.bak /tmp/se.bak /tmp/bd.bak /tmp/pd.bak
 ```
 
+**Wiring block — Table 2's WC column, one command per row.** Each removal must make
+`make test` exit non-zero and name its rule. These are the five rows §Plan step W closes; the
+eight rows already held by `tests/test_repo_shape.sh` are covered by the `wiring cases: 8/8`
+line and by the `|| fail=1` mutation in the liveness block above. Run one at a time; restore
+between.
+
+```
+cp tests/test_secrets.sh /tmp/se.bak
+sed -i '' '69s/    fail=1/    :/' tests/test_secrets.sh
+make test                                          # expect: non-zero, naming R-SEC-01
+cp /tmp/se.bak tests/test_secrets.sh ; make test    # expect: exit 0, "OK"
+
+cp tests/test_boundaries.sh /tmp/bd.bak
+sed -i '' '66s/    fail=1/    :/' tests/test_boundaries.sh
+make test                                          # expect: non-zero, naming R-ARCH-02
+cp /tmp/bd.bak tests/test_boundaries.sh ; make test # expect: exit 0, "OK"
+
+cp tests/test_tool_versions.sh /tmp/tv.bak
+sed -i '' 's/ || fail=1//' tests/test_tool_versions.sh          # every probe at once
+make test                                          # expect: non-zero, naming R-TOOL-01 and R-TOOL-02
+cp /tmp/tv.bak tests/test_tool_versions.sh ; make test  # expect: exit 0, "OK"
+
+cp tests/test_rule_traceability.py /tmp/rt.bak
+python3 - <<'EOF'
+import pathlib
+p = pathlib.Path('tests/test_rule_traceability.py'); s = p.read_text()
+p.write_text(s.replace('        failed = True\n', '        pass\n', 1))   # the real run's verdict
+EOF
+make test                                          # expect: non-zero, naming R-PROC-01
+cp /tmp/rt.bak tests/test_rule_traceability.py ; make test  # expect: exit 0, "OK"
+rm -f /tmp/se.bak /tmp/bd.bak /tmp/tv.bak /tmp/rt.bak
+```
+
+The line numbers above are where those `fail=1` sit today; if step W moved them, the criterion
+is the *removal of the rule's failure flag*, and the implementer updates the line number here
+in the same edit — a criterion that silently mutates nothing is what round 10 found and round
+11 fixed once already.
+
+**Floors — Table 4's four floor rows, and none of them an equality.**
+
+```
+sh tests/test_boundaries.sh                        # expect: "ok:   rejection cases: n/2", n >= 2
+sh tests/test_tool_versions.sh                     # expect: "ok:   rejection cases: n/4", n >= 4
+python3 tests/test_rule_traceability.py            # expect: "ok:   R-PROC-01 rejection cases: n/9", n >= 9
+grep -rn 'ok:   .*rejection cases' tests/ | wc -l  # expect: 5, each inside a floor-passing branch
+```
+
+**Orphaned mutants — §Plan step T.**
+
+```
+python3 tests/test_checks_are_live.py ; ls tests/mut_*.sh   # expect: harness exit 0, ls finds nothing
+( make test & sleep 20 ; kill %1 ) ; ls tests/mut_*.sh      # expect: ls finds nothing after a killed run
+```
+
 **Clean-clone block — the floor the `PHASES.md` row promises.** `make test` must pass on a
 machine with C++23 and `python3` and nothing else, reporting every check it could not prove
 rather than failing. Simulate it by putting only `python3` and the system tools on `PATH`:
@@ -667,6 +920,11 @@ header without a `compile_commands.json`, so a scratch file containing `std::` o
 measured it is in `notes.md` §For later phases.
 
 ## Out of scope
+
+**Table 6 is part of this section.** It decides the three items round 11 left in
+§For later phases; the one it puts out of scope — judging a mutant by more than its exit code
+— is out for a stated reason with an owning phase, not by omission.
+
 
 - **Any PS2 protocol logic, type, or constant.** `Ps2Frame`, `DecodeStatus`, `LinkState`, the
   `std::expected` signatures of ADR-0009 and the vectors under `tests/vectors/` belong to
