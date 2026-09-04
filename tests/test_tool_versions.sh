@@ -100,28 +100,41 @@ arm_compiles( ) {
 # arm-none-eabi-g++ 12, the release in which libstdc++ gained <expected> — inferred from
 # the library's history, NOT verified here; only 15.3.1 has been measured (ADR-0008
 # §Verification). python3 3.8 for the meta-test — floors carry a minor number for a reason.
-check_version "clang-format"      clang-format      23 --version   || fail=1
-check_version "clang-tidy"        clang-tidy        23 --version   || fail=1
-check_version "arm-none-eabi-g++" arm-none-eabi-g++ 12 -dumpversion || fail=1
-check_version "python3"           python3          3.8 --version   || fail=1
+# probe <label> <binary> <min> <flag> — one probe, and the ONLY place R-TOOL-01's failure
+# flag is set. Four call sites used to carry `|| fail=1` each, which is four independent
+# failure paths and would need four wiring cases to cover; collapsing them to one path is
+# cheaper than writing four cases and proves the same thing.
+probe( ) { check_version "$@" || fail=1; }
 
-# --- R-TOOL-02 ---------------------------------------------------------------------------
-if command -v arm-none-eabi-g++ >/dev/null 2>&1; then
-    if err=$( arm_compiles arm-none-eabi-g++ ); then
-        echo "  ok:   R-TOOL-02: $( command -v arm-none-eabi-g++ ) compiles <cstdint> for cortex-m0plus"
+# run_all — the aggregate: every probe, both rules, and the flags they set. One function for
+# the real machine and for the wiring cases at the bottom, which is what makes those cases
+# able to prove that a printed FAIL reaches the exit code.
+run_all( ) {
+    probe "clang-format"      clang-format      23 --version
+    probe "clang-tidy"        clang-tidy        23 --version
+    probe "arm-none-eabi-g++" arm-none-eabi-g++ 12 -dumpversion
+    probe "python3"           python3          3.8 --version
+
+    # --- R-TOOL-02 -----------------------------------------------------------------------
+    if command -v arm-none-eabi-g++ >/dev/null 2>&1; then
+        if ra_err=$( arm_compiles arm-none-eabi-g++ ); then
+            echo "  ok:   R-TOOL-02: $( command -v arm-none-eabi-g++ ) compiles <cstdint> for cortex-m0plus"
+        else
+            echo "  FAIL: R-TOOL-02: the arm-none-eabi-g++ first on PATH cannot compile <cstdint>"
+            echo "        $( command -v arm-none-eabi-g++ )"
+            printf '        %s\n' "$ra_err"
+            echo "        A cross-compiler with no target C library. See docs/adr/0008-cpp23.md."
+            fail=1
+        fi
+    elif [ "${OPTIONAL_TOOLS:-0}" = "1" ]; then
+        echo "  skip: R-TOOL-02: arm-none-eabi-g++ not on PATH"
     else
-        echo "  FAIL: R-TOOL-02: the arm-none-eabi-g++ first on PATH cannot compile <cstdint>"
-        echo "        $( command -v arm-none-eabi-g++ )"
-        printf '        %s\n' "$err"
-        echo "        A cross-compiler with no target C library. See docs/adr/0008-cpp23.md."
+        echo "  FAIL: R-TOOL-02: arm-none-eabi-g++ not on PATH"
         fail=1
     fi
-elif [ "${OPTIONAL_TOOLS:-0}" = "1" ]; then
-    echo "  skip: R-TOOL-02: arm-none-eabi-g++ not on PATH"
-else
-    echo "  FAIL: R-TOOL-02: arm-none-eabi-g++ not on PATH"
-    fail=1
-fi
+}
+
+run_all
 
 # --- rejection cases ----------------------------------------------------------------------
 # Stub binaries, because the real tools on this machine pass. Without these the whole file
@@ -179,12 +192,50 @@ else
     rejected=$(( rejected + 1 ))
 fi
 
-rm -rf "$stub_dir"
-if [ "$rejected" -eq 4 ]; then
+# A floor, not an equality (§How counts are stated): the four names are clang-format below
+# its floor, a cross-compiler with no target libc, an unparsable banner, and a python3 below
+# a floor that needs its minor number.
+if [ "$rejected" -ge 4 ]; then
     echo "  ok:   rejection cases: $rejected/4"
 else
     echo "  FAIL: rejection cases: $rejected/4"
     fail=1
 fi
+
+# --- wiring cases --------------------------------------------------------------------------
+# One per rule, and each stub is chosen so that ONLY that rule fails — otherwise the other
+# rule's flag satisfies the case and deleting the flag under test goes unnoticed.
+#
+# (1) R-TOOL-01: a clang-format that reports 14. Nothing else on PATH changes.
+wiring_flag=$( fail=0; PATH="$stub_dir:$PATH" run_all >/dev/null 2>&1; echo "$fail" )
+wiring_txt=$( fail=0; PATH="$stub_dir:$PATH" run_all 2>&1 )
+if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-TOOL-01'; then
+    echo "  ok:   R-TOOL-01 wiring case (the verdict reaches the exit code)"
+else
+    echo "  FAIL: R-TOOL-01 is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    fail=1
+fi
+
+# (2) R-TOOL-02: an arm-none-eabi-g++ whose -dumpversion clears R-TOOL-01's floor of 12 and
+# which still cannot compile. R-TOOL-01 therefore passes and only R-TOOL-02's flag can fire.
+cat > "$stub_dir/arm-none-eabi-g++" <<'STUB'
+#!/bin/sh
+case "$1" in
+    -dumpversion ) echo "15.3.1" ;;
+    * ) echo "fatal error: cstdint: No such file or directory" >&2 ; exit 1 ;;
+esac
+STUB
+chmod +x "$stub_dir/arm-none-eabi-g++"
+rm -f "$stub_dir/clang-format"
+wiring_flag=$( fail=0; PATH="$stub_dir:$PATH" run_all >/dev/null 2>&1; echo "$fail" )
+wiring_txt=$( fail=0; PATH="$stub_dir:$PATH" run_all 2>&1 )
+if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-TOOL-02'; then
+    echo "  ok:   R-TOOL-02 wiring case (the verdict reaches the exit code)"
+else
+    echo "  FAIL: R-TOOL-02 is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    fail=1
+fi
+
+rm -rf "$stub_dir"
 
 exit $fail

@@ -32,8 +32,10 @@ weaker form. Upgrade when a rule arrives whose check is not a grep; owner 01-ps2
 """
 
 import concurrent.futures
+import glob
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -76,6 +78,28 @@ CASE_LINE = re.compile(r"(rejection|false-positive|accept|wiring)\s+cases?", re.
 
 failures = []
 notes = []
+
+
+def sweep_orphans():
+    """Remove mutants a killed run left behind.
+
+    Each mutant is unlinked in a `finally`, which SIGTERM skips, so rounds 9, 10 and 11 each
+    left `tests/mut_*.sh` sitting in the tree — where tests/test_rule_traceability.py walks
+    for `RULE` markers and where the gitleaks tree scan reads. Swept at start-up, so a
+    previous kill is cleaned up by the next run, and from a signal handler, so this run does
+    not leave any. Not a .gitignore line: that hides them instead of removing them.
+    """
+    for path in (glob.glob(os.path.join(TESTS, "mut_*.sh"))
+                 + glob.glob(os.path.join(TESTS, "fixtures", "mut_*.sh"))):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _on_signal(signum, _frame):
+    sweep_orphans()
+    sys.exit(128 + signum)
 
 
 def fail(msg):
@@ -461,6 +485,10 @@ def bootstrap():
 
 
 def main():
+    sweep_orphans()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, _on_signal)
+
     names = check_files()
     if not names:
         fail("no check files found under tests/")

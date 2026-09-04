@@ -104,7 +104,10 @@ arm fails the core→hal case. What made SV look broken is that the old §Goal n
 mechanism read as a violation. The requirement is the property; the mechanism column above is
 per file and is not required to be the same function.
 
-WC is the real gap and all five absences are live. Measured, each against a full `make test`:
+WC is the real gap and all five absences are live. The *today* column is the dated
+measurement the Plan is written against; the state after §Plan step W lands is recorded in
+`notes.md`, not here, so this table keeps meaning "the gap step W closes".
+Measured, each against a full `make test`:
 
 ```
 tests/test_secrets.sh:69        fail=1 -> :        make test rc=0   R-SEC-01 unbound
@@ -768,10 +771,11 @@ cp tests/test_secrets.sh /tmp/se.bak
 python3 - <<'EOF'
 import pathlib
 p = pathlib.Path('tests/test_secrets.sh'); s = p.read_text()
-i = s.index('if scan git "$ROOT" "$hist_out"; then'); j = s.index('\nfi\n', i) + 4
-p.write_text(s[:i] + s[j:])                        # delete the real history scan
+i = s.index('    if scan git "$1" "$ra_hist"; then'); j = s.index('\n    fi\n', i) + 8
+p.write_text(s[:i] + s[j:])        # delete the history scan from inside run_all (step W moved it)
 EOF
-make test                                          # expect: non-zero, missing LIVE label R-SEC-01 (history)
+make test                                          # expect: non-zero — the R-SEC-01 (history) wiring case fires,
+                                                   # and the LIVE label prefixes no line
 cp /tmp/se.bak tests/test_secrets.sh ; make test    # expect: exit 0, "OK"
 
 # The two that survived round 9 and are the reason the accounting criterion was rewritten.
@@ -781,8 +785,8 @@ cp tests/test_boundaries.sh /tmp/bd.bak
 python3 - <<'EOF'
 import pathlib
 p = pathlib.Path('tests/test_boundaries.sh'); s = p.read_text()
-i = s.index('out=$( mktemp ) || exit 1\nsweep "$ROOT"'); j = s.index('rm -f "$out"\n', i) + 13
-p.write_text(s[:i] + s[j:])                        # delete the real sweep
+p.write_text(s.replace('\nrun_all "$ROOT"\n', '\n', 1))   # delete the real sweep's call site
+                                                   # (step W wrapped it in run_all)
 EOF
 make test                                          # expect: non-zero — R-ARCH-02 reported by nothing but its own cases
 cp /tmp/bd.bak tests/test_boundaries.sh ; make test # expect: exit 0, "OK"
@@ -807,43 +811,36 @@ cp /tmp/pd.bak tests/test_phase_docs.sh
 rm -f /tmp/rs.bak /tmp/se.bak /tmp/bd.bak /tmp/pd.bak
 ```
 
-**Wiring block — Table 2's WC column, one command per row.** Each removal must make
-`make test` exit non-zero and name its rule. These are the five rows §Plan step W closes; the
-eight rows already held by `tests/test_repo_shape.sh` are covered by the `wiring cases: 8/8`
-line and by the `|| fail=1` mutation in the liveness block above. Run one at a time; restore
-between.
+**Wiring block — Table 2's WC column, one mutation per failure path.** Each must make
+`make test` exit non-zero and name its rule. The eight rows held by `tests/test_repo_shape.sh`
+are covered by its `wiring cases: 8/8` line and by the `|| fail=1` mutation in the liveness
+block above; these are the rest. **Six mutations for five rules**: R-SEC-01 has two
+independent failure paths — the tree scan and the history scan, the same two its `# LIVE`
+labels pin — and a rule with N independent failure paths needs N wiring cases, because one
+fixture that trips both is satisfied by either flag alone. That was built the wrong way first
+and passed while each branch's flag was deleted in turn.
+
+Anchored on content, not on line numbers: an earlier draft of this block named line 69 and
+line 66, step W moved both, and a criterion that mutates nothing reports the exit 0 it was
+given. Run one at a time; each restores the file before the next.
 
 ```
-cp tests/test_secrets.sh /tmp/se.bak
-sed -i '' '69s/    fail=1/    :/' tests/test_secrets.sh
-make test                                          # expect: non-zero, naming R-SEC-01
-cp /tmp/se.bak tests/test_secrets.sh ; make test    # expect: exit 0, "OK"
+for f in tests/test_secrets.sh tests/test_boundaries.sh \
+         tests/test_tool_versions.sh tests/test_rule_traceability.py; do
+    cp "$f" "/tmp/$( basename "$f" ).bak"
+done
+drop() { python3 -c "$1"; make test; cp "/tmp/$( basename "$2" ).bak" "$2"; }
+# each `make test` below: expect non-zero, naming the rule in the comment
 
-cp tests/test_boundaries.sh /tmp/bd.bak
-sed -i '' '66s/    fail=1/    :/' tests/test_boundaries.sh
-make test                                          # expect: non-zero, naming R-ARCH-02
-cp /tmp/bd.bak tests/test_boundaries.sh ; make test # expect: exit 0, "OK"
+drop "import pathlib;p=pathlib.Path('tests/test_secrets.sh');s=p.read_text();i=s.index('gitleaks found secrets in the tree');j=s.index('        fail=1',i);p.write_text(s[:j]+'        :     '+s[j+8:])" tests/test_secrets.sh              # R-SEC-01 (working tree)
+drop "import pathlib;p=pathlib.Path('tests/test_secrets.sh');s=p.read_text();i=s.index('secrets in the commit history');j=s.index('        fail=1',i);p.write_text(s[:j]+'        :     '+s[j+8:])" tests/test_secrets.sh                   # R-SEC-01 (history)
+drop "import pathlib;p=pathlib.Path('tests/test_boundaries.sh');s=p.read_text();i=s.index('forbidden dependency direction');j=s.index('        fail=1',i);p.write_text(s[:j]+'        :     '+s[j+8:])" tests/test_boundaries.sh              # R-ARCH-02
+drop "import pathlib;p=pathlib.Path('tests/test_tool_versions.sh');s=p.read_text();p.write_text(s.replace('probe( ) { check_version \"\$@\" || fail=1; }','probe( ) { check_version \"\$@\"; }',1))" tests/test_tool_versions.sh        # R-TOOL-01
+drop "import pathlib;p=pathlib.Path('tests/test_tool_versions.sh');s=p.read_text();i=s.index('A cross-compiler with no target C library');j=s.index('            fail=1',i);p.write_text(s[:j]+'            :     '+s[j+12:])" tests/test_tool_versions.sh  # R-TOOL-02
+drop "import pathlib;p=pathlib.Path('tests/test_rule_traceability.py');s=p.read_text();i=s.index('rule/test traceability');j=s.index('        return True',i);p.write_text(s[:j]+'        return False'+s[j+18:])" tests/test_rule_traceability.py  # R-PROC-01
 
-cp tests/test_tool_versions.sh /tmp/tv.bak
-sed -i '' 's/ || fail=1//' tests/test_tool_versions.sh          # every probe at once
-make test                                          # expect: non-zero, naming R-TOOL-01 and R-TOOL-02
-cp /tmp/tv.bak tests/test_tool_versions.sh ; make test  # expect: exit 0, "OK"
-
-cp tests/test_rule_traceability.py /tmp/rt.bak
-python3 - <<'EOF'
-import pathlib
-p = pathlib.Path('tests/test_rule_traceability.py'); s = p.read_text()
-p.write_text(s.replace('        failed = True\n', '        pass\n', 1))   # the real run's verdict
-EOF
-make test                                          # expect: non-zero, naming R-PROC-01
-cp /tmp/rt.bak tests/test_rule_traceability.py ; make test  # expect: exit 0, "OK"
-rm -f /tmp/se.bak /tmp/bd.bak /tmp/tv.bak /tmp/rt.bak
+rm -f /tmp/*.bak ; make test                       # expect: exit 0, "OK"
 ```
-
-The line numbers above are where those `fail=1` sit today; if step W moved them, the criterion
-is the *removal of the rule's failure flag*, and the implementer updates the line number here
-in the same edit — a criterion that silently mutates nothing is what round 10 found and round
-11 fixed once already.
 
 **Floors — Table 4's four floor rows, and none of them an equality.**
 

@@ -2349,3 +2349,103 @@ What a re-expansion has to settle, so it is not rediscovered a fourth time:
    outside the fourteen.
 4. **Whether `notes.md` §For later phases (round 11) items are in scope**: the exit-code-only
    mutant judgement, the orphaned `mut_*.sh`, and `test_boundaries.sh:111`'s prefix-less count.
+
+## Implementation — 2026-09-03 (round 12, against the re-expanded spec)
+
+Two Plan steps were owed: **W** (Table 2's WC column, 9/14 → 14/14, plus Table 4's three
+equalities → floors, plus `test_boundaries.sh`'s prefix-less count) and **T** (the orphaned
+`mut_*.sh`). Steps 0-10 were already built and were not touched. Files changed:
+`tests/test_boundaries.sh`, `tests/test_secrets.sh`, `tests/test_tool_versions.sh`,
+`tests/test_rule_traceability.py`, `tests/test_checks_are_live.py`, and `spec.md` for three
+amendments forced by the work. No new file.
+
+**Before, measured, all five rows at exit 0** — the defect, reproduced first as §Plan step W
+requires:
+
+```
+test_secrets.sh       drop the tree-scan fail=1        make test rc=0
+test_secrets.sh       drop the history-scan fail=1     make test rc=0
+test_boundaries.sh    drop the breach-arm fail=1       make test rc=0
+test_tool_versions.sh drop a probe's || fail=1         make test rc=0
+test_tool_versions.sh drop R-TOOL-02's fail=1          make test rc=0
+test_rule_traceability.py  real run returns not-failed make test rc=0
+```
+
+**After: every one exits non-zero naming its rule.** WC is 14/14, carried by fifteen wiring
+cases — R-SEC-01 has two, for the reason below.
+
+### Two things the spec did not anticipate, both found by the measurement
+
+- **A wiring case only bites when the flag it protects lives *inside* the aggregate.** The
+  first `test_boundaries.sh` attempt put `|| fail=1` at the call site and had `run_all`
+  return a code. The wiring case passed and deleting that flag *still* left the file at
+  exit 0 — the defect moved instead of closing. `tests/test_repo_shape.sh` had it right all
+  along: its `run_all` sets `fail` itself and the case captures `fail` from a subshell
+  (`wiring_flag=$( fail=0; run_all … ; echo "$fail" )`). Every wiring case added here follows
+  that shape. Caught because the step's check says to re-run the *before* mutation after the
+  fix, not because anything in the spec said so.
+- **A rule with N independent failure paths needs N wiring cases.** R-SEC-01 scans the tree
+  and the history with a `fail=1` each. One fixture tripping both is satisfied by either flag
+  alone: built that way first, it passed while each branch's flag was deleted in turn. It now
+  has two cases with fixtures that trip exactly one clause each — a token in the working tree
+  never committed, and a token committed then deleted. This is the same reason the rule
+  carries two `# LIVE` labels, and the two mechanisms now agree.
+
+The second finding is why `tests/test_tool_versions.sh` has **two** wiring cases and not five.
+R-TOOL-01's four probes carried four `|| fail=1` at four call sites — four failure paths, so
+four cases by the rule above. Collapsing them into one `probe( )` helper that owns the single
+flag is cheaper than writing four cases and proves the same thing, so that is what was done.
+R-TOOL-02's stub had to be chosen to fail *only* R-TOOL-02: an `arm-none-eabi-g++` whose
+`-dumpversion` clears R-TOOL-01's floor of 12 and which still cannot compile. With the
+existing `fake-gcc` stub both rules failed and R-TOOL-01's flag would have satisfied the case.
+
+### Step T — the orphaned mutants
+
+`sweep_orphans()` removes `tests/mut_*.sh` and `tests/fixtures/mut_*.sh` at harness start-up
+and from a `SIGTERM`/`SIGINT` handler. Start-up covers a kill that never reached the harness;
+the handler covers one that did. Confirmed twice, once deliberately and once by accident: a
+9m20s tool timeout killed a `make test` mid-adversarial-block during this round's acceptance
+run and left no orphans behind.
+
+## Deviations (round 12)
+
+- **Three spec amendments, all of them the spec's own instruction being followed.**
+  (i) The §Acceptance criteria wiring block named `tests/test_secrets.sh:69` and
+  `tests/test_boundaries.sh:66`; step W moved both lines, and the block said in that case the
+  implementer updates it in the same edit. It is now anchored on **content**, not line
+  numbers — the shape that failed silently in round 10 and again in round 11's before-measure,
+  where a `sed` on line 116 hit an `echo` and reported a meaningless exit 0.
+  (ii) Two mutations in the liveness block anchored on code step W replaced
+  (`if scan git "$ROOT" "$hist_out"` and the inline `sweep "$ROOT"` block); re-anchored on
+  the new shapes and re-run.
+  (iii) L5's expected message was "missing LIVE label"; the history wiring case now fires
+  first, and the comment says so.
+- **The wiring block grew from five mutations to six**, because R-SEC-01 needs one per clause.
+  §Acceptance criteria says so and names the reason.
+- **Table 2's *today* column was left at its 5c1422c measurement.** It is dated in the spec
+  and its stated purpose is "the gap step W closes"; a pointer was added saying the
+  post-implementation state is recorded here. Updating it in place would erase the reason the
+  step exists.
+- **Files touched, all named in the Plan or the Context pointers:** the four check files and
+  the harness (steps W and T), `spec.md` (the three amendments above). Nothing else.
+
+## Debt (round 12)
+
+- No new `belay-debt:` comment. The one item Table 6 puts out of scope — judging a mutant by
+  more than its exit code — keeps its owner, `01-ps2-codec`, and is recorded in the spec's
+  table rather than as a comment, because there is no single line of code to attach it to.
+
+## For later phases (added round 12)
+
+- **"A rule with N independent failure paths needs N wiring cases" is the general form**, and
+  it is not written down anywhere except here and in the two files that obey it. The next
+  phase that binds a rule whose check has more than one real-run call should read
+  `tests/test_secrets.sh`'s wiring cases before writing its own; the cheaper alternative,
+  taken for R-TOOL-01, is to collapse the paths into one flag first.
+- **The suite is at 73s against a 2m cap** — up from 55.3s in round 11, because the new wiring
+  cases run `gitleaks` twice more and the mutation set grew from 26 to 30 functions. Two more
+  wiring cases of the `gitleaks` kind would put the cap in play. When it is threatened the
+  answer is §Out of scope's: raise the cap in a re-expansion or cut mutants, not optimise.
+- **`tests/test_style.sh` is the only file in the accounting set that nothing else covers**
+  (Table 5). Its three rules are not among the fourteen and it is never mutated, so if the
+  phase that owns clang-tidy ever changes it, accounting is the only thing that will notice.

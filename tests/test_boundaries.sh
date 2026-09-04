@@ -51,25 +51,38 @@ if [ ! -x "$HOOK" ]; then
     exit 1
 fi
 
-out=$( mktemp ) || exit 1
-sweep "$ROOT" >"$out" 2>&1
-rc=$?
-if [ "$rc" -eq 0 ]; then
-    if [ -d "$ROOT/src" ] && [ -n "$( find "$ROOT/src" -type f 2>/dev/null )" ]; then
-        echo "  ok:   R-ARCH-02"
+# run_all <project-root> — the aggregate: sweep, then the verdict, then a return code. One
+# function for the real tree and for the wiring case below, so no case can pass while the
+# path the real run takes is broken. It sets `fail` ITSELF, which is the whole point: the
+# flag the wiring case has to protect is the one on the rule's failure path, so it must live
+# inside the aggregate where the case can run it. A first attempt put `|| fail=1` at the call
+# site instead, and the wiring case then passed while deleting that flag still left this file
+# exiting 0 — the defect moved rather than closed.
+# The verdict itself stays where it was, in sweep( )'s case on the hook's 0/1/2 — this
+# wrapper reports it, it does not re-decide it.
+run_all( ) {
+    ra_out=$( mktemp ) || return 1
+    sweep "$1" >"$ra_out" 2>&1
+    ra_rc=$?
+    if [ "$ra_rc" -eq 0 ]; then
+        if [ -d "$1/src" ] && [ -n "$( find "$1/src" -type f 2>/dev/null )" ]; then
+            echo "  ok:   R-ARCH-02"
+        else
+            echo "  ok:   R-ARCH-02 (no sources yet)"
+        fi
+    elif [ "$ra_rc" -eq 1 ]; then
+        echo "  FAIL: R-ARCH-02: forbidden dependency direction"
+        sed 's/^/        /' "$ra_out"
+        fail=1
     else
-        echo "  ok:   R-ARCH-02 (no sources yet)"
+        echo "  FAIL: R-ARCH-02: the boundary hook did not run — this is not a layering result"
+        sed 's/^/        /' "$ra_out"
+        fail=1
     fi
-elif [ "$rc" -eq 1 ]; then
-    echo "  FAIL: R-ARCH-02: forbidden dependency direction"
-    sed 's/^/        /' "$out"
-    fail=1
-else
-    echo "  FAIL: R-ARCH-02: the boundary hook did not run — this is not a layering result"
-    sed 's/^/        /' "$out"
-    fail=1
-fi
-rm -f "$out"
+    rm -f "$ra_out"
+}
+
+run_all "$ROOT"
 
 # --- rejection case ------------------------------------------------------------------
 # core may not depend on hal. Without this, a sweep over a tree with no sources would
@@ -108,7 +121,32 @@ else
 fi
 rm -rf "$tmp"
 
-echo "  rejection cases: $rejected/2"
-[ "$rejected" -eq 2 ] || fail=1
+# --- wiring case -------------------------------------------------------------------------
+# The rejection cases above assert sweep's verdict. This asserts that the verdict reaches
+# run_all's RETURN CODE and names the rule, which is a different claim: without it, deleting
+# `|| fail=1` from the real run prints `FAIL: R-ARCH-02` and this file still exits 0.
+# Measured before it existed: that deletion left `make test` at exit 0.
+tmp=$( mktemp -d ) || exit 1
+mkdir -p "$tmp/.claude/workflow" "$tmp/src/core"
+cp "$ROOT/.claude/workflow/boundaries.rules" "$tmp/.claude/workflow/boundaries.rules"
+printf '#include "hal/bus.h"\n' > "$tmp/src/core/bad.cpp"
+wiring_flag=$( fail=0; run_all "$tmp" >/dev/null 2>&1; echo "$fail" )
+wiring_txt=$( fail=0; run_all "$tmp" 2>&1 )
+if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-ARCH-02'; then
+    echo "  ok:   R-ARCH-02 wiring case (the verdict reaches the exit code)"
+else
+    echo "  FAIL: R-ARCH-02 is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    fail=1
+fi
+rm -rf "$tmp"
+
+# A floor, not an equality: an equality breaks when a third case is added, which is a floor
+# written backwards (§How counts are stated). Prefixed so the liveness harness can see it.
+if [ "$rejected" -ge 2 ]; then
+    echo "  ok:   rejection cases: $rejected/2"
+else
+    echo "  FAIL: rejection cases: $rejected/2"
+    fail=1
+fi
 
 exit $fail

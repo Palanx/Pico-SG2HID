@@ -16,6 +16,8 @@ at the real repo cannot be shown to reject anything, and on a tree with no produ
 almost every check here passes vacuously. Standard library only.
 """
 
+import contextlib
+import io
 import os
 import re
 import shutil
@@ -255,28 +257,66 @@ def run_rejection_cases():
     return passed
 
 
+def run_all(root, constraints, phases, claude):
+    """The aggregate: check, then the verdict, then the flag. Returns True when it failed.
+
+    One function for the real repository and for the wiring case below, so that case can
+    prove what the nine rejection cases cannot: that a reported problem reaches the exit
+    code. Before it existed, replacing this function's `return True` with `return False`
+    left `make test` at exit 0 while R-PROC-01 still printed its FAIL line.
+    """
+    problems = check(root, constraints, phases, claude)
+    if problems:
+        print("  FAIL: R-PROC-01: rule/test traceability")
+        for problem in problems:
+            print("        " + problem)
+        return True
+    print("  ok:   R-PROC-01 (catalogue consistent in both directions)")
+    return False
+
+
+def wiring_case():
+    """Drive run_all over a repo carrying exactly one R-PROC-01 violation.
+
+    Requires both halves of the claim: the output names the rule AND the aggregate reported
+    failure. Either alone is satisfied by the defect this case exists to catch.
+    """
+    tmp = tempfile.mkdtemp(prefix="ruletrace-wiring-")
+    try:
+        constraints, phases, claude = make_repo(
+            tmp, "- **R-X-01** — text — test: `tests/missing.sh`\n")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            failed = run_all(tmp, constraints, phases, claude)
+        return failed and "FAIL: R-PROC-01" in buf.getvalue()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    problems = check(
+    failed = run_all(
         root,
         os.path.join(root, "docs", "constraints.md"),
         os.path.join(root, "docs", "phases", "PHASES.md"),
         os.path.join(root, "CLAUDE.md"),
     )
-    failed = False
-    if problems:
-        print("  FAIL: R-PROC-01: rule/test traceability")
-        for problem in problems:
-            print("        " + problem)
-        failed = True
-    else:
-        print("  ok:   R-PROC-01 (catalogue consistent in both directions)")
 
     passed = run_rejection_cases()
-    if passed == len(CASES):
+    # Two conditions, not one. "every case passed" is the gate; "there are at least the nine
+    # enumerated in the spec" is the floor (§How counts are stated) — an equality against
+    # len(CASES) is a count that breaks when a tenth case is added, which is a floor written
+    # backwards.
+    if passed == len(CASES) and len(CASES) >= 9:
         print(f"  ok:   R-PROC-01 rejection cases: {passed}/{len(CASES)}")
     else:
-        print(f"  FAIL: R-PROC-01 rejection cases: {passed}/{len(CASES)}")
+        print(f"  FAIL: R-PROC-01 rejection cases: {passed}/{len(CASES)} (floor 9)")
+        failed = True
+
+    if wiring_case():
+        print("  ok:   R-PROC-01 wiring case (the verdict reaches the exit code)")
+    else:
+        print("  FAIL: R-PROC-01 is reported but never reaches the exit code")
         failed = True
     return 1 if failed else 0
 
