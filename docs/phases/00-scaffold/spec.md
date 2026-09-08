@@ -300,6 +300,13 @@ list is the enumeration and a number beside it would be §How counts are stated'
 - **`verify.md`'s references to its own structure are not claims about the suite.** Its
   numbered sections and its own lists are the document's, and counting them is not counting
   a check's output.
+- **The clause governs runs of the suite as delivered, and nothing else.** What a defective
+  past version printed, or what an inert check would print, is a fact about a defect and not
+  about this suite's output — the clause exists to stop `verify.md` going stale against a
+  suite that keeps changing, and a defect that has been closed cannot go stale. Those
+  statements are founded where the defect is recorded (Table 2's measured `fail=1 -> :` block,
+  §Plan step 2's `LIVE` discussion, `notes.md`), which is why `verify.md` may teach the four
+  holes by saying what each one did.
 
 The mechanical floor under all of this is the grep in §Acceptance criteria, and it is a floor
 and not the rule: it sees quoted output and cannot see a described format, so the clause above

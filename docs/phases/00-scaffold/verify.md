@@ -98,14 +98,9 @@ printf 'auto* p = new int;\n' > src/core/scratch.cpp
 make test
 ```
 
-Expect it to fail, and expect a result line naming `R-ARCH-03` and the file it found the
-violation in.
-
-Do not match the rest of that line against anything written here. **This document tells you
-what a run does — whether it passed, which rule it named, which file — and never what a
-result line looks like, including how many of them there are**, on purpose: a check's exact wording changes whenever it gains a case, and
-a document that quoted one would be wrong more often than right. The rule id is the part that
-lasts, and it is the part you look for.
+Expect it to fail, naming `R-ARCH-03` and the file it found the violation in. The rule id is
+what you look for; nothing else about the wording is worth matching against this document,
+because a check's exact phrasing changes whenever it gains a case.
 
 `R-ARCH-03` is the rule that says firmware never allocates memory dynamically — on a chip
 with 264 KB of RAM and no operating system, running out of memory mid-song is not
@@ -171,9 +166,9 @@ removing it puts the repository back exactly as it was.)
 python3 tests/test_rule_traceability.py
 ```
 
-Expect it to pass. It decides several separate things and reports `R-PROC-01` for what it
-decided: that the catalogue is consistent in both directions, that its rejection cases all
-fired, and that its verdict reaches the exit code (§5 explains that last one).
+Expect it to pass. It decides several separate things: that the catalogue is consistent in
+both directions, that its rejection cases all fired, and that its verdict reaches the exit
+code (§5 explains that last one).
 
 Its rejection cases are the different ways the tie between a rule and its test can come
 loose — a rule pointing at a file that does not exist, a test whose marker names a rule the

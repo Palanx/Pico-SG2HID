@@ -2999,3 +2999,66 @@ Review counts for the whole round: `4+4`, `8+5`, `3+6`, `5+8`, `5+3`, `2+4`. Bot
 only after the authority moved to §Goal, and the last pass's `contradicts` were both about the
 prose describing the rule rather than about anything the rule governs.
 
+## Deviations (round 13, seventh review pass)
+
+`1+2`, the lowest of the round, and the pass cleared by name the two things every earlier pass
+had found: **§Plan step 8 — no finding** ("it delegates rather than paraphrases"), and **every
+count and universal in the diff — no finding**, each checked against the enumeration it must
+equal (nine sites = 5 + 4, each row's prefixes summing to its own site count; three ids
+discharged by two result lines; four rounds followed by four named rounds; fourteen rules plus
+`R-SEC-01` twice). Still not a clean pass, so the phase does not close.
+
+- **The `contradicts` is correct and was not caught in six earlier passes.** `verify.md` §4
+  said the traceability check "reports `R-PROC-01`" on a run that **passes**, while every
+  id-naming in *Observable behaviour* hangs off a **non-zero** exit. The reviewer built the
+  counter-reading that would save it — bullet 3's "beyond the id and the path the clause
+  names" — and rejected it correctly: bullet 1 makes the id and the path one fact, and a
+  passing run has no offending path. Fixed by dropping the naming; the three decisions after
+  the colon stay, being decides-facts founded on §Goal's deliverables, Table 4 and §Plan
+  step W. The alternative — widening *Observable behaviour* again, as this round did for §5's
+  `R-ERR-04` — was available and was not taken, because the operator gains nothing from being
+  told which id a passing run prints.
+- **§2's self-describing paragraph was deleted rather than reworded, on the operator's
+  standing instruction.** Undecidable B turned on whether the "one report" bullet 1 licenses
+  may be called a *result line*, and that paragraph was the fifth wording of the same
+  editorial policy inside the operator document. Its content is §Goal's clause, which is the
+  spec's business; an operator does not need to be told the document's editorial policy, only
+  what to expect. "Result line" went with it — the clause's own word is that the id and the
+  path arrive in one report, so `verify.md` now says the run fails naming the rule and the
+  file, and names no carrier. **A paragraph that cannot be written correctly in five attempts
+  is a paragraph too many.**
+- **The clause gained its last scope sentence: it governs runs of the suite *as delivered*.**
+  Undecidable A was three sentences describing what a *defective past* version printed — the
+  cheerful pass, `test_secrets.sh` reporting clean scans that were not happening, a suite
+  naming the broken rule and passing anyway. Unplaceable, because the clause never said
+  whether a historical output fact is governed. It is not: the clause exists to stop
+  `verify.md` going stale against a suite that keeps changing, and **a defect that has been
+  closed cannot go stale**. Those statements are founded where the defect is recorded, which
+  is what lets `verify.md` teach the four holes by saying what each one did.
+
+Review counts for the round: `4+4`, `8+5`, `3+6`, `5+8`, `5+3`, `2+4`, `1+2`.
+
+## For later phases (added round 13, seventh pass — taste, deliberately not fixed)
+
+Step 5 says taste never blocks and is recorded, not acted on. These were left standing on
+purpose, and the last one is a defect:
+
+- **`verify.md`'s "a pattern listing thirty forbidden things … the other twenty-eight" is off
+  by one.** §Plan step 4 measures `find_arch01` at **31** alternatives (7 + 24 prefixes). The
+  reviewer flagged it as pre-existing context outside this diff. It is a false number in an
+  operator document and should be corrected by whoever next touches that paragraph — most
+  likely `03-pio-bus`, the first phase to add `src/` files that make `find_arch01` fire.
+- **`verify.md` §4's "its nine examples were written by hand"** is correct today and goes
+  stale on the tenth traceability failure mode, which Table 4 turned into a floor `>= 9`. It
+  is the exact class §Plan step 8 argues against, surviving because it counts hand-written
+  examples rather than output. Left as-is rather than reopened.
+- **§Acceptance criteria's grep comment says "the only one allowed"** where §Goal says the
+  whitelist "is the grep's tolerance, never a licence". §Goal supplies the tie-breaker, so
+  nothing is undecided; "tolerated by this grep" would say what is meant.
+- **The new grep prints `0` but exits 1** when nothing matches, like the pre-existing
+  `grep -c 'planned: 00-scaffold'` line beside it. The block's convention is the printed
+  value; an implementer checking `$?` will misread it.
+- **Table 3's accounting row still reads "7 of 7" with no note** while Table 5's prose now
+  makes `test_style.sh`'s ✓ conditional on both clang tools resolving. Both are dated
+  measurements and consistent; the amendment is merely asymmetric.
+
