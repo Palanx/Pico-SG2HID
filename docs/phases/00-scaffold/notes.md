@@ -3062,3 +3062,22 @@ purpose, and the last one is a defect:
   makes `test_style.sh`'s ✓ conditional on both clang tools resolving. Both are dated
   measurements and consistent; the amendment is merely asymmetric.
 
+## Operator validation — 2026-09-10, by hand
+
+The operator ran `docs/phases/00-scaffold/verify.md` end to end against the tree at `8270a71`
+and reports: **every procedure passes, and what happens matches what the document says.**
+
+Recorded as its own section because it is evidence of a kind no review pass in this round
+could produce. Seven independent reviews read `verify.md` against the spec and argued about
+what it was entitled to assert; not one of them ran a single command in it. §Plan step 8's
+check — "every command `verify.md` prints can be pasted into a shell in the order given, and
+each command the document says should fail produces a failing run naming the rule it promises"
+— is executable by construction and had, until now, only ever been executed by the agent that
+wrote the document. An operator who is not a firmware or electronics specialist following it
+cold is the actual acceptance test for R-PROC-02, and it is the one this phase exists to pass.
+
+It also settles the input limitation every reviewer flagged and none could close: each pass
+saw `verify.md`'s changed hunks only, so none could confirm the file's whole-document
+properties — §Acceptance criteria's grep over the entire file, and whether the procedures
+still compose in order after seven rounds of edits. The hand run covers both.
+
