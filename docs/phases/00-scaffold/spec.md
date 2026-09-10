@@ -1094,8 +1094,10 @@ R-ARCH-03 one. **Two different diagnostics, and they are stated apart here becau
 draft of this sentence merged them and was wrong** (re-measured 2026-09-10): a file carrying an
 `#include`, quoted or angled, fails with *that header not found*; a file carrying a bare `std::`
 and no include fails with *`std` undeclared*, never with a not-found. §Goal's *Observable
-behaviour* states the first, which is the one every procedure in `verify.md` produces; the
-second is why this block runs `sh tests/test_repo_shape.sh` rather than `make test`. The
+behaviour* states the first and not the second — no universal about `verify.md`'s procedures is
+asserted here, because §How counts are stated would need a table of them and the document's own
+§3 already says which of its scratch files carry an `#include`. The second diagnostic is why
+this block runs `sh tests/test_repo_shape.sh` rather than `make test`. The
 working invocation that measured the underlying limitation is in `notes.md` §For later phases,
 and the limitation itself is the finding in `docs/constraints.md` §Observed conventions, which
 says `clang-diagnostic-error` and is correct as written.

@@ -54,8 +54,8 @@ perfectly fine in the source:
 1. The rejection case ran its own private copy while the real scan had been replaced by "do
    nothing". `tests/test_secrets.sh` reported a clean scan of this repo and a clean scan of
    its history when neither was happening any more.
-2. A pattern listing thirty forbidden things had rejection cases for two of them. The other
-   twenty-eight could be deleted one at a time and every test still passed.
+2. A pattern listing thirty-one forbidden things had rejection cases for two of them. The
+   other twenty-nine could be deleted one at a time and every test still passed.
 3. The line deciding *whether anything counts as a violation* could be gutted, because the
    cases each re-decided it for themselves instead of asking it.
 4. A rule could be found and reported as broken, and still not make the suite exit non-zero.
@@ -65,7 +65,7 @@ noticing that nothing complained. So that is now a check of its own —
 `tests/test_checks_are_live.py`, which is why `make test` takes about a minute. It reads the
 other checks' source, generates a broken version for every forbidden thing each one looks
 for, runs each broken version, and **requires the suite to notice**. Concretely: it deletes
-one item from a list of thirty and demands that some test fails. If none does, that item was
+one item from a list of thirty-one and demands that some test fails. If none does, that item was
 being watched by nobody, and the build stops with its name.
 
 That is the difference between this phase and its first eight attempts. Before, a human

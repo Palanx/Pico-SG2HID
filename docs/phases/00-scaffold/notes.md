@@ -3186,3 +3186,29 @@ own liveness and wiring blocks carry the identical exposure across five `str.rep
 mutations. They are run by the validator rather than the operator, and closing them was not
 part of this instruction.
 
+## Deviations (round 13, ninth review pass)
+
+`1+1`. Both findings were real; both are now closed against measurement rather than against the
+spec's own arithmetic.
+
+- **`verify.md` had a false quantity, stated twice, and it is the oldest defect this round
+  touched.** Its account of the second hole said "a pattern listing **thirty** forbidden things
+  … the other **twenty-eight**", and its account of the harness said "a list of **thirty**".
+  The reviewer flagged it against §Plan step 4's "two groups of 7 and 24 prefixes", noting
+  plainly that the lines were context and not this round's change. Measured directly off
+  `find_arch01`'s pattern rather than taken from either document — the innermost groups hold
+  **7** prefixes and **24** headers, so **31** forbidden things, 2 covered by rejection cases,
+  **29** uncovered. §Plan step 4 is right, `verify.md` was off by one in both places, and both
+  are corrected. Nine passes read this file and the count survived all of them because it
+  reads as prose, not as a count line.
+- **The `undecidable` was a universal I wrote in the eighth pass's own fix.** §Acceptance
+  criteria said §Goal states the `#include` diagnostic, "which is the one every procedure in
+  `verify.md` produces" — a claim quantified over a set the spec never tabulates, in exactly
+  the shape §How counts are stated bans, and load-bearing for whether §3's "the first two" is
+  complete. Deleted rather than tabulated: the sentence carried nothing that §3's own
+  self-describing text ("the ones whose scratch file has an `#include`") does not already say.
+  Recording the reason, because it is the round's pattern in miniature and this is its third
+  instance: a fix written to close a finding introduced a new claim with no founding.
+
+Review counts for the round: `4+4`, `8+5`, `3+6`, `5+8`, `5+3`, `2+4`, `1+2`, `0+1`, `1+1`.
+
