@@ -1088,10 +1088,17 @@ This one runs the repo-shape check rather than `make test`, and the reason is a 
 worth knowing before `01-ps2-codec` writes its first header — recorded as a finding in
 `docs/constraints.md` §Observed conventions, which is where `CLAUDE.md` §Conventions sends a
 verified fact about tooling behaviour: on this machine clang-tidy cannot resolve *any* standard
-header without a `compile_commands.json`, so a scratch file containing `std::` or an
-`#include <…>` fails R-STYLE-02 with `error: 'string_view' file not found
-[clang-diagnostic-error]` — a tooling result, not an R-ARCH-03 one. The working invocation that
-measured it is in `notes.md` §For later phases.
+header without a `compile_commands.json`, so a scratch file under `src/core/` fails R-STYLE-02
+as a `clang-diagnostic-error` rather than a naming complaint — a tooling result, not an
+R-ARCH-03 one. **Two different diagnostics, and they are stated apart here because an earlier
+draft of this sentence merged them and was wrong** (re-measured 2026-09-10): a file carrying an
+`#include`, quoted or angled, fails with *that header not found*; a file carrying a bare `std::`
+and no include fails with *`std` undeclared*, never with a not-found. §Goal's *Observable
+behaviour* states the first, which is the one every procedure in `verify.md` produces; the
+second is why this block runs `sh tests/test_repo_shape.sh` rather than `make test`. The
+working invocation that measured the underlying limitation is in `notes.md` §For later phases,
+and the limitation itself is the finding in `docs/constraints.md` §Observed conventions, which
+says `clang-diagnostic-error` and is correct as written.
 
 ## Out of scope
 

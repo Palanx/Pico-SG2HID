@@ -3081,3 +3081,72 @@ saw `verify.md`'s changed hunks only, so none could confirm the file's whole-doc
 properties — §Acceptance criteria's grep over the entire file, and whether the procedures
 still compose in order after seven rounds of edits. The hand run covers both.
 
+## Deviations (round 13, eighth review pass)
+
+`0+1`. **No `contradicts`** — the first pass in the round with none, and it cleared by name
+every output claim in `verify.md`, all four defect narratives (outside the clause by its last
+bullet), every removed hunk, §Plan step 8 again, and every count and universal against its
+enumeration. The single `undecidable` blocks, so the phase does not close on this pass.
+
+**The finding is real and it is a falsehood in the spec, not an ambiguity.** §Goal's clause
+states the clang-tidy fact as "a scratch file carrying an `#include` … fails … over a header it
+cannot find", while §Acceptance criteria — untouched by this round, and therefore never
+reconciled when the clause was written — said "a scratch file containing `std::` **or** an
+`#include <…>` fails R-STYLE-02 with `error: 'string_view' file not found`". Since the clause
+declares itself the complete set with no exceptions, which of the two is *the* condition could
+not be decided from the spec.
+
+Measured 2026-09-10 against the tree at `4c28558`, `sh tests/test_style.sh` with one scratch
+file at a time under `src/core/`:
+
+| scratch file | diagnostic |
+|---|---|
+| `std::string_view sv;` | `error: use of undeclared identifier 'std'` |
+| `#include "pico/stdlib.h"` | `error: 'pico/stdlib.h' file not found` |
+| `#include <cstdint>` | `error: 'cstdint' file not found` |
+
+So §Goal is right and §Acceptance criteria was wrong twice over: the not-found form is produced
+by **any** `#include`, quoted or angled — not only `<…>` — and the `std::` case fails for an
+entirely different reason and never produces a not-found. §Acceptance criteria now states the
+two apart, says why, and points at §Goal for the one `verify.md` teaches.
+
+`docs/constraints.md` §Observed conventions was checked and **needs no change**: its finding
+says clang-tidy fails on a trivial file with `clang-diagnostic-error` and never attributes a
+not-found to the `std::` case. The defect was confined to the spec's paraphrase of it.
+
+Worth recording how this surfaced. Seven passes examined `verify.md` against the clause and
+found nothing here. The eighth found it by comparing the clause against a part of the spec the
+round never touched — which is the failure mode §Goal's own amendment created: a new clause
+that declares itself complete makes every un-reconciled older statement a potential
+contradiction, and nothing systematically re-reads them.
+
+Review counts for the round: `4+4`, `8+5`, `3+6`, `5+8`, `5+3`, `2+4`, `1+2`, `0+1`.
+
+## For later phases (added round 13, eighth pass — taste, deliberately not fixed)
+
+Nine taste items, recorded and not acted on per step 5. Two deserve a reader's attention:
+
+- **`verify.md` §5's mutation can silently no-op, and the operator would read that as a
+  pass.** It is a verbatim copy of §Acceptance criteria's fourth liveness mutation, including
+  the triple-space alignment inside `'"$( find_err04   "$1" )" || fail=1'`, and `str.replace`
+  returns the string unchanged rather than failing when the anchor stops matching. The
+  operator would then run `make test`, see `OK`, and conclude the wiring guarantee holds when
+  nothing was cut. It is the same shape as the wiring block's own warning — a criterion that
+  mutates nothing reports the exit 0 it was given. The fix is one `assert` in that block;
+  it was left standing because step 5 says taste is recorded, not acted on, and because the
+  spec's own liveness block has the identical exposure and should be fixed with it.
+- **The clause makes every un-reconciled older statement a candidate contradiction.** §Goal
+  now declares *Observable behaviour* complete; nothing re-reads §Acceptance criteria, the
+  tables, or `docs/constraints.md` against it when either side changes. This round's eighth
+  pass found one such statement by hand. `01-ps2-codec` inherits the exposure the moment it
+  states an output fact of its own.
+
+The other seven: Table 5's conditional-✓ prose reads loosely on first pass (determinate from
+the sentence after it); two amendment lines run past the file's wrap; Table 5 spells the
+machine-dependence out for `test_style.sh` only, though `test_secrets.sh` and
+`test_tool_versions.sh` share it (decidable anyway from §Plan step 2's any-skip rule);
+`verify.md`'s "a check's exact phrasing changes whenever it gains a case" is looser than its
+ground; "that its rejection cases all fired" describes a floor as an equality; "runs the real
+check" where Table 2 insists on "the real aggregate"; and the clause's bullet 4 reads as
+self-tension until §Acceptance criteria's per-file exit codes are noticed.
+
