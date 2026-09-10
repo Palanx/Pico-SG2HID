@@ -203,10 +203,17 @@ cp tests/test_repo_shape.sh /tmp/rs.bak
 python3 - <<'EOF'
 import pathlib
 p = pathlib.Path('tests/test_repo_shape.sh'); s = p.read_text()
-p.write_text(s.replace('"$( find_err04   "$1" )" || fail=1', '"$( find_err04   "$1" )"', 1))
+cut = s.replace('"$( find_err04   "$1" )" || fail=1', '"$( find_err04   "$1" )"', 1)
+assert cut != s, "nothing was cut - the line has moved; stop and say so"
+p.write_text(cut)
 EOF
 make test
 ```
+
+That `assert` is the point of the exercise in miniature. Without it, if that line
+ever moves, the edit would quietly change nothing, `make test` would pass, and you
+would read the pass as proof of a guarantee that was never tested — which is the
+exact mistake this whole phase exists to make impossible.
 
 You have just cut the wire for `R-ERR-04` — the rule against `.value()`, which crashes the
 firmware outright on a chip with no exceptions. On any tree carrying that violation the check

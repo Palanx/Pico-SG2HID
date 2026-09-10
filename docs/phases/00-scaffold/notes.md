@@ -3150,3 +3150,39 @@ ground; "that its rejection cases all fired" describes a floor as an equality; "
 check" where Table 2 insists on "the real aggregate"; and the clause's bullet 4 reads as
 self-tension until §Acceptance criteria's per-file exit codes are noticed.
 
+## Implementation — 2026-09-10 (round 13, the §5 assert)
+
+Promoted from the eighth pass's taste list on the operator's instruction, because the item was
+a false-pass in the operator's own hands rather than a matter of preference.
+
+`verify.md` §5 told the operator to cut one wiring wire with a `str.replace` anchored on
+`'"$( find_err04   "$1" )" || fail=1'`, triple-space alignment included. `str.replace` returns
+the string unchanged when the anchor stops matching, so if that line ever moves the edit does
+nothing, `make test` passes, and the operator reads the pass as proof of a guarantee that was
+never tested — the same shape as the wiring block's own warning, and the same shape that
+actually bit round 11, whose mutation landed on an `echo` and reported a meaningless exit 0.
+
+The block now asserts that something was cut before it writes, and `verify.md` says in two
+sentences why the assert is there — it is the phase's thesis in miniature, which makes it worth
+the four lines rather than a silent guard.
+
+Measured 2026-09-10, both directions:
+
+- **Positive:** the block as printed applies the cut (`rc=0`), `make test` then fails naming
+  `R-ERR-04` and reporting the wiring count short, and the restore command returns the tree to
+  `OK`. Run verbatim, in the order the document gives.
+- **Negative:** the same block with a stale anchor raises
+  `AssertionError: nothing was cut - the line has moved; stop and say so`, exits 1, and leaves
+  `tests/test_repo_shape.sh` untouched — so the operator is stopped before the run that would
+  have misled them, rather than after.
+
+One error caught in the making and recorded because it is the same class: the first edit
+dropped `p.write_text( cut )`, leaving a block that asserted and then wrote nothing. It was
+found by running the procedure rather than by reading it — which is, again, the only method
+that has ever worked in this phase.
+
+**Still open, deliberately, and named here so it is not rediscovered:** §Acceptance criteria's
+own liveness and wiring blocks carry the identical exposure across five `str.replace`
+mutations. They are run by the validator rather than the operator, and closing them was not
+part of this instruction.
+
