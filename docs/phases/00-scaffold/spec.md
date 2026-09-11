@@ -815,11 +815,21 @@ is where the phase's remaining risk lives.
    no-transcript rule is a grep, not a reading: extract every `ok:`/`skip:`/`FAIL:` run in
    the file up to the next backtick and require each to be either a bare prefix (prose
    naming the shape) or `FAIL: <id>` with nothing after the id — §Acceptance criteria has
-   the exact command and its expected **`0`**. It catches the two shapes rounds 12 and 13
-   found: a fenced sample of a check's real output, and an inline quote carrying the text
-   after the id. What it does **not** catch is a line *count* in prose — "expect two lines"
-   quotes nothing — so that half is read, not run, and it is the half round 12 reported. The
-   grep is the floor under the ban, not the whole of it.
+   the exact command and its expected **`0`**.
+   **What it catches and what it is blind to, measured 2026-09-10 rather than reasoned about,
+   because an earlier draft of this paragraph claimed a reach it does not have.** It catches a
+   result line whose text continues *on that line* after the id — the deleted
+   `ok:   R-TOOL-01: … 12+ (15.3.1)` sample scores 1 — and an inline backtick quote carrying
+   the text after the id. It is blind to two shapes. One is a line *count* in prose ("expect
+   two lines") which quotes nothing. The other is a **fenced transcript whose payload sits on a
+   continuation line**: the block §2 shipped for four rounds —
+   `FAIL: R-ARCH-03` with an indented path underneath — scores **0**, because the first line
+   matches the bare-id whitelist and the second carries no prefix and is never extracted at
+   all. That is the shape the rule was written for, and the grep cannot see it.
+   So the grep is a floor and a narrow one: the clause in §Goal is what a reviewer applies, and
+   two of the shapes it bans reach the tree only through reading. Widening the grep to read a
+   fenced block's continuation lines was considered and not done — it would have to treat any
+   indented line after a prefix line as output, which this spec's own prose would trip.
 
 9. **Correct the `PHASES.md` row's acceptance text** — touches `docs/phases/PHASES.md`. The
    row promises "every check ships a rejection case proving it fails on a bad tree". Round 8

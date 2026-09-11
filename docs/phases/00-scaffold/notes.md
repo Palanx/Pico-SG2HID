@@ -3212,3 +3212,116 @@ spec's own arithmetic.
 
 Review counts for the round: `4+4`, `8+5`, `3+6`, `5+8`, `5+3`, `2+4`, `1+2`, `0+1`, `1+1`.
 
+## Deviations (round 13, tenth review pass — the last)
+
+`1+2`, sorted into the operator's three bins. The stopping rule was fixed before the verdict
+was seen, so the result did not choose it.
+
+- **Bin A — §Plan step 8 claimed a reach the grep does not have.** It said the grep "catches the
+  two shapes rounds 12 and 13 found: a fenced sample of a check's real output, and an inline
+  quote carrying the text after the id". Measured 2026-09-10 by reconstructing both deleted
+  blocks and running the command on them:
+
+  | deleted shape | the grep scores |
+  |---|---|
+  | `FAIL: R-ARCH-03` with an indented path on the next line — the block §2 shipped | **0** |
+  | `ok:   R-TOOL-01: arm-none-eabi-g++ 12+ (15.3.1)` — payload on the same line | **1** |
+
+  The first line matches the bare-id whitelist and the second carries no prefix, so it is never
+  extracted at all. **The grep is blind to the exact shape the rule was written for.** Step 8
+  now states what it catches and names both blind spots — the prose line count and the fenced
+  continuation line — and records that widening it was considered and refused: it would have to
+  treat any indented line after a prefix line as output, which this spec's own prose would trip.
+  The clause in §Goal is what a reviewer applies; the grep is a floor, and a narrower one than
+  nine passes had assumed.
+- **Bin B — deleted, not reworded.** `verify.md` §2 carried "because a check's exact phrasing
+  changes whenever it gains a case", a causal universal the spec never asserts: it is true of a
+  count line and unestablished for anything else. It was a rationale clause added by an earlier
+  pass's fix, the sentence before it stands alone, and the ban is founded in §Goal. Third time
+  this instrument worked, after §2's self-describing paragraph and the eighth pass's "the one
+  every procedure produces".
+- **Bin C — recorded, untouched.** "This one check is the exception to the machinery described
+  above" (§4) is true under the document's own frame of the fourteen rules and false under
+  Table 5's seven files; the reviewer called it prose scoping and the weakest of the three.
+  With it, six taste items: §Plan step 2 still cross-references "step 8 forbids" when the ban
+  now lives in §Goal's clause; the clause's "several of them run one check directly" where only
+  §4 does; Table 5's conditional-✓ prose reading loosely before the sentence that settles it;
+  §Acceptance's grep comment saying "allowed" where the clause says the whitelist is tolerance
+  and never a licence; §5's "you can prove it on any of them" when one procedure is written out;
+  and the intro's "about a minute" against a measured 1:12-1:26.
+
+Review counts for the round, all ten passes:
+`4+4`, `8+5`, `3+6`, `5+8`, `5+3`, `2+4`, `1+2`, `0+1`, `1+1`, `1+2`.
+
+## For later phases (added round 13, at close — three patterns `01-ps2-codec` inherits)
+
+Written as rules, not as the cases that produced them. Each cost this round at least one full
+review pass to find.
+
+- **Amending a §Goal clause creates reconciliation debt across the whole spec, and nothing
+  re-reads the old statements.** A clause that declares itself complete turns every
+  un-reconciled older sentence into a potential contradiction. Round 13's eighth pass found one
+  by hand — §Acceptance criteria's statement of the clang-tidy fact, false in two ways and
+  never revisited when the clause was written. The rule: **when you amend a Goal clause, grep
+  the spec for every other place the same fact is stated, in the same edit.** The reviewer
+  cannot do it for you; it sees the diff, and the stale statement is not in the diff.
+- **A fix written to close a finding tends to introduce a new claim with no founding.** Three
+  instances here: a vocabulary table written to close four `undecidable` verdicts produced five
+  more; §Acceptance's "the one every procedure in `verify.md` produces" was added by the eighth
+  pass's fix and became the ninth pass's `undecidable`; §2's rationale clause became the tenth
+  pass's. The rule: **after writing a fix, read it as a reviewer who has never seen the
+  finding, and ask what founds each new sentence.** If the answer is "the fix I just wrote",
+  delete the sentence rather than founding it.
+- **A count written in prose is invisible to every grep.** All three numbers that survived nine
+  passes were prose, not count lines: "expect two lines", "thirty forbidden things", "the other
+  twenty-eight". The mechanical gates this phase built — the accounting property, the floors,
+  the no-transcript grep — see printed counts and nothing else. The rule: **a number in a
+  sentence is a claim with no check behind it; either put it beside the enumeration it equals,
+  or measure it at the moment you write it.** `01-ps2-codec` will write prose about
+  `tests/vectors/` and about protocol rules, which is exactly where this bites.
+
+## Owed, named so it is not rediscovered (round 13, at close)
+
+- **§Acceptance criteria's mutation blocks carry the same exposure as the `assert` added to
+  `verify.md` §5.** Measured: **8** occurrences of `p.write_text( s.replace( … ) )` across the
+  liveness and wiring blocks, none of them asserting that the replacement changed anything.
+  `str.replace` returns the string unmodified when the anchor stops matching, so a moved line
+  turns a mutation into a no-op and the criterion reports the exit 0 it was handed — which
+  already happened in round 11, whose mutation landed on an `echo`. They are the validator's
+  procedures rather than the operator's, which is why `verify.md` §5 was fixed first and these
+  were not; the fix is one `assert cut != s` per block. Owed to whichever round next edits that
+  section.
+
+## Validation — 2026-09-10 (round 13, close)
+
+- criteria: **16 passed / 0 failed.** `make test` OK, `make lint` 0, harness accounting for all
+  seven Table 5 files + `neutered: 30/30` + `alternations: 59/59` + bootstrap gap reported,
+  traceability 9/9, boundaries 2/2, repo_shape 55 rejection + 13 accept + `wiring cases: 8/8`,
+  secrets both floors, tool_versions 4/4, `planned: 00-scaffold` 0, `STYLE_OPTIONAL` 0 in both
+  files, the no-transcript grep **0**, orphan mutants 0. `time make test` real 1:12-1:26 across
+  the round's runs, against a 2m cap.
+- project gates: test **pass**, lint **pass**, typecheck **gap** —
+  `workflow gap: no 'typecheck' tool configured — the project was NOT checked. Fix: run
+  /adopt-project (re-detect), or add the command to .claude/workflow/toolchain.manual.json —
+  the project-owned file re-detection never overwrites.`
+- boundary sweep: **not swept: no file in the set is under a declared layer.** 13 active `deny`
+  rules; the phase's files are under `docs/`, the declared prefixes are `src/core/`, `src/hal/`,
+  `src/usb/`, `src/app/`, `src/emu/`.
+- independent review: **ten passes.** No structural finding since the sixth; the last three
+  returned `0+1`, `1+1`, `1+2`, every one of them a measurable number, an unfounded clause
+  introduced by a previous fix, or prose scoping. The tenth pass's bin A and bin B are applied;
+  its bin C and six taste items are recorded above, untouched, per step 5.
+- **operator validation: done by hand, recorded above.** The operator ran `verify.md` end to
+  end and reports every procedure passing and matching what the document says. No review pass
+  executed a single command in that document; this is the only evidence for R-PROC-02 that
+  could not be produced by review, and it is the acceptance test the phase exists to pass.
+- closure test: **pass.** `notes.md` carries all four sections; the file set is `spec.md`,
+  `notes.md` and `verify.md` — the first two exempt as files this workflow writes, the third
+  named in §Plan step 8.
+- upstream: none. `.claude/workflow/installed` is present and no file it names misbehaved.
+- verdict: **done.** The stopping rule was set by the operator before this pass's result was
+  known, so the result did not choose it: `contradicts` and `undecidable` block and taste does
+  not, and what remains after ten passes is taste carrying a label. Zero findings is not a
+  fixed point this process reaches — each fix produces the next pass's material, recorded three
+  times above — so it was never an available closing condition.
+

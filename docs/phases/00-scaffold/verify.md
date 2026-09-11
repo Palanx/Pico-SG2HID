@@ -99,8 +99,7 @@ make test
 ```
 
 Expect it to fail, naming `R-ARCH-03` and the file it found the violation in. The rule id is
-what you look for; nothing else about the wording is worth matching against this document,
-because a check's exact phrasing changes whenever it gains a case.
+what you look for; nothing else about the wording is worth matching against this document.
 
 `R-ARCH-03` is the rule that says firmware never allocates memory dynamically — on a chip
 with 264 KB of RAM and no operating system, running out of memory mid-song is not
