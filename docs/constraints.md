@@ -120,7 +120,7 @@ has already been bitten twice by them: `.clang-format` keys were renamed in clan
 17 and again in 23, and the ARM compiler decides which C++ standard is even available.
 
 - **R-TOOL-01** — Every tool the checks depend on meets its minimum version when present: `clang-format` >= 23 and `clang-tidy` >= 23 (the config uses key shapes introduced in 23), `arm-none-eabi-g++` >= 12 (the release in which libstdc++ gained `<expected>`; only 15.3.1 is actually verified — see ADR-0008 §Verification), `python3` >= 3.8. A tool that is absent is skipped under `OPTIONAL_TOOLS`, never assumed to pass. — test: `tests/test_tool_versions.sh`
-- **R-TOOL-02** — The `arm-none-eabi-g++` first on `PATH` can compile a translation unit that includes `<cstdint>` for `cortex-m0plus`. A cross-compiler with no target C library looks installed and cannot build anything; on macOS the sudo-free Homebrew formula is exactly that, and it shadows the working cask. — test: `tests/test_tool_versions.sh`
+- **R-TOOL-02** — The `arm-none-eabi-g++` first on `PATH` can compile a translation unit that includes `<cstdint>` for `cortex-m0plus`. A cross-compiler with no target C library looks installed and cannot build anything; the sudo-free Homebrew formula is exactly that, and it shadows the working cask. macOS is the only development platform (ADR-0010), so this names the trap that exists rather than one platform's among several. — test: `tests/test_tool_versions.sh`
 
 ### Engineering guidelines
 
@@ -199,9 +199,9 @@ each entry gets one when it does.
   not a naming complaint — so the failure does not look like the rule it comes from.
   `-isysroot $(xcrun --show-sdk-path)` alone does not fix it; adding
   `-I/opt/homebrew/opt/llvm/include/c++/v1` does. That third flag is Homebrew-on-Apple-
-  Silicon specific, so it fixes this machine and breaks every other one: the choice
-  between hardcoded flags and a generated `compile_commands.json` is owed by the first
-  phase that writes `src/core/`, and is not settled here.
+  Silicon specific. That is a documented assumption rather than a portability violation:
+  ADR-0010 fixes development to macOS with Homebrew LLVM and settles the choice as the three
+  flags, so the first phase writing `src/core/` inherits an answer instead of a question.
 - Magic bytes from the PS2 protocol are named `constexpr` values in one place per
   concern, never inline literals in logic — except inside `tests/vectors/`, where being
   a literal is the point (R-PROTO-05).
