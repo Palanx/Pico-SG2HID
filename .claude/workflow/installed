@@ -19,6 +19,7 @@
 .claude/hooks/lib/detect-toolchain.sh
 .claude/hooks/post-edit-gate.sh
 .claude/hooks/pre-commit-security.sh
+.claude/workflow/belay-version
 docs/templates/CLAUDE.adopted.md
 docs/templates/CLAUDE.bootstrap.md
 docs/templates/PHASES.example.md

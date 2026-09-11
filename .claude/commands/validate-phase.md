@@ -25,6 +25,15 @@ use `git diff <ref>` and `git diff --name-only <ref>` instead, same union — th
 the **working tree**, never `<ref>..HEAD`, which shows only what was committed and hides
 hand-written work still sitting uncommitted (`git add -N` first here too, for the same
 reason as above).
+**Subtract the files the package installed**, unless the spec's Plan names one: every path
+listed in `.claude/workflow/installed`. A `chore(belay):` commit lands package-owned files in
+the tree, and once one falls between the base ref and now, no ref exists that keeps the phase's
+history in and the package's out — so the diff carries files the phase never wrote, step 6 asks
+the spec to account for them, and its prescribed fix would have the spec claim this phase wrote
+`docs/templates/spec.md`. The manifest is exactly the set `install.sh` wrote (see
+`docs/adr/0001-ownership-is-decided-by-the-install-manifest.md`); if it is absent, say so on
+the `upstream:` line rather than treating everything as phase work.
+
 Never fall back to the Plan alone: the file the Plan never named is exactly what step 6
 exists to catch, so a diff that cannot show it turns three gates into no-ops that report
 `pass`.
@@ -100,6 +109,14 @@ exists to catch, so a diff that cannot show it turns three gates into no-ops tha
    - notes.md has all four sections (Outcome, Deviations, Debt, For later phases), none blank — `None` is an entry, blank is a violation.
    - **Exempt: the files this workflow writes itself** — `docs/phases/$1/spec.md`, `docs/phases/$1/notes.md`, `docs/phases/PHASES.md` and `docs/index/`. Every command here amends them by design, and this one prescribes a `spec.md` amendment as the fix for an `undecidable` verdict — so a phase that goes round the loop once carries its own spec in its diff from then on. Counting those as escaped scope fails the phase for obeying its own instructions. The exemption is those four paths and nothing else: any other file in the diff — an ADR, a config, a scene or prefab authored by hand — is judged by the next bullet. The shipped `CLAUDE.md` states the same four paths, and that duplication is deliberate: step 5's reviewer receives `CLAUDE.md`, `spec.md` and the diff — never this file — so an exemption written only here reaches the closure test and not the reviewer, which returns it as `undecidable` on every phase forever. Do not tidy either copy away.
    - Every *other* file in the phase's file set is reachable from the spec's Context pointers or Plan. A file changed but never named in the spec = the phase escaped its scope: closure test FAILED. Record it in notes.md Deviations, flag it in your report, and name it in the spec's Plan before re-running — the spec has to describe the change that actually happened.
+   - **A quantified claim owes its set.** If the spec's Goal or Acceptance criteria say
+     "every X", "each Y", "all N of Z", the spec must name the members — a list or a table.
+     Unenumerated, the claim is not vague, it is *undecidable*: step 5's reviewer gets the
+     spec and the diff, so it cannot compute a set the spec never states, and `undecidable`
+     is the only verdict available to it. Worse, the finding regenerates — each round closes
+     the instances its diff touched and the unnamed remainder comes back under whichever
+     verdict fits next. Missing enumeration = missing pointer: closure test FAILED, same
+     routing as any other. A Goal that quantifies over nothing owes nothing.
    - An `undecidable` finding from step 5 IS a missing pointer, found from outside your own head: closure test FAILED; record what the reviewer could not resolve in notes.md Deviations.
    - If notes.md Deviations reports missing pointers, mark the closure test FAILED even if the code passes — the *next* phase pays for it; the operator must know the cuts are drifting.
 
@@ -123,7 +140,13 @@ report exactly which gate failed with its output — that error text is the inpu
 next iteration. Where that iteration happens depends on what failed: steps 1–4 and a
 `contradicts` verdict go back to `/implement-phase $1` (the code is wrong); a closure-test
 failure or an `undecidable` verdict is fixed in `spec.md` plus a notes.md Deviations entry
-and re-validated from here (the record is wrong). Say which of the two you are handing
+and re-validated from here (the record is wrong). **An amendment owes reconciliation**: name
+the other statements in the spec that assert the same fact, and fix or delete them in the same
+edit, listing in that Deviations entry which you checked. Nothing else will — the reviewer
+sees the spec and the diff, and a statement the amendment just invalidated is in the spec but
+not in the diff, so it surfaces only when some later round's diff happens to touch it. Deleting
+a statement the amendment leaves unfounded is a legitimate outcome and often the right one;
+rewording it is how the next round's finding gets written. Say which of the two you are handing
 back, or the next session guesses.
 
 **Both routes fix this project. Neither asks what caused the finding.** If the file that
