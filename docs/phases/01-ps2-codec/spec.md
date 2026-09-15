@@ -41,11 +41,18 @@ refusing makes the check fail and name the rule.
 ### What this phase does not prove, declared rather than discovered later
 
 That any byte position in the SG's payload is the right one. Four concerns are written from
-the documented protocol, each lives in one named `constexpr`, and each carries a
-`TODO(09-guitar-observe)` marker: the three controller id bytes; every button bit position
-and mask; the whammy's payload index; and the whammy's rest value. `09-guitar-observe` exists
-to confront them with the real device. A vector here asserts that the codec does what the
-codec says, not that the guitar agrees.
+the documented protocol and none of them is measured: the three controller id bytes; the
+button bit positions and masks; the whammy's payload index; and the whammy's rest value.
+
+**They are covered by three `TODO(09-guitar-observe)` markers, not four, and the mapping is
+written out here because three documents have disagreed about the number.** One marker in
+`src/core/ps2_protocol.h` covers the id bytes; one in `src/core/guitar_state.h` covers the
+whole block of button positions and masks — a block, not a single constant, which is why no
+count of `constexpr`s appears in this paragraph; and a third, also in `guitar_state.h`, covers
+the whammy's index and its rest value together. Three is the number §Acceptance criteria pins
+and the number `verify.md` §1 tells the operator to expect. `09-guitar-observe` exists to
+confront all four concerns with the real device. A vector here asserts that the codec does
+what the codec says, not that the guitar agrees.
 
 ### Rule work — landed, stated so the next round does not re-do it
 
@@ -119,10 +126,19 @@ byte and carries nothing. Dropping it is `hal`'s job (`03-pio-bus`).
 Payload length is `2 * (header & 0x0F)`, documented protocol, which makes a digital frame two
 payload bytes and an analog frame six.
 
-**`Ps2Frame` stores the payload in a fixed-width `std::array<std::uint8_t, kMaxPayloadLen>`,
-where `kMaxPayloadLen` is `payload_len( ControllerId::Analog )`, alongside the announced
-length. Bytes past the announced length are zero.** Fixed width because `core` allocates
-nothing; zero-filled because an out-of-range read must be deterministic rather than garbage.
+**`Ps2Frame` carries the controller id and the payload, and nothing else. The payload is a
+fixed-width `std::array<std::uint8_t, kMaxPayloadLen>`, where `kMaxPayloadLen` is
+`payload_len( ControllerId::Analog )`, and every byte past the length the id announces is
+zero.** Fixed width because `core` allocates nothing; zero-filled because an out-of-range read
+must be deterministic rather than garbage.
+
+**It stores no length, deliberately.** How many payload bytes are meaningful is
+`payload_len( id )`, so a stored length would be a second source of truth for one fact and the
+only thing it could add is the possibility of disagreeing with the id. Everything that needs
+the length recomputes it: `payload_matches` in the cases file loops to
+`payload_len( frame.id )`, and the zero-fill case starts its scan at
+`payload_len( ControllerId::Digital )`. Both read as redundant until you know there is no
+member to read, which is why it is written here.
 
 This is load-bearing and validation round 3 found the spec crediting the wrong mechanism for
 it. `kWhammyIndex` is 5, so a *naive* analog read of a two-byte digital payload never touches
@@ -168,6 +184,13 @@ attributed to the state being left, and the counter resets to zero on any change
 The consequence is stated because it reads like an off-by-one and is not: **the negotiation
 timeout can only fire on the second consecutive step that leaves the link in `Negotiating`,
 never on the one that enters it.**
+
+**The accumulation saturates at `UINT32_MAX`; it does not wrap.** Wrapping would silently
+reset the counter roughly every 71.6 minutes, which is the one behaviour that turns a
+permanently stuck controller into one that looks fine on a schedule. Saturating is unreachable
+in practice — it needs a caller that stops polling for over an hour and then resumes — and is
+specified anyway, because "unreachable" is a claim about the caller and `core` does not get to
+make claims about its callers. Nothing asserts it: see `notes.md` §Debt.
 
 **`FaultCause` has exactly five members:** `None`, `AckTimeout`, `UnknownId`, `NotReady`,
 `Negotiating` — one per way the link can drop, plus `None` for a link that has never dropped.
@@ -216,11 +239,19 @@ genuinely is rest, and the roles are split instead — stated here so no round a
 is supplied by the codec; `analog_idle.h` proves neither on its own and is kept for the decode
 half of its row.
 
+**Which assertion its case writes, since the two readings are numerically identical and are
+different claims:** `analog_idle`'s case asserts `whammy == kWhammyRest`. It is the weaker of
+the two and the honest one — the vector's centred byte and the rest value are the same `0x80`,
+so an assertion against `payload[ kWhammyIndex ]` would read as proof of the read path while
+proving nothing the row above does not already cover. The table row says "the byte at
+`kWhammyIndex`" because that is what the codec *does*; the case asserts the value, because
+that is all this vector can honestly witness.
+
 ## Files this phase writes
 
 | file | contents |
 |---|---|
-| `src/core/ps2_protocol.h` | wire constants (`kFrameStart`, `kCmdPoll`, `kReadyByte`, and the config-mode command bytes `kCmdConfig`, `kCmdSetMode`, `kConfigEnter`/`kConfigLeave`, `kModeDigital`/`kModeAnalog`/`kModeLocked`), `enum class ControllerId`, `id_from_byte` returning `std::optional<ControllerId>`, `payload_len`, `frame_len`. Header-only `constexpr`. |
+| `src/core/ps2_protocol.h` | wire constants — `kFrameStart`, `kCmdPoll`, `kReadyByte`, `kPadByte` (the filler the master sends in a slot whose value the controller ignores; declared here with the rest of the wire, used first by `03-pio-bus`, which is the phase that sends bytes), and the config-mode command bytes `kCmdConfig`, `kCmdSetMode`, `kConfigEnter`/`kConfigLeave`, `kModeDigital`/`kModeAnalog`/`kModeLocked` — plus `enum class ControllerId`, `id_from_byte` returning `std::optional<ControllerId>`, `payload_len`, `frame_len`. Header-only `constexpr`. **This list is exhaustive:** a constant in that header and not in this row is a finding, not a detail. |
 | `src/core/ps2_frame.h` / `.cpp` | `Ps2Frame` as §The frame describes it, `enum class DecodeStatus`, `[[nodiscard]] std::expected<Ps2Frame, DecodeStatus> decode( … )` |
 | `src/core/guitar_state.h` / `.cpp` | `GuitarState` (the ten controls plus the whammy), `Fret`, `map_frame`, the active-low→active-high inversion, and the id gate §Goal describes |
 | `src/core/link.h` / `.cpp` | `enum class LinkState`, `enum class FaultCause`, `Link`, `step` — all as §The link fixes them |
@@ -239,11 +270,24 @@ have run against them. **Steps 10 and 11 are what this re-expansion adds and are
 rebuild the phase, not because they are pending.
 
 1. **Landed — catalogue surgery.** Touches `docs/constraints.md`, `docs/phases/PHASES.md`. The
-   seven rules as §Rule work describes. — check: `grep -c 'planned: 01-ps2-codec'
-   docs/constraints.md` → `0`.
+   seven rules as §Rule work describes. The `PHASES.md` change is an **in-place edit of the
+   `01` row's coarse acceptance text**, from "R-PROTO-01..04 move to `test:`" to
+   "R-PROTO-02..04", plus the status transitions every command here makes. That is not the
+   case `CLAUDE.md` reserves for a superseding row: a cut is superseded when the cut turns out
+   wrong, and this cut is unchanged — one rule moved to another phase, so the row's one-line
+   summary of the same cut stopped being true. `/expand-phase` names this edit as allowed in
+   so many words ("the index stays shallow but must stay true"). — check:
+   `grep -c 'planned: 01-ps2-codec' docs/constraints.md` → `0`.
 2. **Landed — the clang-tidy invocation.** Touches `tests/test_style.sh`, `.clang-tidy`,
-   `docs/constraints.md` §Observed conventions. Two flags, `-xc++` and `-isysroot`. — check:
-   `make lint` → exit 0.
+   `docs/constraints.md` §Observed conventions. Two flags, `-xc++` and `-isysroot`.
+   **When `xcrun` names no SDK the sysroot flag is omitted, the check prints a `note:` and
+   continues to its ordinary verdict — it does not fail.** The flag is macOS-specific and
+   ADR-0010 makes macOS the development host; on a host where `xcrun` does not exist, libc++
+   is found without it. The degradation cannot hide a naming violation, which is the thing
+   that would make it dangerous: this phase measured that a missing sysroot on macOS makes
+   the headers fail *inside libc++* as a `clang-diagnostic-error`, which surfaces as
+   `FAIL: R-STYLE-02`. A wrongly omitted flag therefore fails loudly rather than passing
+   quietly. — check: `make lint` → exit 0.
 3. **Landed — `ps2_protocol.h` and `ps2_frame.h`/`.cpp`.** `decode` refuses per §Goal and
    stores per §The frame; ADR-0012 records the `DecodeStatus` membership rule. — check:
    `ls docs/adr/0012-*.md` → one file.
@@ -254,7 +298,10 @@ rebuild the phase, not because they are pending.
    a closed positive set, so an id added later reports nothing until someone decides otherwise.
    — check: the `config_mode: maps to every one of the ten controls released` case is `ok:`.
 6. **Landed — `link.h`/`.cpp` and ADR-0011.** — check: `ls docs/adr/0011-*.md` → one file.
-7. **Landed — `hid_report.h`/`.cpp`.** — check: the four `hid:` cases are `ok:`.
+7. **Landed — `hid_report.h`/`.cpp`.** — check: every `hid:` case is `ok:`. Stated as a
+   property and not as a count on purpose: a number here would be a fourth set to enumerate
+   and maintain, and this phase has already paid three rounds for counts with no set behind
+   them.
 8. **Landed — the three rejection cases in the driver.** One per rule, each copying the tree to
    a temp directory, mutating `src/core/`, and asserting the text actually changed before use.
    — check: `rejection cases: 3/3`.
@@ -288,13 +335,14 @@ ls tests/vectors/*.h | wc -l                                   # expect: 9, the 
 find tests -name '*.h' -not -path 'tests/vectors/*' | wc -l    # expect: 0 (step 11)
 grep -rn 'tests/vectors' src/ | wc -l                          # expect: 0 (R-PROTO-05)
 grep -rn '\.value( *)' src/ | wc -l                            # expect: 0 (R-ERR-04)
-grep -rn 'TODO(09-guitar-observe)' src/core/ | wc -l           # expect: 1 or more
+grep -rn 'TODO(09-guitar-observe)' src/core/ | wc -l           # expect: 3 (§Goal names which covers what)
 ls docs/adr/0011-*.md                                          # expect: exactly one file
 ls docs/adr/0012-*.md                                          # expect: exactly one file
 python3 tests/test_ps2_codec.py                                # expect: exit 0
 make test 2>&1 | grep -E 'accounting: test_ps2_codec.py'       # expect: a line reading 3 rule(s)
 make test 2>&1 | grep -E 'accounting: test_style.sh'           # expect: a line reading 4 rule(s)
 sh tests/test_repo_shape.sh | grep 'wiring cases'              # expect: 10/10
+sh tests/test_repo_shape.sh | grep 'false-positive cases'       # expect: 20 (floor 20)
 make test 2>&1 | grep -E 'neutered: ([0-9]+)/\1 caught'        # expect: one line — the two sides equal
 make test 2>&1 | grep -E 'alternations: ([0-9]+)/\1 caught'    # expect: one line — the two sides equal
 sh tests/test_phase_docs.sh                                    # expect: exit 0

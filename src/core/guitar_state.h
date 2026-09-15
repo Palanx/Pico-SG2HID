@@ -48,8 +48,9 @@ constexpr std::uint8_t kMaskFretBlue   = 0x80;  // bit 7 — SQUARE
 // button bytes followed by four axis bytes, and this is the last of them.
 //
 // TODO(09-guitar-observe): which of the four axes the SG reports the whammy on is a guess,
-// and so are the two values below. Confronting them with the real device is exactly what
-// 09-guitar-observe is for.
+// and so is kWhammyRest below it. kFretCount is NOT a guess and is deliberately outside this
+// marker: five frets is ADR-0003's control set, not a claim about this guitar. Confronting
+// the two guesses with the real device is exactly what 09-guitar-observe is for.
 constexpr std::size_t kWhammyIndex = 5;
 
 // The value the codec REPORTS when there is no analog frame to read one from — supplied by

@@ -545,6 +545,81 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   twin in §For later phases was corrected in the same edit.
 
 
+### Round 9 — a branch, the contradicts resolved against the spec, and eight pointers.
+
+- **The phase has a branch and a rollback point, four rounds late.** `feat/01-ps2-codec` off
+  `main` at `24d489f`, with everything to date in one commit, `b23b91a`, made **before** any of
+  this round's edits. Its message says what is open rather than what is finished: the
+  `contradicts`, the pointers and the released `.py`-check debt are all named in it, because a
+  commit that reads as a success over code with a known open finding is how a later round comes
+  to believe this one closed. `00-scaffold` had `chore/00-scaffold`; this phase had been running
+  on `main` with 34 uncommitted files. One commit per round from here.
+
+- **The `contradicts` was resolved by deleting the spec's sentence, not by adding a member to
+  `Ps2Frame`.** §The frame claimed the struct stores the payload "alongside the announced
+  length". It does not, deliberately: `payload_len( id )` is where the length comes from, so a
+  stored length would be a second source of truth for one fact whose only possible contribution
+  is disagreeing with the id. The sentence was written during the 2026-09-14 re-expansion by an
+  author describing what he believed the code did — the spec is the side that moved, and the
+  remedy follows the measurement rather than the routing. **Belay routes every `contradicts` to
+  `/implement-phase` on the assumption that the code is wrong; the reviewer can only see that
+  the two disagree, never which side moved.** That is filed as a package defect, and obeying it
+  here would have added a redundant member to satisfy a sentence nobody decided.
+  §The frame now says the struct stores no length and names the two hunks that recompute —
+  `payload_matches` looping to `payload_len( frame.id )` and the zero-fill case starting at
+  `payload_len( ControllerId::Digital )` — because both read as redundant until you know there
+  is no member to read.
+  **Enumerated before fixing (command step 5): every statement of the stored-length fact.**
+  `grep` over the spec, `verify.md`, `src/core/` and the tests finds exactly one assertion of a
+  *stored* length — the spec sentence, now gone. Everything else states that the *header
+  announces* the length, which is true and untouched: `verify.md:49` and `:77`,
+  `ps2_protocol.h:71` and `:93`, `ps2_frame.h:43`, and four comments in the cases file.
+  `ps2_frame.h:48` already argued the case against storing it and needed no edit — it was right
+  before the spec was.
+  **The same property elsewhere, checked:** `hid_report.h`'s `kButtonCount = 10` is the one
+  other place a fact has two independent sources (it is not derived from `kFretCount` plus the
+  five named bools). It was raised as taste by the reviewer, stays taste, and is left in §For
+  later phases — fixing it is a code change nobody asked for, and the point of enumerating was
+  to learn whether the spec defect was an instance of something wider. It was not; it was
+  singular.
+
+- **The seven pointers the reviewer named, and the eighth this gate found.** Two were counts
+  with no enumerated set, the class this phase has now paid four rounds for:
+  - **The `TODO(09-guitar-observe)` markers: measured, then made to agree in three places.**
+    The tree carries **three** markers covering **four** concerns — `ps2_protocol.h` over the id
+    bytes, `guitar_state.h` over the block of button positions and masks, and a third over the
+    whammy's index and rest value together. §Goal now states that mapping and deliberately
+    prints no count of `constexpr`s (the mask block has twelve; the old text claimed each
+    concern was "one named `constexpr`"). The criterion moved from "1 or more" to **3**, which
+    is what `verify.md` §1 already told the operator to expect. **Reconciled in the same edit:**
+    §Goal, the criterion, and `verify.md:165` — checked, already correct, untouched.
+    **One code change came out of it:** `guitar_state.h`'s whammy marker said "and so are the
+    two values below", which reads as `kWhammyRest` **and `kFretCount`** — and five frets is
+    ADR-0003's control set, not a guess about this guitar. The marker now names `kWhammyRest`
+    and says `kFretCount` is outside it. Round 2 recorded this as taste; it stopped being taste
+    the moment the marker's scope became load-bearing for a pinned count.
+  - **The accept floor is pinned with a criterion**, the way the wiring count already was:
+    `sh tests/test_repo_shape.sh | grep 'false-positive cases'` → `20 (floor 20)`. The
+    enumeration behind it is the `accept` block in that file.
+  - **§Plan step 7's "the four `hid:` cases" became a property** — "every `hid:` case is `ok:`".
+    Writing a fourth enumeration would have created a set to maintain in order to close a
+    finding about unmaintained sets.
+  The other five are direct pointers, all in `spec.md`: `us_in_state` saturates rather than
+  wraps, and why; which assertion `analog_idle`'s case writes and why it is the weaker and more
+  honest one; `kPadByte` added to §Files' list of `ps2_protocol.h` constants, with that list
+  declared **exhaustive** so the next constant is a finding rather than a detail; what §Plan
+  step 1 does to `PHASES.md` and why an in-place acceptance-text edit is not the case
+  `CLAUDE.md` reserves for a superseding row; and that `tests/test_style.sh` omits `-isysroot`
+  with a `note:` when `xcrun` names no SDK, which cannot hide a violation because a wrongly
+  omitted flag fails inside libc++ as `FAIL: R-STYLE-02` — measured in round 1 of this phase.
+
+- **The round-8 validation record said six `undecidable`; the reviewer returned seven.** The
+  accept floor was described in §Deviations round 8 but never numbered in the record, and the
+  miscount was repeated to the operator, who planned this round from it. Corrected in place in
+  that record, with the correction visible. The number of findings is itself a count with a set
+  behind it, which is the joke this phase has now told on itself twice.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -564,6 +639,14 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   `cppcoreguidelines-avoid-magic-numbers` is an alias of the same check and behaves
   identically, so closing it means a second checker or writing fewer `const` initializers.
   Declared rather than papered over.
+- **`us_in_state`'s saturation is specified and asserted by nothing.** `spec.md` §The link now
+  mandates that the accumulator saturate at `UINT32_MAX` rather than wrap, and `add_saturating`
+  in `src/core/link.cpp` implements it, but no case exercises the boundary — reaching it needs a
+  caller that stops polling for over 71.6 minutes and then resumes. Declared rather than papered
+  over, because an unasserted mandate is exactly what this phase has spent rounds discovering.
+  Upgrade path: one case that steps twice with `elapsed_us` at `UINT32_MAX` and asserts the
+  counter did not roll; cheap, and deliberately not taken this round, which was scoped to
+  pointers.
 - **The three mutation anchors in `tests/test_ps2_codec.py` are exact source lines**, so any
   reformatting of `ps2_protocol.h`, `guitar_state.cpp` or `ps2_frame.cpp` breaks them. That is
   survivable only because each mutation asserts the text changed before using it — the failure
@@ -764,6 +847,11 @@ output is the spec this round judges.
   "alongside the announced length"; `src/core/ps2_frame.h` stores `id` and `payload` only and
   derives the length from `payload_len( id )` on purpose, and two test hunks depend on that
   choice. Verified against the file, not taken on the reviewer's word. **undecidable: 6** —
+  **[Corrected 2026-09-15: the reviewer returned SEVEN, not six. This list omitted
+  `tests/test_repo_shape.sh`'s accept floor, which is item (7) below and was described in
+  §Deviations round 8 but never numbered here; the item labelled "a seventh" at the end is the
+  eighth. The miscount was repeated to the operator. Corrected in place rather than quietly,
+  the way round 2's reconciliation miss was.]**
   (1) how many `TODO(09-guitar-observe)` markers the tree must carry: §Goal names four concerns,
   the tree has three markers, the criterion says "1 or more", `verify.md:165` says "Expect three
   of them", and concern two spans eleven `constexpr`s rather than one;
@@ -780,7 +868,10 @@ output is the spec this round judges.
   place while `CLAUDE.md` says a cut is superseded by new rows, never edited;
   (6) `tests/test_style.sh`'s new `tidy_sysroot_flag()` degrading to a `note:` and an `ok:`
   verdict when `xcrun` names no SDK, where §Plan step 2 says two flags and §Acceptance requires
-  exit 0. A seventh of the same class was found by this gate rather than the reviewer: §Plan
+  exit 0;
+  (7) `tests/test_repo_shape.sh`'s false-positive floor, moved 13 → 20, which the spec never
+  fixes — it pins the wiring count and nothing else.
+  An eighth of the same class was found by this gate rather than the reviewer: §Plan
   step 7's "the four `hid:` cases" is a count whose set the spec never names.
   The four taste items are in §For later phases, unfixed, per step 5.
 - closure test: **fail** — six `undecidable` findings are six missing pointers, plus the one
