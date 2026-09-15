@@ -591,10 +591,37 @@ constexpr std::uint32_t kOnePollUs = 1000;
     // `if`s — measured, and the reason this clause exists. `truncated_not_ready` is cut short
     // and carries 0xFF at the ready slot, so it is the configuration where the abort has to
     // outrank something.
+    // Sixth clause, added 2026-09-15 for the same reason as the fifth: the rule says the link
+    // transitions to Absent and does not qualify the source state, but every step above starts
+    // from a fresh (Absent) link. A `step` that sent a cut-short frame somewhere else from ONE
+    // source state would break the rule and leave this line green — measured, not supposed.
+    // The four source states are the four LinkState members, so the claim is asserted over all
+    // of them. This is not the uniformity case restated: that one asserts the four targets are
+    // EQUAL, this one asserts what they equal.
+    ps2::Link                           from_digital{};
+    ps2::Link                           from_analog{};
+    ps2::Link                           from_negotiating{};
+    const std::span<const std::uint8_t> digital_idle{ vectors::kDigitalIdle };
+    const std::span<const std::uint8_t> analog_idle{ vectors::kAnalogIdle };
+    const std::span<const std::uint8_t> config_frame{ vectors::kConfigMode };
+    const bool                          sources_reached =
+        ps2::step( from_digital, ps2::decode( digital_idle ), kOnePollUs ) ==
+            ps2::LinkState::DigitalStreaming &&
+        ps2::step( from_analog, ps2::decode( analog_idle ), kOnePollUs ) ==
+            ps2::LinkState::AnalogStreaming &&
+        ps2::step( from_negotiating, ps2::decode( config_frame ), kOnePollUs ) ==
+            ps2::LinkState::Negotiating;
+    const bool drops_from_every_source =
+        sources_reached &&
+        ps2::step( from_digital, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
+        ps2::step( from_analog, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
+        ps2::step( from_negotiating, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent;
+
     const bool is_ok = !refused.has_value() && refused.error() == ps2::DecodeStatus::AckTimeout &&
                        now == ps2::LinkState::Absent && !overlap.has_value() &&
                        overlap.error() == ps2::DecodeStatus::AckTimeout &&
-                       now_too == ps2::LinkState::Absent && accepted.has_value();
+                       now_too == ps2::LinkState::Absent && drops_from_every_source &&
+                       accepted.has_value();
     return report( is_ok,
                    "R-PROTO-02 (a cut-short frame yields no frame and the link goes Absent)" );
 }

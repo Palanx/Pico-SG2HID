@@ -391,7 +391,7 @@ rebuild the phase, not because they are pending.
 9. **Landed — R-ERR-01, R-ERR-02 and R-CLEAN-04 checks.** Touches `tests/test_repo_shape.sh`,
    `tests/test_style.sh`, `.clang-tidy`. — check: `sh tests/test_repo_shape.sh | grep 'wiring
    cases'` → `10/10`.
-10. **Owed — one case: the transition rule is a function of the outcome alone.** Touches
+10. **Landed 2026-09-14 — one case: the transition rule is a function of the outcome alone.** Touches
     `tests/ps2_codec_cases.cpp`. Each existing `link:` case drives one outcome from one source
     state, so together they sample the table in §The link but never assert the
     property that makes it a *table of six rows rather than twenty-four*: that the target is
@@ -400,7 +400,7 @@ rebuild the phase, not because they are pending.
     in §The link is prose with no check behind it — the pattern `00-scaffold` §For later phases
     names at line 3256. — check: the new case's line is `ok:`, and cutting the uniformity (make
     one source state map an outcome elsewhere) turns that line, and no rule line, to `FAIL:`.
-11. **Owed — one acceptance criterion: no non-vector header under `tests/`.** Touches
+11. **Landed 2026-09-14 — one acceptance criterion: no non-vector header under `tests/`.** Touches
     §Acceptance criteria only. `.clang-tidy`'s `HeaderFilterRegex` is `src/.*`, which stops
     clang-tidy diagnosing every header under `tests/`, not only the vectors — correct today
     only because the vectors are the only such headers, which is a claim about the tree that
@@ -443,7 +443,7 @@ rebuild the phase, not because they are pending.
     flip a Config clause, so it would have been green paint. The measurement is recorded in
     the rule function itself.
 
-14. **Owed — R-PROTO-05 means every occurrence, comments included.** Touches
+14. **Landed 2026-09-15 — R-PROTO-05 means every occurrence, comments included.** Touches
     `tests/test_repo_shape.sh`, `src/core/ps2_frame.cpp`, `docs/constraints.md`.
     Validation #3 failed because the acceptance criterion and the bound check disagreed about
     the rule: `grep -rn 'tests/vectors' src/` counts a comment, and `find_proto05` cannot,
@@ -464,6 +464,22 @@ rebuild the phase, not because they are pending.
     still reports `ok: R-PROTO-05`; and the rejection case proves the new scope — a scratch
     tree whose only reference is **inside a comment** must make R-PROTO-05 fire. Without that
     last part the change is untested and the old scanner would pass the suite equally well.
+
+15. **Landed 2026-09-15 — `rule_proto02` asserts its target from every source state.**
+    Touches `tests/ps2_codec_cases.cpp`. Found by running step 10's own liveness probe against
+    the rule lines rather than only against its case: mutating `step` so the transition depends
+    on the source state flipped the uniformity case and left `R-PROTO-02` green. R-PROTO-02's
+    text says a cut-short frame's link "transitions to `Absent`" and does not qualify the
+    source state, but every step in that rule line started from a fresh — therefore `Absent` —
+    link, so a `step` that sent a cut-short frame elsewhere from one source state broke the
+    rule with the line still printing `ok:`. The same shape as step 13, one axis over: that one
+    was blind to a competing refusal, this one to where the link was standing.
+    The line now drives a link to `DigitalStreaming`, `AnalogStreaming` and `Negotiating` and
+    asserts `Absent` from each — the four `LinkState` members are the set §The link enumerates,
+    and `Absent` is the fourth, already covered. **Not the uniformity case restated:** step 10
+    asserts the four targets are *equal*, this asserts what they equal.
+    — check: the same source-state mutation now turns **both** the uniformity case and the
+    `R-PROTO-02` rule line to `FAIL:`.
 
 ## Acceptance criteria
 

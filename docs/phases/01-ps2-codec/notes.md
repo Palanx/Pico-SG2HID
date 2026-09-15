@@ -1001,6 +1001,56 @@ Nothing needed fixing; the audit below is what this round is.
   its own cases — the real run is gone`.
 
 
+### Round 17 — stale markers, and the fifth instance the marker audit uncovered.
+
+- **Premise corrected before doing the work: steps 10 and 11 were not owed.** Both landed in
+  round 7 on 2026-09-14 — `case_link_target_depends_on_the_outcome_alone` is in the cases file
+  and registered in `main`, and the stray-header criterion is in §Acceptance criteria. What was
+  wrong was their marker, the same defect as step 14's: **a Plan that says it owes work already
+  delivered is the spec failing to describe the change that happened**, which is what the
+  closure test measures. Three markers corrected — 10 and 11 to `Landed 2026-09-14`, 14 to
+  `Landed 2026-09-15`.
+
+- **Audited in both directions, per step, against the artefact each names.** Nothing is marked
+  `Landed` that is not: `planned: 01-ps2-codec` is 0 (step 1), `make lint` exits 0 (step 2),
+  both ADRs exist (steps 3, 6), 10 vectors (step 4), the config-mode controls case exists
+  (step 5), four `hid:` cases (step 7), three driver rejection cases (step 8),
+  `wiring cases: 10/10` (step 9), the length check precedes the ready check at lines 26 and 33
+  of `ps2_frame.cpp` (step 12), `rule_proto02` reads `kTruncatedNotReady` (step 13), and
+  `find_proto05` uses `raw_hits` (step 14). The only drift was the three `Owed` markers.
+
+- **Step 10's liveness probe, re-run against the rule lines rather than only its case, found a
+  fifth instance of the phase's recurring defect.** Mutating `step` so the transition depends
+  on the source state flips the uniformity case — and left `R-PROTO-02` **green**. R-PROTO-02's
+  text says a cut-short frame's link "transitions to `Absent`" with no qualification of the
+  source state, while every step in that rule line started from a fresh, therefore already
+  `Absent`, link. So a `step` that sent a cut-short frame elsewhere from one source state broke
+  the rule with its own line printing `ok:`. Same shape as round 12's fix, one axis over: that
+  one was blind to a competing refusal, this one to where the link was standing.
+  **Fixed:** `rule_proto02` now drives a link to `DigitalStreaming`, `AnalogStreaming` and
+  `Negotiating` and asserts `Absent` from each; `Absent` as a source is already covered by the
+  clauses above it, so the claim is asserted over all four members §The link enumerates.
+  **Not the uniformity case restated** — step 10 asserts the four targets are *equal*, this
+  asserts what they equal, and a mutation sending all four to the same wrong state is caught by
+  the former and by the fresh-link clause, not by this one.
+  **Proved live:** the same source-state mutation now turns **both** the uniformity case and
+  the `R-PROTO-02` rule line to `FAIL:`. Recorded as §Plan step 15.
+
+- **Step 11 verified in both directions rather than only forward**, which is what the operator
+  asked and what the earlier rounds of this phase kept not doing: on the real tree
+  `find tests -name '*.h' -not -path 'tests/vectors/*' | wc -l` → **0**; on a scratch copy with
+  one `tests/helper.h` added → **1**, naming the file. A criterion that only ever passes is
+  indistinguishable from one that cannot fail.
+
+- **One date corrected in the same breath as it was written.** The new clause's comment was
+  first dated 2026-09-16, a day ahead; caught on read-back and fixed to 2026-09-15 before the
+  gates ran. Recorded because the phase's own standard is that a measurement carries the date
+  it was taken, and a wrong date is a wrong measurement.
+
+- **Counts re-measured, not incremented:** 28 case functions and 32 `ok:` lines — both
+  unchanged, because this round widened an existing rule function rather than adding a case.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
