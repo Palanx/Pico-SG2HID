@@ -1051,6 +1051,72 @@ Nothing needed fixing; the audit below is what this round is.
   unchanged, because this round widened an existing rule function rather than adding a case.
 
 
+### Round 18 — five `undecidable`, no `contradicts`, and three of the five are mine from the re-expansion.
+
+Every finding verified against the tree rather than taken on the reviewer's word.
+
+- **1. `find_err02`'s return-type enumeration is narrower than R-ERR-02's text, and undeclared.**
+  The check recognises three spellings — `std::expected<…>`, `DecodeOutcome`, `LinkState` — while
+  the rule says "Every function returning a **result struct** or a `LinkState`", and the spec
+  defines "result struct" nowhere. **Measured:** `src/core/ps2_protocol.h:80` declares
+  `[[nodiscard]] constexpr std::optional<ControllerId> id_from_byte( std::uint8_t )`, a fallible
+  return in a `src/core/*.h` that matches none of the three alternatives. No violation exists —
+  the declaration already carries `[[nodiscard]]` — but the check could not catch it if it
+  stopped. R-ERR-02's clause records the **file** scope (`src/core/*.h`) and says nothing about
+  the **type** enumeration, so by this phase's own §What a `test:` binding does and does not
+  promise it owes a second clause. This one is squarely this phase's: round 1 wrote that binding.
+
+- **2. `grep -c 'planned: 03-pio-bus' … # expect: 4` lost its enumeration in the re-expansion.**
+  The sibling criterion (`planned: 01-ps2-codec` → 0) has its seven rules enumerated in §Rule
+  work; this one has nothing. The old spec carried the members inline and the 2026-09-15
+  re-expansion shortened the line. **Measured — the four are R-SAFETY-07, R-PROTO-01,
+  R-PROTO-06 and R-ERR-05.** A regression introduced while closing other findings, which is the
+  pattern `00-scaffold` line 3256 names.
+
+- **3. `rejection cases: 64` and `false-positive cases: 20 (floor 20)` are counts with no set.**
+  Neither base total appears in the spec, so neither target is computable from spec + diff. The
+  `64` is the worse of the two and it is mine: §Plan step 14 defines it as "one more than before
+  step 14" — self-referential against a number the spec never states. The diff adds nine
+  `reject` invocations, so a reader cannot even reconcile the delta of one without knowing the
+  counter counts firings rather than lines. **This is the exact failure this phase has fixed
+  four times elsewhere and I committed it while writing the fix for another one.**
+
+- **4. `tests/vectors/unknown_id.h` is also cut short, and its comment says it is not.**
+  **Measured:** header `0x79` announces `2 * (0x79 & 0x0F)` = 18 payload bytes, so a whole frame
+  is 20 bytes; the vector carries 4. It is therefore truncated as well as undeclared, while its
+  own comment claims "The rest of this frame IS well-formed, so nothing but the header can be
+  the reason it is refused." The asserted outcome is unaffected — §Goal's precedence puts the id
+  check above the length check, and that was true before round 11 as well — but the spec fixes
+  only the header byte and the outcome for this vector and never its length. **The choice is
+  real and is not a gate's to make:** lengthen the vector to the 20 bytes `0x79` announces, so
+  the comment becomes true and the vector is undeclared-only; or keep 4 bytes and rewrite the
+  comment to say the vector is doubly faulty and that §Goal's precedence is what makes the id
+  the reason. The first is the one `not_ready.h` already models ("length and payload
+  well-formed"); the second is cheaper and documents the precedence a second time.
+
+- **5. §Plan step 10's check clause still says "and no rule line".** Step 15 made that false,
+  and step 12's identical sentence was reconciled in round 12 while step 10's was missed —
+  the same sentence, in the same file, one step apart. Both clauses now stand and a validator
+  running step 10's check cannot tell which prediction to expect.
+
+**Not fixed here.** Findings 1, 2, 3 and 5 are mechanical; 4 carries a choice. All five are
+spec bugs, which the command routes to a `spec.md` amendment plus this entry rather than to a
+code change.
+
+### Taste from validation 2026-09-15 (round 4), recorded and not fixed
+
+- Several cases dereference the `std::expected` before the `has_value()` guard is evaluated —
+  `case_digital_idle_maps_to_nothing_pressed`, `case_analog_whammy_full`,
+  `case_report_carries_the_whammy_end_to_end` and `rule_proto04`. Raised in three separate
+  review rounds now. Latent today because no mutation makes `decode` refuse those vectors, but
+  it is the hazard `src/core/ps2_frame.cpp`'s own comment argues against: a mutation whose
+  observable effect is undefined behaviour proves nothing about the rule.
+- `case_report_gives_every_button_its_own_bit` declares a local `const ps2::HidReport report`
+  shadowing the file's `report()` reporter.
+- `docs/constraints.md` §Style was rewritten while §Plan step 2 names only §Observed conventions
+  for that file.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1435,3 +1501,52 @@ iteration-3+ escape fires.
   along with the three workarounds in §Notes to `/validate-phase`.
 - verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` →
   `pending` by this command.
+
+## Validation — 2026-09-15 (round 1 against the second re-expanded spec)
+
+Iteration 1: zero `## Validation` sections follow the 2026-09-15 `escaped to /expand-phase`
+verdict, so the escape is not in play.
+
+- **file set, checked first per §Notes to `/validate-phase` note 3.** `- base:` names `24d489f`,
+  confirmed a real commit; the set against the working tree is **35 files**; no path from
+  `.claude/workflow/installed` inside it.
+- criteria: **21 passed / 0 failed.** `make test` **OK** in **2:06** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, **10** vectors, 0 stray `tests/` headers,
+  **`grep -rn 'tests/vectors' src/` → 0** (the criterion that failed validation #3), 0
+  `.value()`, **3** `TODO(09-guitar-observe)` markers, both ADRs, driver exit 0, accounting 3
+  and 4 rule(s), `wiring cases: 10/10`, `false-positive cases: 20 (floor 20)`,
+  **`rejection cases: 64`**, `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0.
+  M1-M3 are the driver's rejection cases (`3/3`); **M4 run by hand** in a `cp -a` copy, exit 1
+  with `FAIL: test_ps2_codec.py declares R-PROTO-02, R-PROTO-03, R-PROTO-04, reported by nothing
+  but its own cases — the real run is gone`.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (35 files, 9 under `src/core/`; 13 active `deny` rules). Passed one
+  path per argument through `xargs`, and proved live before being recorded: a
+  `#include "src/hal/bus_io.h"` in `src/core/hid_report.h` is caught as `deny core -> hal`, and
+  the file was restored identical.
+- index: **STALE on entry** (built at `7ef3ecf`, HEAD `9e0dba7`), rebuilt; fresh at `9e0dba7`.
+- independent review: **contradicts: none.** **undecidable: 5** — (1) `find_err02` recognises
+  three return-type spellings while R-ERR-02 says "result struct", which the spec never defines;
+  `id_from_byte`'s `std::optional<ControllerId>` matches none of them, so the binding owes a
+  second scope clause beside the file-scope one it already has; (2) the `planned: 03-pio-bus`
+  → `4` criterion lost its enumeration in the re-expansion — the four are R-SAFETY-07,
+  R-PROTO-01, R-PROTO-06, R-ERR-05; (3) `rejection cases: 64` and `false-positive cases: 20`
+  are counts whose base totals the spec never states, and step 14 defines the 64
+  self-referentially as "one more than before step 14"; (4) `unknown_id.h` is 4 bytes while its
+  header announces a 20-byte frame, so it is cut short as well as undeclared and its comment
+  asserts the opposite — the outcome is unaffected but the spec fixes the vector's header and
+  outcome and never its length; (5) §Plan step 10's check still predicts "and no rule line",
+  which step 15 made false — step 12's identical sentence was reconciled and step 10's was not.
+  Three taste items recorded above, unfixed.
+- closure test: **fail** — five `undecidable` findings are five missing pointers. Everything
+  else passes: four `notes.md` sections present and non-empty, all 35 files reachable, no
+  untracked path, and every quantified claim in the spec carrying its enumeration except the two
+  named in findings 2 and 3, which is what those findings are.
+- upstream: **none** — no path in `.claude/workflow/installed` is in the phase's file set.
+  `/belay-feedback` is still owed for the `contradicts`-routing defect (rounds 9-10), the
+  `- base:` staleness trap, and the three workarounds in §Notes to `/validate-phase`.
+- verdict: **returned to implementation** — as spec amendments plus this Deviations entry, not
+  as code changes. Status stays `in-progress`.
