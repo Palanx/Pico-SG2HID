@@ -101,6 +101,22 @@ superseding ADR, never a silent edit.
 - Every command that does work ends by writing its outcome to disk (notes, status). A session's undocumented knowledge is lost knowledge.
 - Decisions that constrain the future get an ADR in `docs/adr/` before the code lands.
 - A verified fact about how the code or the hardware *is* — where the obvious reading is wrong, established at real cost — is a **finding**, not an ADR: it goes to `docs/constraints.md` `§Observed conventions` with its reference file and the date it was checked. An ADR has a status and is immutable; a finding has neither and stops being true when the code changes.
+- **Before handing a phase to `/validate-phase`, three checks on the state you are leaving
+  it.** Each is a failure this repo already paid for, and each is a belay gap filed in
+  `~/.claude-belay/feedback/` — delete this bullet when the package fix lands here.
+  1. **Does anything you found this round leave the Goal unmet?** Then it is fixed now, even
+     where no Plan step names the file: the Plan enumerates the work, the Goal defines what
+     done means. Scope creep is work the Goal does not ask for; a defect that makes the Goal
+     false is not creep. A green rule line over a violated rule has been measured four times
+     here and recorded four times before being fixed.
+  2. **Does `- base:` name a real ref, and is the resulting file set non-empty?** Verify it,
+     do not assume. On a clean tree the literal `working tree` yields zero files, and the
+     sweep, the review and the closure test all report `pass` having examined nothing.
+  3. **Is each sentence you wrote into the spec this round founded on something other than
+     the fix that wrote it?** If the answer is "the fix I just wrote", delete it. Three of
+     the five findings in validation round 4 were sentences written while fixing something
+     else — two of them of classes this repo already has rules for, which catch them at
+     review and not at writing.
 - If a Belay hook or command misfires (false positive, wrong tool command, unhandled case) or a workflow step causes friction, say so and offer `/belay-feedback` — the only channel back to the workflow package.
 
 ## Pointer table — where everything else lives
