@@ -37,11 +37,13 @@ whammy is an axis, not a control, and is counted separately throughout.
 **A buffer longer than the frame the header announces is accepted, and the bytes past the
 announced length are ignored.** Chosen, not left to fall out of the code: the header is the
 only authority on how long a frame is, so the span handed to `decode` is a *capacity* and
-never a claim about the frame. `03-pio-bus` will hand `core` a fixed-size shift buffer, and
-requiring `hal` to trim it first would put the length arithmetic `2 * (header & 0x0F)` on both
-sides of the layer boundary — which is the duplication `core` exists to prevent. Refusing an
-over-long buffer would also refuse the ordinary case on real hardware. Nothing asserts this
-contract today: `notes.md` §Debt carries it.
+never a claim about the frame. Requiring the caller to trim to the announced length first
+would put the arithmetic `2 * (header & 0x0F)` on both sides of the layer boundary — which is
+the duplication `core` exists to prevent. **What `03-pio-bus` will actually hand over is not
+recorded anywhere yet**, and this contract is deliberately the one that does not need it known:
+a caller that trims and a caller that over-delivers decode identically, because `decode` reads
+exactly the number of bytes the header announces either way. Nothing asserts this contract
+today: `notes.md` §Debt carries it.
 
 **Where two refusals are both true, the order is fixed, and it is chosen rather than
 inherited from the order somebody happened to write the checks in.** Each refusal is taken at

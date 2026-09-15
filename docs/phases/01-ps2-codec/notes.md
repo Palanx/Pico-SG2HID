@@ -815,6 +815,51 @@ Plan enumerates the work, the Goal defines what finished means.
   the reviewer wants them as pointers, that is its call to make.
 
 
+### Round 13 — the founding audit, and one sentence it deleted.
+
+The round-12 fix was re-verified from scratch rather than re-read: the cut applied in a scratch
+copy, the whole rule block printed, and **`FAIL: R-PROTO-02 (a cut-short frame yields no frame
+and the link goes Absent)`** produced with the driver exiting non-zero. R-PROTO-03 and
+R-PROTO-04 stay `ok:` under that cut, which is correct — neither is about the refusal order.
+Nothing needed fixing; the audit below is what this round is.
+
+- **Every sentence added to `spec.md` in rounds 11 and 12 was read back against the question
+  "what founds this?", and one failed.** The over-long-buffer paragraph asserted
+  *"`03-pio-bus` will hand `core` a fixed-size shift buffer"* and then, resting entirely on it,
+  *"Refusing an over-long buffer would also refuse the ordinary case on real hardware."*
+  **Measured:** `grep` over `docs/`, `src/` and `tests/` finds no statement about the shape of
+  `hal`'s buffer that predates this session — no ADR, no dependency note, nothing in
+  `00-scaffold`. It was a prediction about a phase nobody has written, and the second sentence
+  was founded on nothing but the first. Both deleted. The decision stands on the two arguments
+  that were already founded: the header is the sole authority on frame length, and trimming in
+  the caller would put `2 * (header & 0x0F)` on both sides of the layer boundary. The
+  replacement says what is actually known — that the caller's shape is unrecorded, and that
+  this contract is the one that does not need it, because a caller that trims and one that
+  over-delivers decode identically.
+  **Reconciled in the same edit:** §Debt's owner line for that item, which justified
+  `03-pio-bus` by the same unfounded prediction and now justifies it by the thing that is true
+  — it is the first phase with a real caller. **Checked and left alone:** the same prediction
+  inside the round-10 and round-11 Deviations entries, which are dated accounts of the
+  reasoning as it stood; this entry supersedes them rather than editing them.
+  Every other added sentence traced to something outside its own fix: the precedence list to
+  the code and to R-PROTO-02's text, the `0xFF`-is-an-undriven-line claim to the open-drain
+  fact already recorded in `not_ready.h`, the `CXXFLAGS` line to a byte-for-byte comparison,
+  the exhaustiveness deletion to the twenty-versus-eleven measurement, and steps 12 and 13 to
+  the mutation probes.
+
+- **The state handed to validation, verified rather than assumed, because this phase committed
+  three more times since the last check.** `- base:` names `24d489f`, which `git cat-file -t`
+  confirms is a real commit (`chore(belay): update workflow package to f001884`). The file set
+  it produces against the working tree is **35 files**, up one from 34 with
+  `tests/vectors/truncated_not_ready.h`. Not empty, so the sweep, the review and the closure
+  test will each look at something.
+
+- **Not touched, as instructed and for the reason given:** `us_in_state`'s saturation and the
+  over-long acceptance. Both state the behaviour *and* state that nothing asserts it, so the
+  claim is complete and there is no conflict for a reviewer to find; neither is bound to an
+  `R-*` rule; both sit in §Debt with an owner.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -844,8 +889,8 @@ Plan enumerates the work, the Goal defines what finished means.
      needs an input longer than any vector, and every vector is a literal by R-PROTO-05, so
      the case would have to build its input from a vector plus padding — defensible, since the
      *expected* bytes would still come from the vector, but it is a new shape of test and this
-     round was scoped to contracts. `03-pio-bus` is the phase that will hand `core` a
-     fixed-size buffer for real, and it is the natural owner.
+     round was scoped to contracts. `03-pio-bus` is the natural owner because it is the first
+     phase with a real caller — not because the buffer's shape is known, which it is not.
 
 - **`us_in_state`'s saturation is specified and asserted by nothing.** `spec.md` §The link now
   mandates that the accumulator saturate at `UINT32_MAX` rather than wrap, and `add_saturating`
