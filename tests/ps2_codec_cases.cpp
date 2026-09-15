@@ -554,6 +554,12 @@ constexpr std::uint32_t kOnePollUs = 1000;
     // equals kWhammyRest: a mapper that read the whammy unconditionally cannot land on the
     // rest value by luck and pass. The analog half is what stops "always report rest" from
     // satisfying the rule.
+    //
+    // Config is deliberately NOT asserted here, and that was measured rather than assumed:
+    // `map_frame` returns early for an id that reports no controls, so only Digital and Analog
+    // ever reach the gate below and `id != Digital` is an EQUIVALENT mutant, not a violation.
+    // A clause for Config could not be flipped by any single mutation, which would make it
+    // green paint. `case_config_mode_whammy_is_rest` covers the composite behaviour as a case.
     const bool is_ok = digital_frame.has_value() && analog_frame.has_value() &&
                        from_digital.whammy == ps2::kWhammyRest &&
                        from_analog.whammy != ps2::kWhammyRest;
@@ -563,18 +569,32 @@ constexpr std::uint32_t kOnePollUs = 1000;
 
 [[nodiscard]] bool rule_proto02() {
     ps2::Link                           link{};
+    ps2::Link                           overlap_link{};
     const std::span<const std::uint8_t> cut{ vectors::kTruncatedAck };
+    const std::span<const std::uint8_t> cut_and_idle{ vectors::kTruncatedNotReady };
     const std::span<const std::uint8_t> whole{ vectors::kDigitalIdle };
 
     const auto           refused  = ps2::decode( cut );
     const ps2::LinkState now      = ps2::step( link, refused, kOnePollUs );
+    const auto           overlap  = ps2::decode( cut_and_idle );
+    const ps2::LinkState now_too  = ps2::step( overlap_link, overlap, kOnePollUs );
     const auto           accepted = ps2::decode( whole );
 
     // Three claims, and the rule is all three: no frame comes out of a cut-short read, the
     // reason names the bus event, and the link transitions to Absent rather than reporting a
     // failed call. The fourth clause keeps a decoder that refused everything from passing.
+    //
+    // The fifth is the one this rule line was missing until 2026-09-15, and it is not an extra
+    // case bolted on: R-PROTO-02 says a cut-short frame reports the abort, with no exception
+    // for frames that are ALSO wrong some other way. Exercising truncation only where no other
+    // refusal competes leaves the rule line green while the rule is broken by the order of two
+    // `if`s — measured, and the reason this clause exists. `truncated_not_ready` is cut short
+    // and carries 0xFF at the ready slot, so it is the configuration where the abort has to
+    // outrank something.
     const bool is_ok = !refused.has_value() && refused.error() == ps2::DecodeStatus::AckTimeout &&
-                       now == ps2::LinkState::Absent && accepted.has_value();
+                       now == ps2::LinkState::Absent && !overlap.has_value() &&
+                       overlap.error() == ps2::DecodeStatus::AckTimeout &&
+                       now_too == ps2::LinkState::Absent && accepted.has_value();
     return report( is_ok,
                    "R-PROTO-02 (a cut-short frame yields no frame and the link goes Absent)" );
 }

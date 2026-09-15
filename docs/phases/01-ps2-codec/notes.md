@@ -760,6 +760,61 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   a real ref and the file set is non-empty, before trusting any gate.
 
 
+### Round 12 — the blind rule line, and the second one that turned out not to be blind.
+
+The Goal this phase inherits from `00-scaffold` is that mutating the codec so it stops
+refusing "makes the check fail **and name the rule**". Round 11 measured that false for
+R-PROTO-02 and wrote it down. This round fixes it. No step of the Plan named the work — the
+Plan enumerates the work, the Goal defines what finished means.
+
+- **Generalised first, over all three rule lines, and the answers differ.** The shape being
+  hunted: a rule line that exercises the refusals *separately* when the rule is about their
+  interaction, so the line stays green while the rule is broken.
+  - **R-PROTO-02 — an instance, fixed.** The rule says a cut-short frame "reports the abort",
+    with no exception for a frame that is also wrong some other way. `rule_proto02` decoded
+    `truncated_ack` only, which is truncation with a *good* ready byte: the one configuration
+    where nothing competes with the abort. It now also decodes `truncated_not_ready` and
+    asserts `AckTimeout` and `Absent` there. **Verified by mutation, on the rule line and not
+    the case:** restoring the old order of the two `if`s makes
+    `FAIL: R-PROTO-02 (a cut-short frame yields no frame and the link goes Absent)` print.
+    Re-confirmed against the final tree after the revert below, so the probe describes what
+    shipped and not an intermediate state.
+  - **R-PROTO-04 — looked like an instance, measured, and was NOT.** "The whammy is read only
+    from a frame that reported analog mode" quantifies over every non-analog id, and there are
+    two, `Digital` and `Config`; the line tested `Digital` alone. A `Config` clause was written
+    and probed with a `id != ControllerId::Digital` gate — and the line **stayed green**,
+    correctly. `map_frame` returns early when `reports_controls( id )` is false, so only
+    `Digital` and `Analog` ever reach the whammy gate, which makes `!= Digital` an
+    **equivalent mutant** rather than a violation. No single mutation can flip a Config clause,
+    so the clause would have been an assertion nothing could falsify — green paint, the exact
+    thing this round exists to remove. **Reverted**, and the measurement is recorded in the
+    rule function itself so the next reader does not re-add it. `case_config_mode_whammy_is_rest`
+    already covers the composite behaviour as a case, which is the right place for it.
+  - **R-PROTO-03 — not an instance.** Its text is about never decoding an undeclared header on
+    a best-effort basis, not about interaction, and under §Goal's precedence every overlap
+    involving an undeclared header still reports `UnknownId`. The sub-prefix case (a buffer
+    shorter than a header and a ready slot) reports `AckTimeout`, and §Goal step 1 already
+    decides that explicitly, so there is no undecided overlap for the line to be blind to.
+
+- **The probe that failed is the useful half of this round.** Writing the R-PROTO-04 clause,
+  running it, and finding it unfalsifiable is `00-scaffold`'s rule applied to a test instead of
+  a sentence: *after writing a fix, ask what founds it; if the answer is the fix itself, delete
+  it.* A clause that cannot go red founds nothing. It would have passed every future validation
+  and read, to a later session, as coverage.
+
+- **Reconciled in the same edit.** `spec.md` §Plan step 12's check said reverting the order
+  turns the case "and no rule line" to `FAIL:` — true when written, false the moment this round
+  landed. It now says both, and carries why the rule line is part of the check. §Plan step 13
+  is the widening itself. **Checked and left alone:** §Goal's liveness sentence, which is what
+  the fix restores rather than changes, and round 11's Deviations entry above, which is a dated
+  account of what was true then and is superseded by this one rather than edited.
+
+- **Not touched, deliberately:** the two mandated behaviours nothing asserts — `us_in_state`'s
+  saturation and the acceptance of over-long buffers. They stay in §Debt with owners. The Goal
+  restored here is that every *rule* has a case that bites, not that every contract does; if
+  the reviewer wants them as pointers, that is its call to make.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a

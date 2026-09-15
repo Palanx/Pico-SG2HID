@@ -366,10 +366,33 @@ rebuild the phase, not because they are pending.
     announces it; the id check cannot move below it, because `frame_len` needs the id.
     §Goal's precedence list is the contract. — check: the
     `truncated_not_ready: a cut-short frame reports the abort, not NotReady` case is `ok:`,
-    and putting the ready-byte check back in front of the length check turns that line, and
-    no rule line, to `FAIL:`. That the three rule lines stay green under the old order is the
-    finding, not a detail: R-PROTO-02's own rule case exercises the two refusals only apart,
-    so nothing but this case stands behind the order they are written in.
+    and putting the ready-byte check back in front of the length check turns **both** that
+    line **and the `R-PROTO-02` rule line** to `FAIL:`.
+    **The rule line is part of that check because of what the first probe found.** When this
+    step first landed, reverting the order flipped only the case and left all three rule lines
+    green — R-PROTO-02 says a cut-short frame "reports the abort" with no exception for frames
+    that are also wrong some other way, and its rule line exercised truncation only where no
+    other refusal competed. A rule line that stays green while its rule is broken makes §Goal's
+    "mutating the codec so it stops refusing makes the check fail and name the rule" false, so
+    `rule_proto02` now also decodes `truncated_not_ready` and asserts the abort there. §Plan
+    step 13 is that widening.
+
+13. **Landed 2026-09-15 — `rule_proto02` covers the overlap its rule quantifies over.**
+    Touches `tests/ps2_codec_cases.cpp`. R-PROTO-02's line decoded `truncated_ack` only, which
+    is truncation with a *good* ready byte — the one configuration where no other refusal
+    competes — so the line could not see the ordering defect step 12 fixed. It now decodes
+    `truncated_not_ready` as well and asserts `AckTimeout` and `Absent` there too.
+    — check: restoring the old refusal order turns the `R-PROTO-02` rule line to `FAIL:`,
+    not just the case.
+    **The same question was asked of the other two rule lines and answered by measurement, not
+    by reading.** `rule_proto03`: R-PROTO-03 is about never decoding an undeclared header on a
+    best-effort basis, not about interaction, and every overlap still reports `UnknownId` under
+    §Goal's precedence — not an instance. `rule_proto04`: a clause for `config_mode` was
+    written, probed, and **reverted**. `map_frame` returns early for an id that reports no
+    controls, so only `Digital` and `Analog` ever reach the whammy gate, which makes
+    `id != Digital` an *equivalent* mutant rather than a violation — no single mutation can
+    flip a Config clause, so it would have been green paint. The measurement is recorded in
+    the rule function itself.
 
 ## Acceptance criteria
 
