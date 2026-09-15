@@ -1245,6 +1245,46 @@ delivered the amendments without them. Three taste items recorded below.
 - §Plan step 2 says the missing-SDK path "prints a `note:`"; `tests/test_style.sh` prints two.
 
 
+### Round 21 — three accounting pointers. Nothing added that was not asked for.
+
+- **1. `CLAUDE.md` has a row in §Files this phase writes, worded as explanation.** It records
+  that the operator amended the file mid-phase with the three pre-validation checks, and that
+  it appears in this phase's diff only because the base ref `24d489f` precedes that edit. The
+  row does not claim the phase wrote it, because the phase did not. **Measured:**
+  `git diff 24d489f --stat -- CLAUDE.md` → 16 insertions.
+
+- **2. §Plan step 16 describes R-ERR-02's return-type clause, and three statements were
+  reconciled — one more than the operator named, because the third needed a word.**
+  - §What a `test:` binding does and does not promise listed R-ERR-02 as "(records that it
+    scans `src/core/*.h` only, and why)" — stale the moment round 19 added the second
+    narrowing. Now: "records both that it scans `src/core/*.h` only and which return-type
+    spellings its pattern knows".
+  - The audit table kept R-ERR-02 in the "text says so" row, which is still the right
+    classification, but the row now records that **the audit did not find the second
+    narrowing — the independent review did.** A dated audit that silently absorbs a later
+    finding reads as if it had found it.
+  - §Out of scope said "the narrowing is recorded in the rule's own text"; with two narrowings
+    that is ambiguous, so it now says "the file-scope narrowing". One word, and it is the
+    narrowing that entry is actually about.
+
+- **3. §Vectors' `unknown_id.h` row states its shape, like the other nine.** 20 bytes, the
+  whole frame `0x79` announces, since `2 * (0x79 & 0x0F)` is 18 payload bytes — and why a
+  shorter one would not do: it would be cut short as well as undeclared, so either fault could
+  be the reason for the refusal. This was the most expensive of the three to leave: the
+  reasoning existed only inside the vector file, so a reader working from the spec would have
+  written the obvious 4-byte frame, satisfied the asserted outcome, and had no way to know.
+
+- **The founding check caught one clause inside this edit.** The `CLAUDE.md` row first read
+  that the file appears in the diff "the same way `docs/phases/PHASES.md` and `docs/index/`
+  appear without this phase authoring their content". That analogy is not accurate: the
+  workflow commands **do** write `PHASES.md`'s status cell, so the phase does author content
+  there. Deleted rather than reworded — the two measured facts in the row stand without it.
+
+- **Nothing else was added.** No new note, clause or section beyond the three items: the
+  operator's standing rule for this round, and the reason is on the record — the temporary
+  workaround notes have themselves produced a finding.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a

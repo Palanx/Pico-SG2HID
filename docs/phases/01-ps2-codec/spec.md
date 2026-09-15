@@ -118,7 +118,8 @@ being invented here:
 
 Four rules already do this and are the precedent: **R-ARCH-01** (names the two edges its grep
 cannot reach), **R-ERR-01** (records the narrowing to "no bare status return"), **R-ERR-02**
-(records that it scans `src/core/*.h` only, and why), **R-CLEAN-04** (records that
+(records both that it scans `src/core/*.h` only and which return-type spellings its pattern
+knows), **R-CLEAN-04** (records that
 `readability-magic-numbers` does not see a literal inside a `const` or `constexpr` initializer).
 
 This phase owes that clause for **R-PROTO-05**, which had none — §Plan step 14.
@@ -131,7 +132,7 @@ redo the search.
 | finding | rules |
 |---|---|
 | **Narrower than its text, and the text does not say so** | **R-PROTO-05** (`hits()` strips `//` comments before grepping, so the check cannot see a reference in a comment — the validation #3 failure); **R-STYLE-02** and **R-CLEAN-02** (`tidy_sources()` is `src/core/*.cpp`, `src/core/*.h`, `tests/*.cpp`, while both rule texts are unscoped); **R-PROC-02** (the check asserts a `done` phase has a non-empty `verify.md`; the text demands it be "written for a non-specialist" with "exact physical steps and expected readings", which no check reads); **R-ERR-03** (text says "anywhere under `src/`" and the check strips comments — the weakest of the five, since `throw`/`try`/`catch` are constructs a comment does not contain) |
-| **Narrower than its text, and the text says so** — the precedent above | R-ARCH-01, R-ERR-01, R-ERR-02, R-CLEAN-04 |
+| **Narrower than its text, and the text says so** — the precedent above | R-ARCH-01, R-ERR-01, R-CLEAN-04, and R-ERR-02 — whose *second* narrowing, the return-type spellings, this audit did not find; the independent review did, and §Plan step 16 is the clause |
 | **Not narrower; checked and sound** | R-STYLE-01 (`sources()` is every tracked-or-new `.cpp`/`.h`, which is exactly what the text says); R-CLEAN-05 (uses `raw_hits`, the un-stripping scanner, precisely because it is a rule *about* comments); R-ARCH-03, R-ERR-04, R-CLEAN-03, R-CLEAN-09 (their subjects are code constructs, so stripping comments matches the text rather than narrowing it); R-ARCH-02 (the five declared layers cover all of `src/`); R-PROC-01 (its text enumerates exactly what the check does); R-SEC-01, R-TOOL-01, R-TOOL-02 (scope varies with which tool is installed, and the checks declare that with `skip:` lines the accounting property counts) |
 | **Audited in earlier rounds of this phase** | R-PROTO-02 (was narrower; widened in round 12 to cover the overlap its rule quantifies over), R-PROTO-03 and R-PROTO-04 (checked in round 12 and found sound — R-PROTO-03's text is not about interaction, and a Config clause for R-PROTO-04 is unfalsifiable because `map_frame` returns early before the whammy gate) |
 
@@ -308,7 +309,7 @@ so it would require the vectors to be unreadable binary to be useful.
 | `analog_whammy_full.h` | analog, whammy byte at full deflection | whammy reads full deflection — a value that is not `kWhammyRest`, which is what makes this the vector that proves the read path | R-PROTO-04 |
 | `config_mode.h` | config-mode header, 6 payload bytes, all `0x00` | `ControllerId::Config` — recognised, not a report: it decodes, and `map_frame` yields all ten controls released and the whammy at rest, reading neither out of the payload | — |
 | `not_ready.h` | a declared id whose ready byte is `0xFF`, the idle level of an undriven `DATA` line; length and payload well-formed | `DecodeStatus::NotReady`, no frame | — |
-| `unknown_id.h` | header `0x79`, the DualShock 2's real full-analog id, deliberately undeclared here | `DecodeStatus::UnknownId`, no frame | R-PROTO-03 |
+| `unknown_id.h` | header `0x79`, the DualShock 2's real full-analog id, deliberately undeclared here; **20 bytes — the whole frame `0x79` announces**, since `2 * (0x79 & 0x0F)` is 18 payload bytes. A shorter one would be cut short as well as undeclared, and either fault could then be the reason it was refused | `DecodeStatus::UnknownId`, no frame | R-PROTO-03 |
 | `truncated_ack.h` | digital header, ready byte, payload cut short — the `ACK` never came | `DecodeStatus::AckTimeout`, no frame, and `step` moves the link to `Absent` | R-PROTO-02 |
 | `truncated_not_ready.h` | digital header, `0xFF` at the ready slot, payload cut short — both faults at once | `DecodeStatus::AckTimeout`, no frame: the abort outranks the ready byte, per §Goal's precedence | R-PROTO-02 |
 
@@ -344,6 +345,7 @@ that is all this vector can honestly witness.
 | `tests/test_ps2_codec.py` | the driver: compiles and runs the cases against the real `src/core/`, prints one `ok:`/`FAIL:` line per case and per rule, and carries the three rejection cases |
 | `docs/adr/0011-*.md`, `docs/adr/0012-*.md` | the `step` signature and the `DecodeStatus` membership decisions |
 | `docs/phases/01-ps2-codec/verify.md` | the operator procedure (R-PROC-02) |
+| `CLAUDE.md` | **not written by this phase.** The operator amended it mid-phase, adding the three pre-validation checks to §Conventions. It appears in this phase's diff only because the base ref `24d489f` precedes that edit. Listed here so the file is accounted for rather than read as scope this phase escaped into. |
 
 ## Plan
 
@@ -482,6 +484,16 @@ rebuild the phase, not because they are pending.
     asserts the four targets are *equal*, this asserts what they equal.
     — check: the same source-state mutation now turns **both** the uniformity case and the
     `R-PROTO-02` rule line to `FAIL:`.
+
+16. **Landed 2026-09-15 — R-ERR-02 records its return-type scope as well as its file scope.**
+    Touches `docs/constraints.md`. The check recognises `std::expected<…>`, `DecodeOutcome` and
+    `LinkState`; the rule says "result struct", which is wider, and `id_from_byte` returns
+    `std::optional<ControllerId>` and matches none of the three. It carries `[[nodiscard]]`
+    today, so nothing is in violation — the check would simply not notice if that stopped.
+    The clause is what §What a `test:` binding does and does not promise requires of a binding
+    this phase owns, and closing the gap needs the type information a grep does not have, which
+    is `03-pio-bus`'s `clang-query` upgrade. — check: `python3 tests/test_rule_traceability.py`
+    → exit 0, and R-ERR-02's entry in `docs/constraints.md` names both narrowings.
 
 ## Acceptance criteria
 
@@ -637,8 +649,9 @@ it are the three that cost the most when they lie.
   and that is new judgement surface in a phase that is closing, on the exact axis this phase
   has failed on four times. The literal reading needs no definition. `notes.md` §For later
   phases carries it for whoever wants to revisit it with budget to test the answer.
-- **Widening R-ERR-02's check beyond `src/core/*.h`** — no phase yet; the narrowing is recorded
-  in the rule's own text and the residual hole has no caller who could ignore a result.
+- **Widening R-ERR-02's check beyond `src/core/*.h`** — no phase yet; the file-scope narrowing
+  is recorded in the rule's own text and the residual hole has no caller who could ignore a
+  result.
 - The TinyUSB HID descriptor — `08-usb-hid`. This phase fixes the report's byte layout so the
   descriptor can be written from it; it writes no descriptor and no USB code.
 - The emulator — `05-emulator`. No file under `src/emu/`.
