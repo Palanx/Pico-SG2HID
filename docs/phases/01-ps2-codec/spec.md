@@ -94,6 +94,53 @@ R-PROTO-02 bind to `tests/test_ps2_codec.py`; R-ERR-01 and R-ERR-02 bind to
 `tests/test_repo_shape.sh`, each with its narrowing recorded in the rule's own text;
 R-CLEAN-04 binds to `tests/test_style.sh`. Nothing in this re-expansion moves a binding.
 
+## What a `test:` binding does and does not promise
+
+Re-expanded into the spec on 2026-09-15, after validation #3, because four times in this phase
+a rule's own check printed `ok:` while the rule was broken: the config-mode button gate
+(round 2), the link-transition uniformity (round 7), the refusal ordering (round 11), and
+R-PROTO-05's blindness to comments (round 14). All four survived `tests/test_checks_are_live.py`.
+
+**That harness proves a check is *wired*, not that it is *adequate*.** It mutates the code the
+check reads and confirms the check reacts and names its rule. A check whose pattern is narrower
+than its rule's text passes that test perfectly: it is alive, it just measures less than the
+sentence it is bound to. Wiring and coverage are different properties and only one of them has
+a harness.
+
+**There is no machine-checkable form of "this pattern covers this English sentence."** So the
+binding is a convention with a named owner, and it already exists in this repo rather than
+being invented here:
+
+> **The phase that moves a rule from `planned:` to `test:` writes, in the rule's own text,
+> what the check does not see.** A rule whose text states no scope is asserting that its check
+> covers it entirely — and that assertion is the thing a later reader is entitled to disbelieve
+> and measure.
+
+Four rules already do this and are the precedent: **R-ARCH-01** (names the two edges its grep
+cannot reach), **R-ERR-01** (records the narrowing to "no bare status return"), **R-ERR-02**
+(records that it scans `src/core/*.h` only, and why), **R-CLEAN-04** (records that
+`readability-magic-numbers` does not see a literal inside a `const` or `constexpr` initializer).
+
+This phase owes that clause for **R-PROTO-05**, which had none — §Plan step 14.
+
+### The audit behind that rule — all 23 `test:`-bound rules, with what was found
+
+Run 2026-09-15. Listed in full because naming only the broken ones would make the next reader
+redo the search.
+
+| finding | rules |
+|---|---|
+| **Narrower than its text, and the text does not say so** | **R-PROTO-05** (`hits()` strips `//` comments before grepping, so the check cannot see a reference in a comment — the validation #3 failure); **R-STYLE-02** and **R-CLEAN-02** (`tidy_sources()` is `src/core/*.cpp`, `src/core/*.h`, `tests/*.cpp`, while both rule texts are unscoped); **R-PROC-02** (the check asserts a `done` phase has a non-empty `verify.md`; the text demands it be "written for a non-specialist" with "exact physical steps and expected readings", which no check reads); **R-ERR-03** (text says "anywhere under `src/`" and the check strips comments — the weakest of the five, since `throw`/`try`/`catch` are constructs a comment does not contain) |
+| **Narrower than its text, and the text says so** — the precedent above | R-ARCH-01, R-ERR-01, R-ERR-02, R-CLEAN-04 |
+| **Not narrower; checked and sound** | R-STYLE-01 (`sources()` is every tracked-or-new `.cpp`/`.h`, which is exactly what the text says); R-CLEAN-05 (uses `raw_hits`, the un-stripping scanner, precisely because it is a rule *about* comments); R-ARCH-03, R-ERR-04, R-CLEAN-03, R-CLEAN-09 (their subjects are code constructs, so stripping comments matches the text rather than narrowing it); R-ARCH-02 (the five declared layers cover all of `src/`); R-PROC-01 (its text enumerates exactly what the check does); R-SEC-01, R-TOOL-01, R-TOOL-02 (scope varies with which tool is installed, and the checks declare that with `skip:` lines the accounting property counts) |
+| **Audited in earlier rounds of this phase** | R-PROTO-02 (was narrower; widened in round 12 to cover the overlap its rule quantifies over), R-PROTO-03 and R-PROTO-04 (checked in round 12 and found sound — R-PROTO-03's text is not about interaction, and a Config clause for R-PROTO-04 is unfalsifiable because `map_frame` returns early before the whammy gate) |
+
+The four undeclared gaps that are **not** this phase's rules — R-STYLE-02, R-CLEAN-02, R-PROC-02
+and R-ERR-03 — are recorded in `notes.md` §For later phases with an owner. Writing their scope
+clauses is not this phase's work: it does not own those bindings, and widening someone else's
+check during a closing round is the "new work wearing a fix's clothes" this spec already refuses
+elsewhere.
+
 ## Context pointers
 
 - `CLAUDE.md` — the architecture paragraph, the hardware-safety rules, and the reading rule
@@ -396,6 +443,28 @@ rebuild the phase, not because they are pending.
     flip a Config clause, so it would have been green paint. The measurement is recorded in
     the rule function itself.
 
+14. **Owed — R-PROTO-05 means every occurrence, comments included.** Touches
+    `tests/test_repo_shape.sh`, `src/core/ps2_frame.cpp`, `docs/constraints.md`.
+    Validation #3 failed because the acceptance criterion and the bound check disagreed about
+    the rule: `grep -rn 'tests/vectors' src/` counts a comment, and `find_proto05` cannot,
+    because it goes through `hits()`, which runs `sed 's|//.*||'` first. Both readings were
+    defensible and the spec named neither, so `make test` and §Acceptance criteria could
+    contradict each other on one tree.
+    **The decision is the literal reading**, and the reason is that it leaves no judgement to
+    interpret: check and criterion both become "no occurrence", and this phase's repeated
+    failure mode is a check weaker than its rule. Three edits, one meaning:
+    - `find_proto05` moves from `hits` to `raw_hits` — the scanner that does not strip
+      comments, which `find_clean05` already uses for the same reason.
+    - the comment at `src/core/ps2_frame.cpp:22` naming `tests/vectors/truncated_not_ready.h`
+      is deleted. What it pointed at belongs in `tests/`, not in `core`.
+    - R-PROTO-05's text gains the scope clause §What a `test:` binding promises requires:
+      the check reads raw lines, so a mention in a comment is a violation, and that is
+      deliberate rather than an accident of the scanner.
+    — check: `grep -rn 'tests/vectors' src/ | wc -l` → `0`; `sh tests/test_repo_shape.sh`
+    still reports `ok: R-PROTO-05`; and the rejection case proves the new scope — a scratch
+    tree whose only reference is **inside a comment** must make R-PROTO-05 fire. Without that
+    last part the change is untested and the old scanner would pass the suite equally well.
+
 ## Acceptance criteria
 
 ```
@@ -416,6 +485,7 @@ make test 2>&1 | grep -E 'accounting: test_ps2_codec.py'       # expect: a line 
 make test 2>&1 | grep -E 'accounting: test_style.sh'           # expect: a line reading 4 rule(s)
 sh tests/test_repo_shape.sh | grep 'wiring cases'              # expect: 10/10
 sh tests/test_repo_shape.sh | grep 'false-positive cases'       # expect: 20 (floor 20)
+sh tests/test_repo_shape.sh | grep 'rejection cases'            # expect: 64 — one more than before step 14, the comment-scope case
 make test 2>&1 | grep -E 'neutered: ([0-9]+)/\1 caught'        # expect: one line — the two sides equal
 make test 2>&1 | grep -E 'alternations: ([0-9]+)/\1 caught'    # expect: one line — the two sides equal
 sh tests/test_phase_docs.sh                                    # expect: exit 0
@@ -515,6 +585,14 @@ it are the three that cost the most when they lie.
   `.py` checks are not — and it belongs to whichever phase next touches that harness, alongside
   the `clang-query` + `compile_commands.json` upgrade `03-pio-bus` already owes and the
   "no new untracked paths after `make test`" check that `notes.md` §For later phases names.
+- **Reading R-PROTO-05 as "no *code* reference" rather than "no occurrence"** — no phase;
+  considered on 2026-09-15 and rejected with the reason recorded, not merely dropped. It is the
+  more honest reading semantically: a comment cannot make `core` depend on test data, which is
+  what the rule exists to prevent. It was rejected because it obliges someone to define what
+  counts as a reference — a string literal, a macro expansion, a path assembled from pieces —
+  and that is new judgement surface in a phase that is closing, on the exact axis this phase
+  has failed on four times. The literal reading needs no definition. `notes.md` §For later
+  phases carries it for whoever wants to revisit it with budget to test the answer.
 - **Widening R-ERR-02's check beyond `src/core/*.h`** — no phase yet; the narrowing is recorded
   in the rule's own text and the residual hole has no caller who could ignore a result.
 - The TinyUSB HID descriptor — `08-usb-hid`. This phase fixes the report's byte layout so the

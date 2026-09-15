@@ -898,6 +898,61 @@ Nothing needed fixing; the audit below is what this round is.
   the one time it moves a phase backwards. The next command is `/expand-phase 01-ps2-codec`.
 
 
+### Round 15 — the re-expansion. One decision, one new section, one audit.
+
+- **`spec.md` was amended, not rewritten from the template, and that is a deviation from
+  `/expand-phase` step 5.** Stated rather than hidden: the spec already follows the template's
+  sections, and six rounds of reconciliation are embedded in its counts, its enumerations and
+  its precedence list. A wholesale rewrite would have re-derived text that took four validation
+  rounds to get right, on the chance of reintroducing what they removed. The substantive
+  changes are the ones the escape asked for: a new §What a `test:` binding does and does not
+  promise, §Plan step 14, its criterion, and the rejected reading in §Out of scope.
+
+- **The decision: R-PROTO-05 means every occurrence, comments included.** §Plan step 14 carries
+  it with its three edits. The rejected reading — "no *code* reference" — is in §Out of scope
+  with its reason rather than dropped: it is semantically the more honest one, and it was
+  rejected because it obliges someone to define what counts as a reference, which is new
+  judgement surface on the exact axis this phase has failed on four times.
+
+- **The audit the escape actually existed for, and what it found.** `tests/test_checks_are_live.py`
+  proves a check is *wired* — it mutates the code and confirms the check reacts. It cannot
+  prove the check's pattern covers what the rule's text says, and all four of this phase's
+  "green check, broken rule" instances were live and narrower. There is no machine-checkable
+  form of "this regex covers this English sentence", so the spec now states the binding as a
+  convention with a named owner: **the phase that moves a rule from `planned:` to `test:`
+  writes, in the rule's own text, what the check does not see.** That is not an invention —
+  R-ARCH-01, R-ERR-01, R-ERR-02 and R-CLEAN-04 already do it, which is why it is written as a
+  rule rather than proposed as one.
+  **All 23 `test:`-bound rules were checked, and the full result is in the spec's table** so
+  the next reader does not redo the search. Four gaps found that are undeclared and are **not**
+  this phase's rules: R-STYLE-02 and R-CLEAN-02 (`tidy_sources()` covers `src/core/*` and
+  `tests/*.cpp` only, while both texts are unscoped), R-PROC-02 (the check asserts a non-empty
+  `verify.md` exists; the text demands it be written for a non-specialist with exact steps and
+  readings, which nothing reads), and R-ERR-03 (the weakest: "anywhere under `src/`" against a
+  comment-stripping scanner). Nine were checked and found sound, four already declare their
+  narrowing, and the three R-PROTO rules were audited in round 12.
+
+- **Reconciled in the same edit.** The new criterion pins `rejection cases: 64`, one above the
+  63 measured today, because step 14 owes a case proving the new scope. **Checked and left
+  alone:** §Acceptance criteria's `grep -rn 'tests/vectors' src/` line, which already expects
+  `0` and becomes true rather than changing; `verify.md`, which never mentions R-PROTO-05's
+  scanner; and `tests/vectors/README.md`, which states the provenance half of R-PROTO-05 and
+  says nothing about `src/`.
+
+## For later phases — added by the round-15 audit
+
+- **Whoever owns `00-scaffold`'s bindings next** — four rules assert more than their checks
+  measure and their texts do not say so: **R-STYLE-02**, **R-CLEAN-02** (both scoped by
+  `tidy_sources()` to `src/core/*` and `tests/*.cpp`), **R-PROC-02** (existence versus "written
+  for a non-specialist"), **R-ERR-03** ("anywhere under `src/`" versus comment stripping). Each
+  needs a scope clause in its own text, per `spec.md` §What a `test:` binding does and does not
+  promise. `01-ps2-codec` did not write them because it does not own those bindings and
+  widening another phase's check during a closing round is new work wearing a fix's clothes.
+- **Whoever revisits R-PROTO-05** — the "no code reference" reading is the semantically honest
+  one and is rejected here only because defining "reference" is judgement surface this phase
+  could not afford to add. Revisit it with budget to test the answer.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
