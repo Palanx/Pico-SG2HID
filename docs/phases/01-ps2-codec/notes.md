@@ -1285,6 +1285,45 @@ delivered the amendments without them. Three taste items recorded below.
   workaround notes have themselves produced a finding.
 
 
+### Round 22 — one `contradicts`, zero `undecidable`, and the escape fired on the threshold.
+
+- **The finding, verified against both files.** §Goal says the marker count is "the number
+  `verify.md` **§1** tells the operator to expect". `verify.md` §1 is `## 1. Everything passes`
+  at line 172 and is about `make test` and `make lint`. The count — `grep -rn
+  'TODO(09-guitar-observe)' src/core/` followed by "Expect three of them" — is at line 166,
+  under the unnumbered `## What this phase does NOT prove` at line 143, before the numbered
+  "Check it yourself" block begins. **The number is right and `verify.md` is right**; the
+  spec's pointer to where it lives is wrong. One token: `§1` names a section that does not
+  contain what the sentence says it contains.
+  Mine, written during the 2026-09-15 re-expansion while closing the marker-count finding —
+  the same class as rounds 19 and 20, an amendment that asserts something about another file
+  without checking the other file.
+
+- **Nothing else.** `undecidable: none`, and the reviewer said so plainly after checking every
+  quantified claim the spec makes against the diff: the ten vectors and their mappings, four
+  `LinkState` members and five `FaultCause`, the six-row transition table as a function of the
+  outcome alone, the strict `>` on the timeout, the saturating accumulation declared as
+  unasserted, the four-step refusal precedence in the order §Goal fixes, `Ps2Frame` carrying no
+  length with both readers recomputing, three markers over four concerns, wiring 8 → 10, the
+  floor 13 → 20 with seven new `accept` lines, nine new `reject` lines consistent with the
+  64/20 distributions, `unknown_id.h` at 20 bytes, the seven rebound rules, and the driver's
+  `CXXFLAGS` byte-identical to the list §Context pointers records. All 35 files accounted for,
+  `CLAUDE.md` explicitly.
+
+- **The escape fired and this command moved the status.** Three `## Validation` sections now
+  follow the 2026-09-15 `escaped to /expand-phase` verdict and this third one failed a gate,
+  so the iteration-3+ rule applies. `docs/phases/PHASES.md` row `01-ps2-codec` set to
+  `pending` by `/validate-phase`. **Not overridden, and the operator's standing instruction was
+  explicit that it should not be.**
+
+- **The trend, recorded because the re-expansion will want it and it is not an argument against
+  the escape.** Findings since the second escape: validation #1 returned 5 `undecidable` and 0
+  `contradicts`; #2 returned 3 and 0; #3 returned 0 `undecidable` and 1 `contradicts`, that one
+  being a section reference. Whether a one-token cross-reference error is proportionate to a
+  re-expansion is the operator's call, not this gate's — the gate's job was to fail and route,
+  and it did both.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1765,3 +1804,42 @@ verdict, so the escape is not in play.
   trap, and the three workarounds in §Notes to `/validate-phase`.
 - verdict: **returned to implementation** — as spec amendments plus the Deviations entry above,
   not as code changes. Status stays `in-progress`.
+
+## Validation — 2026-09-15 (round 3 against the second re-expanded spec — escape threshold)
+
+Iteration 3 since the 2026-09-15 `escaped to /expand-phase` verdict. A gate failed, so the
+iteration-3+ escape fires.
+
+- **file set, checked first.** `- base:` names `24d489f`, confirmed a real commit; the set
+  against the working tree is **36 files**; no path from `.claude/workflow/installed` inside it.
+- criteria: **21 passed / 0 failed.** `make test` **OK** in **2:03** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers,
+  `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, 3 markers, both ADRs, driver exit 0,
+  accounting 3 and 4 rule(s), `wiring cases: 10/10`, `false-positive cases: 20 (floor 20)`,
+  `rejection cases: 64`, `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0.
+  Step 16's check passes: `test_rule_traceability.py` exit 0 and R-ERR-02 names both
+  narrowings. M1-M3 are the driver's rejection cases (`3/3`); **M4 run by hand**, exit 1 with
+  the expected message.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (36 files, 9 under `src/core/`; 13 active `deny` rules). One path
+  per argument through `xargs`, proved live: `#include "src/hal/bus_io.h"` in
+  `src/core/guitar_state.h` is caught as `deny core -> hal`, file restored identical.
+- index: **fresh without rebuilding** — `3e2e6ed` touched no source files.
+- independent review: **contradicts: 1** — §Goal says the marker count is "the number
+  `verify.md` §1 tells the operator to expect"; `verify.md` §1 is `## 1. Everything passes`
+  and is about `make test`/`make lint`, while the count sits at line 166 under the unnumbered
+  `## What this phase does NOT prove`. The count itself is correct and so is `verify.md`; the
+  spec's pointer is not. **undecidable: none** — stated plainly by the reviewer after checking
+  every quantified claim in the spec against the diff. Four taste items in §Deviations.
+- closure test: **fail** — a `contradicts` means the spec asserts something about the diff that
+  the diff does not contain. The record is otherwise in order: four `notes.md` sections present
+  and non-empty, all 36 files accounted for, no untracked path.
+- upstream: **none** — no path in `.claude/workflow/installed` is in the phase's file set.
+  `/belay-feedback` still owed for the `contradicts`-routing defect, the `- base:` staleness
+  trap, the operator-edit gap in the file set, and the three workarounds in §Notes to
+  `/validate-phase`.
+- verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` →
+  `pending` by this command.
