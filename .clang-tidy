@@ -5,15 +5,32 @@
 # behind R-STYLE-02 works by feeding it a deliberately misnamed sample and asserting
 # that every category is reported, which is the only way to know these keys still bind.
 #
-# Scope limit: clang-tidy needs to know how to compile the file. Without a
-# compile_commands.json it can only run where the flags are trivial — src/core/ and
-# tests/. src/hal/, src/usb/, src/app/ and src/emu/ pull in Pico SDK and TinyUSB
-# headers and are skipped. Upgrade path: build with CMAKE_EXPORT_COMPILE_COMMANDS=ON
-# once the ARM toolchain is installed, then drop the path filter in `make lint`.
+# Scope limit: clang-tidy needs to know how to compile the file. It runs over src/core/
+# and tests/ only; src/hal/, src/usb/, src/app/ and src/emu/ pull in Pico SDK and TinyUSB
+# headers and are skipped.
+#
+# The flags are NOT trivial, and this comment used to say they were. Two are required and
+# neither is guessable from a naming-rule failure, because both arrive as
+# clang-diagnostic-error under WarningsAsErrors and therefore as a FAIL line naming
+# R-STYLE-02: `-xc++` on a .h (compiled as C otherwise) and `-isysroot` on every file (else
+# libc++ finds no platform C library and <array>, <optional>, <string_view>, <algorithm>,
+# <functional> and <variant> all fail inside libc++ itself). Measured 2026-09-11; the
+# invocation lives in tests/test_style.sh and the measurement in docs/constraints.md
+# §Observed conventions.
+#
+# Upgrade path: NOT a generated compile_commands.json — ADR-0010 fixes development to macOS
+# with Homebrew LLVM and settles this as explicit flags, so the two above are the answer
+# rather than a stopgap. A compile database is still what src/hal/ and the SDK-facing layers
+# would need, and 03-pio-bus owns that when it lands the CMake build.
 
-Checks: '-*,readability-identifier-naming,readability-function-size'
+Checks: '-*,readability-identifier-naming,readability-function-size,readability-magic-numbers'
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(src|tests)/.*'
+# src/ only, and the exclusion is R-CLEAN-04's own: the literals under tests/vectors/ are the
+# sole exception to "no magic numbers", because being a literal is their entire purpose
+# (R-PROTO-05). The vectors are the only headers under tests/, so naming src/ excludes them
+# without a negative pattern — llvm::Regex has no lookahead to write one with. A file passed
+# as the main file is always diagnosed; this governs the headers it includes.
+HeaderFilterRegex: 'src/.*'
 
 CheckOptions:
   # Types read as CamelCase; things you call read as lower_case. The case tells you

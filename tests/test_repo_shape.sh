@@ -9,11 +9,16 @@
 # RULE R-CLEAN-05 — docs/constraints.md §Invariants — every TODO names what closes it
 # RULE R-CLEAN-09 — docs/constraints.md §Invariants — no inheritance in core
 # RULE R-PROTO-05 — docs/constraints.md §Invariants — src/ never reads tests/vectors/
+# RULE R-ERR-01   — docs/constraints.md §Invariants — core returns no bare status enum
+# RULE R-ERR-02   — docs/constraints.md §Invariants — a result or LinkState return is
+#                   marked [[nodiscard]]
 #
-# Every check takes the tree root as an argument. That is not decoration: this repo has no
-# product code yet, so all eight pass vacuously, and a check that is silently broken would
-# look identical to one that works. The rejection cases at the bottom point the same
-# functions at a deliberately-bad temp tree and require them to fire.
+# Every check takes the tree root as an argument. That is not decoration: when this file was
+# written the repo had no product code, so every check passed vacuously and one that was
+# silently broken looked identical to one that worked. The rejection cases at the bottom point
+# the same functions at a deliberately-bad temp tree and require them to fire. src/core/ exists
+# as of phase 01-ps2-codec, so the real run now examines something — and the cases are still
+# what prove it would notice if it did not.
 #
 # belay-debt: these are greps, not parsed C++. Most checks strip line comments first;
 # R-CLEAN-05 deliberately does not, because it is a rule ABOUT comments. Block comments
@@ -29,6 +34,16 @@ fail=0
 
 src_files( )  { find "$1/src" -type f \( -name '*.cpp' -o -name '*.h' \) 2>/dev/null; }
 core_files( ) { find "$1/src/core" -type f \( -name '*.cpp' -o -name '*.h' \) 2>/dev/null; }
+# R-ERR-02 scans HEADERS only, and that is a property of the rule rather than a shortcut: a
+# [[nodiscard]] belongs on the declaration, where it governs every call, and C++ does not
+# repeat it on the definition. Scanning .cpp too would report every correct out-of-line
+# definition — `LinkState step( … ) {` in src/core/link.cpp is exactly that shape.
+#
+# belay-debt: a function with no declaration at all — one defined only inside an anonymous
+# namespace in a .cpp — is therefore outside this check. Those are internal to one translation
+# unit and cannot be called by a caller who could ignore the result, but the gap is real. The
+# clang-query upgrade in 03-pio-bus is what closes it.
+core_headers( ) { find "$1/src/core" -type f -name '*.h' 2>/dev/null; }
 
 # hits <pattern> <exclude-pattern-or-empty> <file...>  — prints "path:line: text" per match
 hits( ) {
@@ -75,7 +90,7 @@ report( ) {
     return 0
 }
 
-# --- the eight checks, each a function of the tree root ---------------------------------
+# --- the ten checks, each a function of the tree root -----------------------------------
 
 # R-ARCH-01 has two clauses and needs both: no hardware header, and no hosted-only standard
 # header. The second list is anchored on the closing '>' so <string_view> is not read as
@@ -94,6 +109,23 @@ find_clean05( ){ raw_hits 'TODO([^(]|$)' $( src_files "$1" ); }
 # `enum class Mode : uint8_t` is a fixed underlying type, not a base, so it is excluded.
 find_clean09( ){ hits '(:[[:space:]]*(public|private|protected)[[:space:]]|(struct|class)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:|\bvirtual\b)' 'enum[[:space:]]+class' $( core_files "$1" ); }
 find_proto05( ){ hits 'tests/vectors' '' $( src_files "$1" ); }
+# R-ERR-01, narrowed on 2026-09-11 to its greppable core: a status enum is never a return type
+# of its own. It lives in std::expected's error slot (where it follows a `,` or a `<`, never the
+# start of a line) or as a member of Link (where the identifier is followed by `=` or `;`, never
+# `(` ). So "line starts with the enum name, then an identifier, then `(`" is exactly the
+# forbidden shape and nothing else. `enum class DecodeStatus : …` does not match because a `:`
+# follows the name, not an identifier.
+find_err01( ){ hits '^[[:space:]]*(\[\[nodiscard\]\][[:space:]]*)?(constexpr[[:space:]]+)?(DecodeStatus|FaultCause)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' '' $( core_files "$1" ); }
+# R-ERR-02: a declaration whose return type is a result or a LinkState and which does not open
+# with [[nodiscard]]. The attribute must precede the return type, so a compliant declaration
+# starts with `[` and cannot match the anchor at all — which is why this needs no exclusion
+# pattern. DecodeOutcome is included because it is the alias for the std::expected form, and a
+# rule that named only the spelled-out type would be silent on the name everyone actually uses.
+#
+# Every alternative ends in an identifier followed by `(`, which is what makes this a check on
+# RETURN types. Without it the pattern reported `LinkState state = LinkState::Absent;` — the
+# member of Link, which is not a function at all. Found by running it against src/core/link.h.
+find_err02( ){ hits '^[[:space:]]*(constexpr[[:space:]]+)?(std::expected<[^;]*>[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|DecodeOutcome[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|LinkState[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\()' '' $( core_headers "$1" ); }
 
 run_all( ) {
     report R-ARCH-01  "$( find_arch01  "$1" )" || fail=1
@@ -104,6 +136,8 @@ run_all( ) {
     report R-CLEAN-05 "$( find_clean05 "$1" )" || fail=1
     report R-CLEAN-09 "$( find_clean09 "$1" )" || fail=1
     report R-PROTO-05 "$( find_proto05 "$1" )" || fail=1
+    report R-ERR-01   "$( find_err01   "$1" )" || fail=1
+    report R-ERR-02   "$( find_err02   "$1" )" || fail=1
 }
 
 run_all "$ROOT"
@@ -145,6 +179,19 @@ reject R-CLEAN-03 find_clean03 src/core/x.cpp 'bool flag = true;'
 reject R-CLEAN-05 find_clean05 src/core/x.cpp '// TODO: fix this later'
 reject R-CLEAN-09 find_clean09 src/core/x.h   'struct A : public B { };'
 reject R-PROTO-05 find_proto05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
+# R-ERR-01: one case per alternative of (DecodeStatus|FaultCause). Neither alternative can be
+# reached by the other's case, which is what tests/test_checks_are_live.py requires.
+reject R-ERR-01   find_err01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
+reject R-ERR-01   find_err01   src/core/x.h   'FaultCause cause_of( const Link& link );'
+# ...and the two optional prefixes a real violation would carry.
+reject R-ERR-01   find_err01   src/core/x.h   '[[nodiscard]] DecodeStatus decode_it( int n );'
+reject R-ERR-01   find_err01   src/core/x.h   'constexpr FaultCause cause_of( int n );'
+# R-ERR-02: one case per alternative of (std::expected<|DecodeOutcome …|LinkState …). All three
+# are headers, because that is the only place this check looks.
+reject R-ERR-02   find_err02   src/core/x.h   'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
+reject R-ERR-02   find_err02   src/core/x.h   'DecodeOutcome poll_once( Link& link );'
+reject R-ERR-02   find_err02   src/core/x.h   'LinkState step( Link& link );'
+reject R-ERR-02   find_err02   src/core/x.h   'constexpr LinkState step( Link& link );'
 # The two clauses validation found unchecked: each rule's second syntactic form.
 reject R-ARCH-01  find_arch01  src/core/x.h   '#include <iostream>'
 reject R-CLEAN-09 find_clean09 src/core/x.h   'struct A : B { };'
@@ -259,10 +306,23 @@ accept "enum with a fixed underlying type" find_clean09 src/core/x.h 'enum class
 # happens. An accept case is what covers an exclusion alternative — a rejection case cannot.
 accept "can_ prefixed bool"            find_clean03 src/core/x.cpp 'bool can_fire = true;'
 accept "should_ prefixed bool"         find_clean03 src/core/x.cpp 'bool should_retry = false;'
-if [ "$accepted" -ge 13 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 13)"
+# R-ERR-01 must not fire on the two shapes the narrowed rule explicitly permits — a status in
+# std::expected's error slot, and a status as a member of Link — nor on the enum's own
+# declaration. Without these the anchor and the trailing `(` could be dropped from the pattern
+# with every rejection case above still firing.
+accept "status in the expected error slot"  find_err01 src/core/x.h 'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
+accept "status as a Link member"            find_err01 src/core/x.h 'FaultCause last_fault = FaultCause::None;'
+accept "the enum declaration itself"        find_err01 src/core/x.h 'enum class DecodeStatus : std::uint8_t { AckTimeout };'
+# R-ERR-02 must not fire on a compliant declaration. One per alternative, because a false
+# positive on any one of the three would be as broken as a missed violation.
+accept "nodiscard std::expected return"     find_err02 src/core/x.h '[[nodiscard]] std::expected<Ps2Frame, DecodeStatus> decode( int n );'
+accept "nodiscard DecodeOutcome return"     find_err02 src/core/x.h '[[nodiscard]] DecodeOutcome poll_once( Link& link );'
+accept "nodiscard LinkState return"         find_err02 src/core/x.h '[[nodiscard]] LinkState step( Link& link );'
+accept "a DecodeOutcome parameter, not a return" find_err02 src/core/x.h 'void trace( const DecodeOutcome& outcome );'
+if [ "$accepted" -ge 20 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 20)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 13)"
+    echo "  FAIL: false-positive cases: $accepted (floor 20)"
     fail=1
 fi
 
@@ -297,10 +357,12 @@ wiring R-CLEAN-03 src/core/x.cpp 'bool flag = true;'
 wiring R-CLEAN-05 src/core/x.cpp '// TODO: fix this later'
 wiring R-CLEAN-09 src/core/x.h   'struct A : public B { };'
 wiring R-PROTO-05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
-if [ "$wired" -eq 8 ]; then
-    echo "  ok:   wiring cases: $wired/8 (each rule's verdict reaches the exit code)"
+wiring R-ERR-01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
+wiring R-ERR-02   src/core/x.h   'LinkState step( Link& link );'
+if [ "$wired" -eq 10 ]; then
+    echo "  ok:   wiring cases: $wired/10 (each rule's verdict reaches the exit code)"
 else
-    echo "  FAIL: wiring cases: $wired/8"
+    echo "  FAIL: wiring cases: $wired/10"
     fail=1
 fi
 

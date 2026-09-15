@@ -4,6 +4,15 @@
 # RULE R-STYLE-01 — docs/constraints.md §Invariants — layout matches .clang-format
 # RULE R-STYLE-02 — docs/constraints.md §Invariants — naming matches .clang-tidy
 # RULE R-CLEAN-02 — docs/constraints.md §Invariants — function size, params, nesting
+# RULE R-CLEAN-04 — docs/constraints.md §Invariants — no magic numbers in logic
+#
+# R-CLEAN-04 is reported on the same line as R-STYLE-02 and R-CLEAN-02 because all three
+# come out of one clang-tidy invocation: there is one real run, so there is one result
+# line, and splitting it into three would claim three independent checks where there is
+# one. What that line does NOT cover is recorded in docs/constraints.md §Observed
+# conventions (2026-09-11): readability-magic-numbers ignores every literal inside a
+# `const` or `constexpr` variable's initializer, and `const bool is_ok = <expr>;` is this
+# repo's dominant idiom — so a magic number in one of those is invisible here.
 #
 # Two modes, one script:
 #   OPTIONAL_TOOLS=1  missing tools are reported and skipped   (used by `make test`,
@@ -13,6 +22,24 @@
 # clang-tidy scope is src/core/ and tests/ only: everything else includes Pico SDK or
 # TinyUSB headers and needs a compile_commands.json that does not exist yet. See the
 # header of .clang-tidy for the upgrade path.
+#
+# Two flags, for two different failures, both measured 2026-09-11 with Homebrew LLVM 23.1.0
+# and both recorded in docs/constraints.md §Observed conventions:
+#
+#   -xc++     A .h with no compile database is compiled as C: `invalid argument '-std=c++23'
+#             not allowed with 'C'`, then `'cstdint' file not found`. Headers only — a .cpp
+#             is already C++.
+#   -isysroot Homebrew's libc++ finds no platform C library without it, so any header that
+#             reaches its platform layer dies on "We don't know how to get the definition of
+#             mbstate_t on your platform" — <array>, <optional>, <string_view>, <algorithm>,
+#             <functional> and <variant> all do. <cstdint>, <cstddef>, <span>, <bit>,
+#             <limits>, <type_traits>, <concepts>, <utility>, <tuple> and <expected> do not,
+#             which is why a probe built from those two alone reports the flag unnecessary.
+#             Both kinds of file need it.
+#
+# Every diagnostic above is a clang-diagnostic-error, which WarningsAsErrors reports as a
+# FAIL: R-STYLE-02 line — so a broken invocation looks exactly like a naming violation. That
+# is the reason the flags are explained here rather than just set.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -40,6 +67,26 @@ LS="git ls-files --cached --others --exclude-standard"
 sources() { $LS '*.cpp' '*.h' 2>/dev/null; }
 tidy_sources() { $LS 'src/core/*.cpp' 'src/core/*.h' 'tests/*.cpp' 2>/dev/null; }
 
+# tidy_lang <file> — the -x flag this file needs, empty for a .cpp. A function and not an
+# inline `case`, because bash 3.2 — which is /bin/sh on macOS, and macOS is the only
+# development platform (ADR-0010) — reads the `)` closing a case pattern inside $( ) as the
+# end of the substitution and dies with `syntax error near unexpected token ';;'`.
+tidy_lang() {
+  case "$1" in
+    *.h) echo "-xc++" ;;
+    *)   echo "" ;;
+  esac
+}
+
+# The macOS SDK, or empty when xcrun cannot name one. Resolved once, and never allowed to
+# expand to a bare `-isysroot` with nothing after it: that consumes the next flag as its
+# argument and the failure that follows names -std, not the missing SDK.
+tidy_sysroot_flag() {
+  ts_sdk=$( xcrun --show-sdk-path 2>/dev/null ) || ts_sdk=""
+  [ -n "$ts_sdk" ] && [ -d "$ts_sdk" ] && echo "-isysroot $ts_sdk"
+  return 0
+}
+
 # --- R-STYLE-01: layout -----------------------------------------------------------
 if ! command -v clang-format >/dev/null 2>&1; then
   skip_or_fail "R-STYLE-01: clang-format not found (brew install clang-format)"
@@ -61,22 +108,31 @@ fi
 
 # --- R-STYLE-02: naming -----------------------------------------------------------
 if ! TIDY=$(find_tidy); then
-  skip_or_fail "R-STYLE-02 / R-CLEAN-02: clang-tidy not found (brew install llvm)"
+  skip_or_fail "R-STYLE-02 / R-CLEAN-02 / R-CLEAN-04: clang-tidy not found (brew install llvm)"
 else
   files=$(tidy_sources)
   if [ -z "$files" ]; then
-    echo "  ok:   R-STYLE-02, R-CLEAN-02 (no checkable sources yet)"
+    echo "  ok:   R-STYLE-02, R-CLEAN-02, R-CLEAN-04 (no checkable sources yet)"
   else
     # One invocation per file, never xargs: xargs appends the file list AFTER the
     # `--`, where clang-tidy reads it as compiler flags and silently checks nothing.
-    out=$(for f in $files; do "$TIDY" --quiet "$f" -- -std=c++23 -Isrc 2>&1; done \
-          | grep -E ': (warning|error): ')
+    # -xc++ on headers only, per the note at the top of this file, and not as a single
+    # unconditional flag: -xc++ on a .cpp is accepted but then the language comes from this
+    # line rather than from the file, which is the kind of flag that outlives a rename.
+    SYSROOT=$( tidy_sysroot_flag )
+    if [ -z "$SYSROOT" ]; then
+      echo "  note: no macOS SDK from xcrun; any header reaching libc++'s platform layer"
+      echo "        will report clang-diagnostic-error (see the flag note at the top)"
+    fi
+    out=$(for f in $files; do
+            "$TIDY" --quiet "$f" -- $( tidy_lang "$f" ) -std=c++23 -Isrc $SYSROOT 2>&1
+          done | grep -E '(: (warning|error): |^error: )')
     if [ -n "$out" ]; then
-      echo "  FAIL: R-STYLE-02 / R-CLEAN-02: naming or function-size violations"
+      echo "  FAIL: R-STYLE-02 / R-CLEAN-02 / R-CLEAN-04: naming, function-size or magic-number violations"
       echo "$out" | sed 's/^/        /'
       fail=1
     else
-      echo "  ok:   R-STYLE-02, R-CLEAN-02"
+      echo "  ok:   R-STYLE-02, R-CLEAN-02, R-CLEAN-04"
     fi
   fi
 fi
