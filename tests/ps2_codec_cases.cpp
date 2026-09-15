@@ -26,6 +26,7 @@
 #include "vectors/digital_whammy_absent.h"
 #include "vectors/not_ready.h"
 #include "vectors/truncated_ack.h"
+#include "vectors/truncated_not_ready.h"
 #include "vectors/unknown_id.h"
 
 #include <cstdio>
@@ -250,6 +251,20 @@ constexpr std::uint8_t kZeroFill = 0x00;
         is_ok = is_ok && !state.is_fret_pressed[ i ];
     }
     return report( is_ok, "config_mode: maps to every one of the ten controls released" );
+}
+
+// The overlap: a frame that is both cut short and carrying a wrong ready byte. R-PROTO-02
+// says a cut-short frame reports the abort, so the abort wins — NotReady is reserved for a
+// frame that arrived complete. Without this case the two refusals are only ever exercised
+// apart, and the order they are written in is asserted by nothing.
+[[nodiscard]] bool case_truncated_and_not_ready_reports_the_abort() {
+    const std::span<const std::uint8_t> bytes{ vectors::kTruncatedNotReady };
+
+    const auto frame = ps2::decode( bytes );
+
+    const bool is_ok = !frame.has_value() && frame.error() == ps2::DecodeStatus::AckTimeout;
+    return report( is_ok,
+                   "truncated_not_ready: a cut-short frame reports the abort, not NotReady" );
 }
 
 // --- the link state machine -------------------------------------------------------------
@@ -578,6 +593,7 @@ int main() {
     is_ok = case_unknown_id() && is_ok;
     is_ok = case_truncated_ack() && is_ok;
     is_ok = case_not_ready() && is_ok;
+    is_ok = case_truncated_and_not_ready_reports_the_abort() && is_ok;
 
     is_ok = case_digital_idle_maps_to_nothing_pressed() && is_ok;
     is_ok = case_digital_pressed_maps_one_fret_and_one_strum() && is_ok;

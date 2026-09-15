@@ -24,9 +24,10 @@ with only a C++23 compiler and `python3`:
 | `src/core/link.h/.cpp` | `LinkState`, `FaultCause`, `Link`, `step` as a pure transition |
 | `src/core/hid_report.h/.cpp` | `Button`, `HidReport`, `build_report`, and the byte layout `08-usb-hid` writes its descriptor from |
 
-Tests: nine hand-written vector headers under `tests/vectors/` (plus a `README.md` there
-explaining why they are hand-written), `tests/ps2_codec_cases.cpp` with 27 case functions and
-3 rule functions (26 + 3 through round 4; round 7 added the link-uniformity case), and `tests/test_ps2_codec.py` as the single driver — it compiles the cases
+Tests: **ten** hand-written vector headers under `tests/vectors/` (plus a `README.md` there
+explaining why they are hand-written), `tests/ps2_codec_cases.cpp` with **28** case functions
+and 3 rule functions (26 + 3 through round 4; round 7 added the link-uniformity case, round 11
+the refusal-precedence case), and `tests/test_ps2_codec.py` as the single driver — it compiles the cases
 against the real `src/core/`, runs them, forwards their lines, and carries three mutation
 rejection cases.
 
@@ -54,9 +55,9 @@ Acceptance, measured: `make test` **OK**, `real` between **1:40 and 2:18** acros
 session's runs and **2:11** in round 4 (cap 3m; it was 1:16 on this tree before the phase,
 and the phase adds C++ compiles plus a third mutation-running check — the spread is the
 thread pool, not drift). `make lint` **0**, `planned: 01-ps2-codec` **0**,
-`planned: 03-pio-bus` **4**, 9 vector headers, 0 hits for `tests/vectors` under `src/`,
+`planned: 03-pio-bus` **4**, **10** vector headers, 0 hits for `tests/vectors` under `src/`,
 0 hits for `.value()`, 3 `TODO(09-guitar-observe)` markers, one ADR-0011 file, one ADR-0012
-file, driver exit 0 with 31 `ok:` lines (30 through round 4), `accounting: test_ps2_codec.py 3 rule(s)`,
+file, driver exit 0 with **32** `ok:` lines (30 through round 4, 31 through round 7), `accounting: test_ps2_codec.py 3 rule(s)`,
 `accounting: test_style.sh 4 rule(s)`, `wiring cases: 10/10`, `neutered: 33/33`,
 `alternations: 64/64`, `test_phase_docs.sh` 0. All four §Acceptance-criteria mutation blocks
 (M1–M4) were run in scratch copies and each failed in the way the spec predicted; M4 produced
@@ -680,6 +681,85 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   a switch covering every enumerator — deliberate and commented, but `-Wswitch` already
   protects it.
 
+### Round 11 — the exhaustiveness sentence deleted, two decode contracts decided, one code change.
+
+- **The `contradicts` is gone by deletion, which is what the rule it broke prescribes.**
+  §Files' `ps2_protocol.h` row no longer claims to be exhaustive; it says it is illustrative
+  and that the header is where the full set lives. The property the sentence bought — "no
+  constant escapes the row" — was held up by nothing: it is an assertion with no mechanism,
+  the same class as everything else this phase has spent rounds deleting. Enumerating all
+  twenty constants would have bought the property back at the price of a hand-maintained set,
+  which is the thing four rounds of findings taught this phase not to write.
+  **The third way out is named and deliberately not taken:** make the property executable — a
+  check that greps `^constexpr` out of the header and compares it with the row. That is a real
+  check and it would work. It is also new work in a phase that is closing, and a check added
+  during a closing round is untested machinery arriving at the moment nobody has budget to
+  test it. Recorded in §For later phases for whoever next touches the check harness.
+  **Applied to this edit too, which is the whole point:** the replacement row asserts only
+  what the header itself shows, and the one new sentence it carries ("a reader who needs the
+  full set reads the header") is founded on the header existing, not on the fix.
+
+- **Over-long buffers: accepted, and now decided rather than emergent.** `decode` refuses only
+  `bytes.size() < expected_len`, so trailing bytes past `frame_len( id )` are ignored. §Goal
+  now states that as the contract with its reason: the header is the only authority on frame
+  length, so the span is a capacity and never a claim. The alternative — refusing — would put
+  `2 * (header & 0x0F)` on both sides of the `hal`/`core` boundary, because `03-pio-bus` hands
+  over a fixed-size shift buffer and would have to trim it first. **No code change**: the code
+  already did the right thing for a reason nobody had written down. Nothing asserts it; see
+  §Debt.
+
+- **Refusal precedence: written as a chosen order, and the code moved to match.** This one was
+  a real defect, not a missing pointer. `decode` checked the ready byte before the announced
+  length, so a frame that was both cut short and carrying `0xFF` at the ready slot reported
+  `NotReady` — and R-PROTO-02's own text says a frame the bus cut short "reports the abort".
+  The rule was being violated by the order of two `if`s.
+  §Goal now carries the precedence as a four-step list, each refusal taken at the first point
+  it is decidable. **The one ordering that is forced rather than chosen is stated as such:**
+  `UnknownId` cannot move below the length check, because `frame_len` needs the id.
+  `src/core/ps2_frame.cpp` reordered, `tests/vectors/truncated_not_ready.h` added as the tenth
+  vector, and `case_truncated_and_not_ready_reports_the_abort` added.
+  **Proved live, and the probe found something worth recording:** putting the old order back
+  in a scratch copy flips exactly that one case to `FAIL:` and **leaves all three rule lines
+  `ok:`** — R-PROTO-02's own rule case exercises the two refusals only apart, so it is
+  structurally blind to the order they are written in. The third time this phase has measured
+  that a rule line stays green while the rule is wrong.
+  **Generalised before fixing (command step 5): every pair of refusals that can be true at
+  once.** Three pairs exist. *Short + no prefix* → `AckTimeout`, the only thing knowable.
+  *Short + unknown id* → `UnknownId`, and that order is forced, not chosen. *Short + bad ready
+  byte* → was `NotReady`, now `AckTimeout`, the instance fixed here. The property is
+  "the earliest decidable refusal wins, and the abort outranks anything still evaluable after
+  it"; it holds in all three after this change.
+  **Reconciled in the same edit — every statement of the vector count, following the list
+  round 2 wrote when it went 8 → 9:** spec §Goal's opening line, §Vectors' lead line and table,
+  §Files' `tests/vectors/` row, §Plan step 4 and its check, the acceptance criterion;
+  `verify.md`'s section heading, its "there are nine small files", its "The nine:" table
+  lead-in, the table itself (a row added), its "last three are the ones that matter most"
+  (now four), and its §4 `Expect \`9\`` (now `10`); and in this file §Outcome's measured list
+  and §For later phases' note to `05-emulator`. **Checked and deliberately left alone:** the
+  `9 vectors` inside the round-4 Deviations entry and the two earlier validation records —
+  those are dated accounts of what was true when they were written.
+  **Re-measured, not incremented:** 10 vectors, 28 case functions, 32 `ok:` lines.
+
+- **The `CXXFLAGS` duplicate is now stated where a reader will hit it.** §Context pointers'
+  `Makefile` line carries the flag list and says the driver repeats it by hand because it
+  compiles the cases itself rather than through `make`. Measured 2026-09-15: the two lists are
+  byte-for-byte identical. Written as a duplicate rather than as a fact, because the risk is
+  drift and a reader who does not know it is a copy cannot watch for it.
+
+- **The `- base:` line, and why the old value was right when it was written.** Through rounds
+  1-8 the phase had no branch and nothing was committed, so `working tree` was not a
+  placeholder — it was the accurate answer, and `/validate-phase` used it to build a 34-file
+  set every round. Round 9 put the work on `feat/01-ps2-codec` and committed it, and the line
+  became false in a way that fails silently: the working tree went empty, so the file set would
+  have been empty, and the boundary sweep, the independent review and the closure test would
+  each have reported `pass` having examined zero files. Corrected to `24d489f` on 2026-09-15
+  before any gate ran. **The trap is that nothing in the loop notices**: the line is written by
+  `/implement-phase --implemented`, read by `/validate-phase`, and invalidated by an ordinary
+  `git commit` that neither command is involved in. Filed as a package defect, and §Notes to
+  `/validate-phase` note 3 in `spec.md` is the local workaround — check the `- base:` line names
+  a real ref and the file set is non-empty, before trusting any gate.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -699,6 +779,19 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   `cppcoreguidelines-avoid-magic-numbers` is an alias of the same check and behaves
   identically, so closing it means a second checker or writing fewer `const` initializers.
   Declared rather than papered over.
+- **Two behaviours the spec now mandates are asserted by nothing, and that is a pattern
+  rather than two accidents.** Both arrived the same way: a validation round asked what the
+  code does in a case no vector covers, the answer was written into the spec as a contract,
+  and no case followed it. A mandate with no assertion is exactly what this phase keeps
+  discovering one round later, so they are named together:
+  1. `us_in_state` saturates at `UINT32_MAX` (below).
+  2. **An over-long buffer is accepted and its extra bytes ignored** (§Goal). Asserting it
+     needs an input longer than any vector, and every vector is a literal by R-PROTO-05, so
+     the case would have to build its input from a vector plus padding — defensible, since the
+     *expected* bytes would still come from the vector, but it is a new shape of test and this
+     round was scoped to contracts. `03-pio-bus` is the phase that will hand `core` a
+     fixed-size buffer for real, and it is the natural owner.
+
 - **`us_in_state`'s saturation is specified and asserted by nothing.** `spec.md` §The link now
   mandates that the accumulator saturate at `UINT32_MAX` rather than wrap, and `add_saturating`
   in `src/core/link.cpp` implements it, but no case exercises the boundary — reaching it needs a
@@ -736,7 +829,7 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   32-bit wraparound subtraction is `hal`'s to get right, once. Nothing in `core` can detect a
   caller that passes a constant; that phase has the first real clock with which to be wrong.
 - **`05-emulator`** — the emulator shares `core`, so it must **not** be used to produce or
-  check expected bytes (R-PROTO-05). The nine vectors are the independent reference; a
+  check expected bytes (R-PROTO-05). The ten vectors are the independent reference; a
   disagreement between the emulator and a vector is a finding about one of them, never a
   reason to regenerate the vector.
 - **`07-analog-mode`** — the config-mode command bytes are declared in `ps2_protocol.h`
@@ -757,6 +850,17 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   Note also that `unknown_id.h` deliberately uses `0x79`, the DualShock 2's real full-analog
   id; if that phase finds the SG uses it, the vector must be repointed at another undeclared
   byte rather than the id simply being added.
+- **Whoever next touches the check harness** — make the "no constant escapes the spec's list"
+  property executable, if it is wanted. A check that greps `^constexpr` out of
+  `src/core/ps2_protocol.h` and compares the names against the row in that phase's `spec.md`
+  would turn a sentence nobody can enforce into a gate. It was considered and rejected **in**
+  `01-ps2-codec` on 2026-09-15 for one reason only: adding a check during a phase's closing
+  round means new machinery arriving when there is no budget left to prove it live, and this
+  repo's standard is that a check which has not been mutated is not known to work. The phase
+  deleted the claim instead. Bundle it with the `clang-query` upgrade and the "no new untracked
+  paths after `make test`" check named below, and with the `.py`-mutation debt: four pieces of
+  harness work with one owner between them.
+
 - **Any phase adding a `.py` check** — `00-scaffold` assigned this phase the debt of
   strengthening `tests/test_checks_are_live.py` beyond the accounting property for `.py`
   files. It was **not** closed here, and this phase added a second such file, so the exposure

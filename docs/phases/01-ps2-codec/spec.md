@@ -15,7 +15,7 @@ frame to the guitar's controls, and a builder that packs those into the HID repo
 `make test` with a C++23 compiler and `python3` and nothing else (R-PROC-04), because `core`
 includes no SDK header and performs no I/O (ADR-0002, R-ARCH-01).
 
-The observable behaviour is a decoder that is **refusing by default**. Each of the nine
+The observable behaviour is a decoder that is **refusing by default**. Each of the ten
 vectors enumerated in §Vectors is fed to `decode`, and to `map_frame` where §Vectors names a
 mapping, and produces exactly the outcome that table names:
 
@@ -33,6 +33,34 @@ mapping, and produces exactly the outcome that table names:
 The ten controls, named here because the rest of this document quantifies over them: five
 frets (green, red, yellow, blue, orange), strum up, strum down, start, select, tilt. The
 whammy is an axis, not a control, and is counted separately throughout.
+
+**A buffer longer than the frame the header announces is accepted, and the bytes past the
+announced length are ignored.** Chosen, not left to fall out of the code: the header is the
+only authority on how long a frame is, so the span handed to `decode` is a *capacity* and
+never a claim about the frame. `03-pio-bus` will hand `core` a fixed-size shift buffer, and
+requiring `hal` to trim it first would put the length arithmetic `2 * (header & 0x0F)` on both
+sides of the layer boundary — which is the duplication `core` exists to prevent. Refusing an
+over-long buffer would also refuse the ordinary case on real hardware. Nothing asserts this
+contract today: `notes.md` §Debt carries it.
+
+**Where two refusals are both true, the order is fixed, and it is chosen rather than
+inherited from the order somebody happened to write the checks in.** Each refusal is taken at
+the first point where it is decidable, and the earliest decidable one wins:
+
+1. fewer bytes than a header and a ready slot → `AckTimeout`. Nothing else is knowable yet.
+2. the header is not a declared id → `UnknownId`. This one cannot move later: `frame_len`
+   needs the id, so the length is not yet knowable above it.
+3. fewer bytes than the id announces → `AckTimeout`.
+4. the ready byte is not `kReadyByte` → `NotReady`.
+
+**The consequence, because a real bus produces it:** a frame that is *both* cut short *and*
+carrying `0xFF` at the ready slot reports `AckTimeout`, not `NotReady`. R-PROTO-02 says a
+frame the bus cut short "reports the abort", so the abort outranks any refusal that is still
+evaluable after it; and `0xFF` at the ready slot of a short frame is an undriven `DATA` line,
+not a controller stating it is not ready — a controller that died mid-frame said nothing about
+readiness at all. `NotReady` is for a frame that arrived **complete** and whose ready byte is
+wrong. `tests/vectors/truncated_not_ready.h` is the overlap, and §Plan step 12 is the code
+change that made the order this one.
 
 R-PROTO-02, R-PROTO-03 and R-PROTO-04 are bound to `tests/test_ps2_codec.py`, and that check
 is proven live in the sense `00-scaffold` established: mutating the codec so it stops
@@ -112,7 +140,12 @@ R-CLEAN-04 binds to `tests/test_style.sh`. Nothing in this re-expansion moves a 
 - `.clang-tidy` — naming rules, `readability-magic-numbers`, and the `HeaderFilterRegex`
   §Vectors depends on.
 - `Makefile` — `CORE_SRC` is `$(wildcard src/core/*.cpp)`; `make test` runs every
-  `tests/test_*.{cpp,sh,py}`. Nothing in this phase edits it.
+  `tests/test_*.{cpp,sh,py}`. Nothing in this phase edits it. Its `CXXFLAGS` are
+  `-std=c++23 -Wall -Wextra -Werror -Og -g -UNDEBUG -Isrc`, and `tests/test_ps2_codec.py`
+  repeats that list by hand because it compiles the cases itself rather than through `make`.
+  The duplicate was byte-for-byte identical when last measured (2026-09-15). It is a
+  duplicate, which is why it is written here: if the two drift, the only gate that compiles
+  `src/core/` stops compiling it the way the project does.
 - `.claude/workflow/boundaries.rules` — the enforced layering. Read its header: R-ARCH-01 is
   **not** expressible as a layer rule, and is enforced by the host build and by greps in
   `tests/` instead.
@@ -210,7 +243,7 @@ bus and is therefore not.
 
 ## Vectors
 
-Nine files, hand-written literal `constexpr` byte arrays in C++ headers under
+Ten files, hand-written literal `constexpr` byte arrays in C++ headers under
 `tests/vectors/` (R-PROTO-05: written by hand from the protocol documentation, never generated
 by `core`, never captured from the emulator), plus a `README.md` carrying the provenance half
 of that rule. Headers rather than hex text because a parser in the test is code that can be
@@ -228,6 +261,7 @@ so it would require the vectors to be unreadable binary to be useful.
 | `not_ready.h` | a declared id whose ready byte is `0xFF`, the idle level of an undriven `DATA` line; length and payload well-formed | `DecodeStatus::NotReady`, no frame | — |
 | `unknown_id.h` | header `0x79`, the DualShock 2's real full-analog id, deliberately undeclared here | `DecodeStatus::UnknownId`, no frame | R-PROTO-03 |
 | `truncated_ack.h` | digital header, ready byte, payload cut short — the `ACK` never came | `DecodeStatus::AckTimeout`, no frame, and `step` moves the link to `Absent` | R-PROTO-02 |
+| `truncated_not_ready.h` | digital header, `0xFF` at the ready slot, payload cut short — both faults at once | `DecodeStatus::AckTimeout`, no frame: the abort outranks the ready byte, per §Goal's precedence | R-PROTO-02 |
 
 **`kWhammyRest` is `0x80`, and `analog_idle.h`'s centred axis byte is also `0x80`.** That is a
 real coincidence and validation round 3 was right to ask: an assertion of
@@ -251,12 +285,12 @@ that is all this vector can honestly witness.
 
 | file | contents |
 |---|---|
-| `src/core/ps2_protocol.h` | wire constants — `kFrameStart`, `kCmdPoll`, `kReadyByte`, `kPadByte` (the filler the master sends in a slot whose value the controller ignores; declared here with the rest of the wire, used first by `03-pio-bus`, which is the phase that sends bytes), and the config-mode command bytes `kCmdConfig`, `kCmdSetMode`, `kConfigEnter`/`kConfigLeave`, `kModeDigital`/`kModeAnalog`/`kModeLocked` — plus `enum class ControllerId`, `id_from_byte` returning `std::optional<ControllerId>`, `payload_len`, `frame_len`. Header-only `constexpr`. **This list is exhaustive:** a constant in that header and not in this row is a finding, not a detail. |
+| `src/core/ps2_protocol.h` | wire constants — `kFrameStart`, `kCmdPoll`, `kReadyByte`, `kPadByte` (the filler the master sends in a slot whose value the controller ignores; declared here with the rest of the wire, used first by `03-pio-bus`, which is the phase that sends bytes), and the config-mode command bytes `kCmdConfig`, `kCmdSetMode`, `kConfigEnter`/`kConfigLeave`, `kModeDigital`/`kModeAnalog`/`kModeLocked` — plus `enum class ControllerId`, `id_from_byte` returning `std::optional<ControllerId>`, `payload_len`, `frame_len`. Header-only `constexpr`. **This list is illustrative, not exhaustive**: the header also carries the three id bytes and a frame-geometry block, and a reader who needs the full set reads the header. An earlier version of this row claimed to be exhaustive and was wrong the moment it was written — see §For later phases in `notes.md` for what it would take to make that claim mean something. |
 | `src/core/ps2_frame.h` / `.cpp` | `Ps2Frame` as §The frame describes it, `enum class DecodeStatus`, `[[nodiscard]] std::expected<Ps2Frame, DecodeStatus> decode( … )` |
 | `src/core/guitar_state.h` / `.cpp` | `GuitarState` (the ten controls plus the whammy), `Fret`, `map_frame`, the active-low→active-high inversion, and the id gate §Goal describes |
 | `src/core/link.h` / `.cpp` | `enum class LinkState`, `enum class FaultCause`, `Link`, `step` — all as §The link fixes them |
 | `src/core/hid_report.h` / `.cpp` | `Button`, `HidReport`, `build_report`, and the byte layout `08-usb-hid` writes its descriptor from: `kButtonCount`, `kBitsPerByte`, `kButtonBytes`, `kWhammyOffset`, `kReportLen`, derived from each other |
-| `tests/vectors/` | the nine headers in §Vectors plus `README.md`: why the vectors are hand-written, the frame shape, and that digital buttons are active low — so nothing pressed is `0xFF 0xFF`, not `0x00 0x00`. A reader who does not know that writes an inverted vector every assertion then agrees with. |
+| `tests/vectors/` | the ten headers in §Vectors plus `README.md`: why the vectors are hand-written, the frame shape, and that digital buttons are active low — so nothing pressed is `0xFF 0xFF`, not `0x00 0x00`. A reader who does not know that writes an inverted vector every assertion then agrees with. |
 | `tests/ps2_codec_cases.cpp` | the assertions. Deliberately **not** named `test_*`: the Makefile glob would build and run it a second time, and the driver is the single entry point. |
 | `tests/test_ps2_codec.py` | the driver: compiles and runs the cases against the real `src/core/`, prints one `ok:`/`FAIL:` line per case and per rule, and carries the three rejection cases |
 | `docs/adr/0011-*.md`, `docs/adr/0012-*.md` | the `step` signature and the `DecodeStatus` membership decisions |
@@ -291,8 +325,8 @@ rebuild the phase, not because they are pending.
 3. **Landed — `ps2_protocol.h` and `ps2_frame.h`/`.cpp`.** `decode` refuses per §Goal and
    stores per §The frame; ADR-0012 records the `DecodeStatus` membership rule. — check:
    `ls docs/adr/0012-*.md` → one file.
-4. **Landed — the nine vectors, `README.md`, the cases file and the driver.** — check:
-   `ls tests/vectors/*.h | wc -l` → `9`; `python3 tests/test_ps2_codec.py` → exit 0.
+4. **Landed — the ten vectors, `README.md`, the cases file and the driver.** — check:
+   `ls tests/vectors/*.h | wc -l` → `10`; `python3 tests/test_ps2_codec.py` → exit 0.
 5. **Landed — `guitar_state.h`/`.cpp`.** `map_frame` gates **both** the buttons and the whammy
    on the id: `reports_controls()` answers yes for `Digital` and `Analog` only, and the gate is
    a closed positive set, so an id added later reports nothing until someone decides otherwise.
@@ -323,6 +357,20 @@ rebuild the phase, not because they are pending.
     only because the vectors are the only such headers, which is a claim about the tree that
     nothing checks. Bind it. — check: the criterion below runs and reports `0`.
 
+12. **Landed 2026-09-15 — `decode` checks the announced length before the ready byte.**
+    Touches `src/core/ps2_frame.cpp`, `tests/vectors/truncated_not_ready.h` (new),
+    `tests/ps2_codec_cases.cpp`. This is a code change and not a pointer: the previous order
+    reported `NotReady` for a frame that was both cut short and carrying `0xFF` at the ready
+    slot, which R-PROTO-02's own text rules out — a cut-short frame "reports the abort". The
+    length is now taken at the first point it is knowable, immediately after the id that
+    announces it; the id check cannot move below it, because `frame_len` needs the id.
+    §Goal's precedence list is the contract. — check: the
+    `truncated_not_ready: a cut-short frame reports the abort, not NotReady` case is `ok:`,
+    and putting the ready-byte check back in front of the length check turns that line, and
+    no rule line, to `FAIL:`. That the three rule lines stay green under the old order is the
+    finding, not a detail: R-PROTO-02's own rule case exercises the two refusals only apart,
+    so nothing but this case stands behind the order they are written in.
+
 ## Acceptance criteria
 
 ```
@@ -331,7 +379,7 @@ make lint                                                      # expect: exit 0
 time make test                                                 # expect: real < 3m
 grep -c 'planned: 01-ps2-codec' docs/constraints.md            # expect: 0
 grep -c 'planned: 03-pio-bus' docs/constraints.md              # expect: 4
-ls tests/vectors/*.h | wc -l                                   # expect: 9, the files in §Vectors
+ls tests/vectors/*.h | wc -l                                   # expect: 10, the files in §Vectors
 find tests -name '*.h' -not -path 'tests/vectors/*' | wc -l    # expect: 0 (step 11)
 grep -rn 'tests/vectors' src/ | wc -l                          # expect: 0 (R-PROTO-05)
 grep -rn '\.value( *)' src/ | wc -l                            # expect: 0 (R-ERR-04)
@@ -412,6 +460,16 @@ recording that empty run as clean. Two defences, both needed:
   gate exits non-zero and names the rule, and restore the file. An SDK include is **not** the
   probe to use: `boundaries.rules` says in its own header that R-ARCH-01 is not expressible as
   a layer rule, and `boundary-check.sh` returns 0 on it.
+
+**3. Check that the file set is not empty before trusting any gate.** Before running step 1,
+confirm two things: that `notes.md` §Outcome's `- base:` line names a real ref rather than the
+literal `working tree`, and that the resulting file set has the number of files this phase
+actually touched. `/validate-phase` derives its file set from the working tree unless that line
+overrides it, so the moment a phase's work is committed the default yields **nothing** — and a
+sweep of nothing, a review of nothing and a closure test over nothing all report `pass`. That
+happened on 2026-09-15: the line still read `working tree` from before this phase had a branch,
+and it was corrected to `24d489f` before any gate ran. The three gates that silently depend on
+it are the three that cost the most when they lie.
 
 ## Out of scope
 

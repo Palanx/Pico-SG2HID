@@ -13,16 +13,24 @@ std::expected<Ps2Frame, DecodeStatus> decode( std::span<const std::uint8_t> byte
         return std::unexpected( DecodeStatus::UnknownId );
     }
 
-    if ( bytes[ kReadyIndex ] != kReadyByte ) {
-        return std::unexpected( DecodeStatus::NotReady );
-    }
-
-    // The length comes from the header, never from how many bytes happened to arrive. A
-    // frame the bus cut short is refused here, which is the only place it can be: past this
-    // point a partial payload would be indistinguishable from a complete one.
+    // The length comes from the header, never from how many bytes happened to arrive, and it
+    // is checked HERE — the first point at which it is knowable, immediately after the id
+    // that announces it. Ordering, not taste: R-PROTO-02 says a frame the bus cut short
+    // "reports the abort", so the abort has to win over every refusal that could still be
+    // evaluated afterwards. Checking the ready byte first would report NotReady for a frame
+    // that is both short and carrying 0xFF at the ready slot — and 0xFF there is an undriven
+    // line, not a controller saying it is not ready. See tests/vectors/truncated_not_ready.h.
+    //
+    // The id check above cannot move below this one: frame_len needs the id.
     const std::size_t expected_len = frame_len( *id );
     if ( bytes.size() < expected_len ) {
         return std::unexpected( DecodeStatus::AckTimeout );
+    }
+
+    // Reached only by a frame of the announced length, so a wrong ready byte here is the
+    // controller's own statement and not a side effect of the bytes stopping.
+    if ( bytes[ kReadyIndex ] != kReadyByte ) {
+        return std::unexpected( DecodeStatus::NotReady );
     }
 
     // Built only once every refusal above has been passed, so no path can return a

@@ -67,9 +67,9 @@ USB HID is the opposite — there a `1` bit means pressed. The flip happens in
 `guitar_state.cpp`, once, in a function called `is_pressed`, so that by the time anything
 else touches the data it already means what it says.
 
-## What the nine vectors are, and why they are written by hand
+## What the ten vectors are, and why they are written by hand
 
-Under `tests/vectors/` there are nine small files. Each one is a frame, written out byte by
+Under `tests/vectors/` there are ten small files. Each one is a frame, written out byte by
 byte, with a comment on every single byte saying what it is:
 
 ```c
@@ -92,7 +92,7 @@ against wrong, and everything would pass — right up until the real guitar arri
 disagreed with all of it. A hand-written literal is the only thing in the loop that did not
 come from our own misunderstanding.
 
-The nine:
+The ten:
 
 | Vector | What it is | What must happen |
 |---|---|---|
@@ -105,8 +105,9 @@ The nine:
 | `not_ready` | A controller that answered, then stopped driving the data line | **Refused.** No frame. |
 | `unknown_id` | A real controller id we do not support | **Refused.** No frame. |
 | `truncated_ack` | A frame the wire cut short | **Refused.** No frame. |
+| `truncated_not_ready` | Cut short *and* the data line gone idle — both faults at once | **Refused**, and refused as the *cut-short* one. No frame. |
 
-The last three are the ones that matter most, and the next section is about why.
+The last four are the ones that matter most, and the next section is about why.
 
 `not_ready` is worth a sentence on its own, because it is the one whose bytes look most
 normal. The second byte of every answer is always `0x5A` — the controller saying "ready,
@@ -292,7 +293,7 @@ that is rule R-PROTO-05, and it is what keeps the test data independent of the c
 ls tests/vectors/*.h | wc -l
 ```
 
-Expect `9`.
+Expect `10`.
 
 ## 5. Confirm every rule this phase owed has been settled
 
