@@ -860,6 +860,44 @@ Nothing needed fixing; the audit below is what this round is.
   `R-*` rule; both sit in §Debt with an owner.
 
 
+### Round 14 — validation #3 failed on a criterion, and the escape fired.
+
+- **The failing criterion, and it is not a typo.** `grep -rn 'tests/vectors' src/ | wc -l`
+  returns **1**, against `expect: 0 (R-PROTO-05)`. The hit is
+  `src/core/ps2_frame.cpp:22`, a comment added in round 11 that reads
+  *"See tests/vectors/truncated_not_ready.h."* — written to point a reader at the vector that
+  covers the refusal order.
+
+- **`make test` is green while that criterion fails, and the reason is the rule's own check.**
+  `find_proto05` calls `hits`, and `hits` runs `sed 's|//.*||'` over each file before grepping.
+  **R-PROTO-05's bound check is structurally incapable of seeing a reference inside a
+  comment.** The same file already contains the counterpart — `raw_hits`, which exists because
+  R-CLEAN-05 is *about* comments and the stripping would delete the text it hunts. So the two
+  helpers encode two different answers and R-PROTO-05 was given the stripping one.
+
+- **The two sides disagree about what the rule forbids, and that is the finding.**
+  `docs/constraints.md` R-PROTO-05 says "no file under `src/` may reference `tests/vectors/`".
+  The acceptance criterion reads that literally: any occurrence, comment or not. The bound
+  check reads it as "no *code* dependency", which is defensible — a comment cannot make `core`
+  depend on test data, and the rule's purpose is independence of the test data from the code.
+  Both readings are reasonable and the spec does not say which one R-PROTO-05 means. Until it
+  does, `make test` and §Acceptance criteria can disagree on the same tree, which is what just
+  happened. **This is the fourth time in this phase that a rule's own check has been green
+  while something else said the rule was broken** — after the config-mode gate (round 2), the
+  link-transition uniformity (round 7) and the refusal ordering (round 11).
+
+- **Not fixed here, and the fix is not obvious, which is why the escape is right.** Three
+  different repairs, three different meanings for the rule: delete the comment and keep both
+  readings apart; give `find_proto05` `raw_hits` so the check matches the criterion; or amend
+  R-PROTO-05 and the criterion to say "no `#include` and no code reference", which makes the
+  comment legal and the criterion wrong. Choosing is a spec decision.
+
+- **The escape fired and this command moved the status.** Three `## Validation` sections now
+  follow the 2026-09-11 `escaped to /expand-phase` verdict, and this third one failed a gate.
+  `docs/phases/PHASES.md` row `01-ps2-codec` set to `pending` by `/validate-phase`, which is
+  the one time it moves a phase backwards. The next command is `/expand-phase 01-ps2-codec`.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1204,3 +1242,43 @@ fire.
   `/implement-phase` as a code bug. `/belay-feedback` is owed for that and for the two
   workarounds in §Notes to `/validate-phase`.
 - verdict: **returned to implementation**
+
+## Validation — 2026-09-15 (round 3 against the re-expanded spec — escape threshold)
+
+Iteration 3 since the 2026-09-11 `escaped to /expand-phase` verdict. A gate failed, so the
+iteration-3+ escape fires.
+
+- **file set, checked first per `spec.md` §Notes to `/validate-phase` note 3.** `- base:`
+  names `24d489f`, confirmed a real commit by `git cat-file -t`. The file set against the
+  working tree is **35 files**, no path from `.claude/workflow/installed` inside it. Not empty,
+  so the gates below measured something.
+- criteria: **19 passed / 1 failed.**
+  **FAILED — `grep -rn 'tests/vectors' src/ | wc -l` → `1`, expect `0` (R-PROTO-05).** The hit
+  is `src/core/ps2_frame.cpp:22`, a comment reading "See tests/vectors/truncated_not_ready.h"
+  added in round 11. `make test` passes on the same tree: `find_proto05` goes through `hits`,
+  which strips `//` comments before grepping, so the rule's bound check cannot see a reference
+  in a comment while the criterion can. See §Deviations round 14 — the criterion and the check
+  encode two different readings of the same rule, and the spec does not say which is meant.
+  The other nineteen pass: `make test` **OK** in **2:09** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, **10** vectors, 0 stray `tests/` headers,
+  0 `.value()`, **3** `TODO(09-guitar-observe)` markers, both ADRs, driver exit 0, accounting
+  3 and 4 rule(s), `wiring cases: 10/10`, `false-positive cases: 20 (floor 20)`,
+  `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **not run** — step 5 and the sweep are gated on steps 1-4 being clean, and
+  step 1 failed. The last sweep, 2026-09-15 round 2, was clean over 34 files and proved live.
+- index: **STALE on entry** (built at `5b04885`, HEAD `7ef3ecf`), rebuilt; fresh at `7ef3ecf`.
+- independent review: **not dispatched.** Step 5 says to review only once 1-4 are clean, and
+  never to review code the cheap gates already reject.
+- closure test: **fail** — a failing acceptance criterion means the phase's own executable
+  definition of done is not met. The record itself is in order: four `notes.md` sections
+  present and non-empty, 35 files all reachable from §Context pointers, §Files this phase
+  writes or §Plan, no untracked path, and every quantified claim carrying its enumeration.
+- upstream: **none** — no path in `.claude/workflow/installed` is in the phase's file set. The
+  `contradicts`-routing defect recorded in rounds 9 and 10 is still owed to `/belay-feedback`,
+  along with the three workarounds in §Notes to `/validate-phase`.
+- verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` →
+  `pending` by this command.
