@@ -1117,6 +1117,72 @@ code change.
   for that file.
 
 
+### Round 19 — the five amendments, and the check at writing time caught one in this very edit.
+
+- **1. `planned: 03-pio-bus → 4` has its members back.** R-SAFETY-07, R-PROTO-01, R-PROTO-06,
+  R-ERR-05 — measured off the catalogue, not remembered. The enumeration was inline in the
+  pre-escape spec and I dropped it when shortening the line during the re-expansion.
+
+- **2. The two counts are now derived rather than remembered, which is stronger than
+  enumerating them.** `rejection cases` is one per `reject` line in `tests/test_repo_shape.sh`
+  and `false-positive cases` one per `accept` line, so §Acceptance criteria carries the two
+  greps that recompute them alongside the measured distribution — 31 R-ARCH-01, 8 R-ARCH-03,
+  7 R-CLEAN-09, 4 each for R-ERR-01/02/03, 2 each for R-PROTO-05 and R-CLEAN-05, 1 each for
+  R-ERR-04 and R-CLEAN-03; and 5 `find_arch01`, 4 each for `find_err02` and `find_clean03`,
+  3 `find_err01`, 2 `find_arch03`, 1 each for `find_clean09` and `find_clean05`. A frozen list
+  would have to be maintained by hand against the file, which is the trap this phase has been
+  removing everywhere else; a derivation cannot rot. Step 14's self-referential definition
+  ("one more than before step 14") is gone.
+  **Also measured and worth naming: two different checks print the string `rejection cases`** —
+  `tests/test_ps2_codec.py` prints `3/3` for the driver's mutations and
+  `tests/test_repo_shape.sh` prints `64`. Both criteria scope by file (`sh <file> | grep`),
+  so neither is ambiguous, but `make test 2>&1 | grep 'rejection cases'` would catch both.
+  **Reconciled in the same edit:** `verify.md` was checked — its two mentions of
+  `rejection cases` are the driver's `3/3`, a different counter, and needed no change.
+
+- **3. §Plan step 10's prediction reconciled with step 15**, and **the third instance the
+  operator asked about does not exist**: `grep -nE 'rule line'` over the spec returns step 10
+  (stale, now fixed), step 12 (reconciled in round 12), step 13 and step 15 (both written
+  after the widening and correct). Checked rather than assumed, and `verify.md` mentions rule
+  lines nowhere.
+
+- **4. R-ERR-02's second scope clause.** The binding already recorded its file scope; it now
+  records the type scope too — the check recognises `std::expected<…>`, `DecodeOutcome` and
+  `LinkState`, while the rule says "result struct", which is wider. The instance is named:
+  `id_from_byte` returns `std::optional<ControllerId>` and matches none of the three. It
+  carries `[[nodiscard]]` today so nothing is in violation, and the clause says exactly that —
+  the check would not notice if it stopped. Closing it needs the type information a grep does
+  not have, the same `clang-query` upgrade `03-pio-bus` already owes.
+
+- **5. `unknown_id.h` lengthened to the 20 bytes its header announces**, `0x79` announcing
+  `9 * 2 = 18` payload bytes. Two button bytes, four centred axis bytes and twelve zero
+  pressure bytes, each commented. The vector was 4 bytes and therefore cut short as well as
+  undeclared, which meant either fault could have caused the refusal — an outcome that agrees
+  with §Goal's precedence is not a test of the precedence, only a failure to contradict it.
+  `truncated_not_ready.h` is the vector for the overlap; this one now measures one thing.
+  The comment that already claimed "the rest of this frame IS well-formed" became true instead
+  of being reworded.
+  **Checked for knock-on effects before editing:** `kUnknownId` is read by `case_unknown_id`,
+  `case_link_unknown_id_drops`, `rule_proto03` and the uniformity case, and
+  `case_announced_lengths` compares `frame_len` against vector sizes for the three **declared**
+  ids only, so it never looked at this one. All four still pass.
+
+- **Generalised before closing, and the sweep found two more of the same class.** Every number
+  in §Acceptance criteria was read against "does its set appear?". Two did not:
+  `accounting: test_style.sh 4 rule(s)` and `wiring cases: 10/10` were bare counts. Both now
+  name their members — R-STYLE-01, R-STYLE-02, R-CLEAN-02, R-CLEAN-04 for the first; the ten
+  `test_repo_shape.sh` rules for the second — and both recompute with
+  `grep -oE 'RULE R-[A-Z]+-[0-9]+' <check file> | sort -u`, which is how the sets were measured
+  rather than recalled. `3 rule(s)` was already enumerated in §Goal and is now spelled out at
+  the criterion too.
+
+- **The founding check caught one sentence inside this edit, which is the point of moving it
+  to writing time.** The derivation paragraph first read "a total with no members is the defect
+  this phase has now paid for **five times**" — a count in prose with no enumeration behind it,
+  written into the fix for counts in prose with no enumeration behind them. Deleted before the
+  gates ran. Nothing founds that number except the fix that wrote it.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a

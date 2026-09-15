@@ -399,7 +399,9 @@ rebuild the phase, not because they are pending.
     `LinkState` values and asserts the same target each time. Without it the uniformity claim
     in §The link is prose with no check behind it — the pattern `00-scaffold` §For later phases
     names at line 3256. — check: the new case's line is `ok:`, and cutting the uniformity (make
-    one source state map an outcome elsewhere) turns that line, and no rule line, to `FAIL:`.
+    one source state map an outcome elsewhere) turns **both** that line **and the
+    `R-PROTO-02` rule line** to `FAIL:` — the rule line since step 15, which was found by
+    running this very check against the rule lines instead of only against this case.
 11. **Landed 2026-09-14 — one acceptance criterion: no non-vector header under `tests/`.** Touches
     §Acceptance criteria only. `.clang-tidy`'s `HeaderFilterRegex` is `src/.*`, which stops
     clang-tidy diagnosing every header under `tests/`, not only the vectors — correct today
@@ -488,7 +490,7 @@ make test                                                      # expect: OK, exi
 make lint                                                      # expect: exit 0
 time make test                                                 # expect: real < 3m
 grep -c 'planned: 01-ps2-codec' docs/constraints.md            # expect: 0
-grep -c 'planned: 03-pio-bus' docs/constraints.md              # expect: 4
+grep -c 'planned: 03-pio-bus' docs/constraints.md              # expect: 4 — R-SAFETY-07, R-PROTO-01, R-PROTO-06, R-ERR-05
 ls tests/vectors/*.h | wc -l                                   # expect: 10, the files in §Vectors
 find tests -name '*.h' -not -path 'tests/vectors/*' | wc -l    # expect: 0 (step 11)
 grep -rn 'tests/vectors' src/ | wc -l                          # expect: 0 (R-PROTO-05)
@@ -497,15 +499,41 @@ grep -rn 'TODO(09-guitar-observe)' src/core/ | wc -l           # expect: 3 (§Go
 ls docs/adr/0011-*.md                                          # expect: exactly one file
 ls docs/adr/0012-*.md                                          # expect: exactly one file
 python3 tests/test_ps2_codec.py                                # expect: exit 0
-make test 2>&1 | grep -E 'accounting: test_ps2_codec.py'       # expect: a line reading 3 rule(s)
-make test 2>&1 | grep -E 'accounting: test_style.sh'           # expect: a line reading 4 rule(s)
-sh tests/test_repo_shape.sh | grep 'wiring cases'              # expect: 10/10
+make test 2>&1 | grep -E 'accounting: test_ps2_codec.py'       # expect: 3 rule(s) — R-PROTO-02, R-PROTO-03, R-PROTO-04
+make test 2>&1 | grep -E 'accounting: test_style.sh'           # expect: 4 rule(s) — R-STYLE-01, R-STYLE-02, R-CLEAN-02, R-CLEAN-04
+sh tests/test_repo_shape.sh | grep 'wiring cases'              # expect: 10/10 — R-ARCH-01, R-ARCH-03, R-CLEAN-03, R-CLEAN-05, R-CLEAN-09, R-ERR-01, R-ERR-02, R-ERR-03, R-ERR-04, R-PROTO-05
 sh tests/test_repo_shape.sh | grep 'false-positive cases'       # expect: 20 (floor 20)
-sh tests/test_repo_shape.sh | grep 'rejection cases'            # expect: 64 — one more than before step 14, the comment-scope case
+sh tests/test_repo_shape.sh | grep 'rejection cases'            # expect: 64 — one per `reject` line; see the derivation below
 make test 2>&1 | grep -E 'neutered: ([0-9]+)/\1 caught'        # expect: one line — the two sides equal
 make test 2>&1 | grep -E 'alternations: ([0-9]+)/\1 caught'    # expect: one line — the two sides equal
 sh tests/test_phase_docs.sh                                    # expect: exit 0
 ```
+
+**The two counts in that list are derived, not remembered.** `rejection cases` is one per
+`reject` invocation in `tests/test_repo_shape.sh` and `false-positive cases` is one per
+`accept` invocation, so both recompute from the file rather than having to be maintained
+against it:
+
+```
+grep -cE '^reject ' tests/test_repo_shape.sh                   # the 64
+grep -cE '^accept ' tests/test_repo_shape.sh                   # the 20
+grep -oE 'RULE R-[A-Z]+-[0-9]+' <check file> | sort -u          # the rule sets named above
+```
+
+The `rule(s)` and `wiring` counts recompute the same way: a check declares its rules with
+`RULE` markers in its header, so the members of "3 rule(s)", "4 rule(s)" and "10/10" are
+whatever that grep returns for `tests/test_ps2_codec.py`, `tests/test_style.sh` and
+`tests/test_repo_shape.sh`. They are spelled out in the criteria above so a reader can check
+the number without running anything, and recomputable so the list cannot rot silently.
+
+Measured 2026-09-15, stated as a distribution because a total with no members is the defect
+this phase keeps paying for. The 64 rejection cases: **31** R-ARCH-01, **8**
+R-ARCH-03, **7** R-CLEAN-09, **4** each for R-ERR-01, R-ERR-02 and R-ERR-03, **2** each for
+R-PROTO-05 and R-CLEAN-05, **1** each for R-ERR-04 and R-CLEAN-03. The 20 false-positive
+cases: **5** `find_arch01`, **4** each for `find_err02` and `find_clean03`, **3**
+`find_err01`, **2** `find_arch03`, **1** each for `find_clean09` and `find_clean05`. The
+floor is 20 and equals the count, so the floor asserts "no accept case was deleted" rather
+than "at least this many exist".
 
 **Two of those need the real `grep`.** The `neutered:` and `alternations:` lines use an ERE
 backreference (`([0-9]+)/\1`), which is the point — it makes the two sides *equal* rather than
