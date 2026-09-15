@@ -2,8 +2,15 @@
 
 ## Outcome
 
-- base: working tree (the phase's work is uncommitted; `docs/phases/PHASES.md` was already
-  modified and `docs/phases/01-ps2-codec/` already untracked when this session started).
+- base: `24d489f` — **corrected 2026-09-15, and the correction is load-bearing.** This line
+  read `working tree` through rounds 1-8, which was true while the phase had no branch. Round 9
+  put the work on `feat/01-ps2-codec` and committed it, so the working tree went empty and
+  `working tree` would have handed `/validate-phase` a file set of nothing: the boundary sweep,
+  the independent review and the closure test would all have reported `pass` having examined
+  zero files. `24d489f` is `chore(belay): update workflow package to f001884`, the commit the
+  branch came off and the last one before any of this phase's work. `git diff 24d489f` against
+  the working tree is the phase's diff, 34 files, and no path in `.claude/workflow/installed`
+  falls inside it.
 
 `src/core/` now exists and holds the whole protocol brain, with no hardware anywhere in it.
 Five header/implementation pairs, all compiling and running under `make test` on the laptop
@@ -620,6 +627,59 @@ Recorded here because the closure test requires it; the fixes are `/implement-ph
   behind it, which is the joke this phase has now told on itself twice.
 
 
+### Round 10 — what validation 2026-09-15 found. The fix from round 9 introduced the finding.
+
+- **The `contradicts` is round 9's own repair, and it is the pattern `00-scaffold` warned
+  about by name.** Closing the `kPadByte` pointer, round 9 added to §Files' `ps2_protocol.h`
+  row: "**This list is exhaustive:** a constant in that header and not in this row is a
+  finding, not a detail." The claim was never checked against the header. Measured now:
+  **the header declares twenty `constexpr`s and the row names eleven.** The nine missing are
+  `kIdDigital`, `kIdAnalog`, `kIdConfig`, and the whole frame-geometry block `kHeaderIndex`,
+  `kReadyIndex`, `kPayloadIndex`, `kPrefixLen`, `kPayloadNibbleMask`, `kBytesPerNibble` — not
+  incidental ones: `kPrefixLen`, `kHeaderIndex` and `kReadyIndex` carry `ps2_frame.cpp`, and
+  `kPayloadIndex` is used throughout the cases file. By the sentence's own terms that is a
+  finding, so the sentence convicts itself.
+  This is `docs/phases/00-scaffold/notes.md` line 3256, second bullet, verbatim: *"a fix
+  written to close a finding tends to introduce a new claim with no founding … after writing a
+  fix, read it as a reviewer who has never seen the finding, and ask what founds each new
+  sentence. If the answer is 'the fix I just wrote', delete the sentence rather than founding
+  it."* That rule is cited in this spec's own §Context pointers. It was read, quoted, and then
+  not applied to the fix being written in the same edit.
+  **Not fixed here.** Two ways out and they are different contracts: name all twenty constants
+  in the row, or delete the exhaustiveness sentence and let the row stay illustrative. The
+  first is a set that must be maintained against the header forever — the thing this phase has
+  spent four rounds learning to stop writing. The second gives up the property the sentence was
+  added to buy. That is an operator decision, not a gate's.
+
+- **Three `undecidable`, each verified against the file rather than taken on the reviewer's
+  word.** Listed in the validation record below; two are real gaps in what `decode` promises:
+  - an **over-long buffer is accepted**: `ps2_frame.cpp` refuses only `bytes.size() <
+    expected_len`, so trailing bytes past `frame_len( id )` decode normally and are ignored.
+    §Goal's "refusing by default" does not say whether an over-long response is well-formed
+    input — and it plausibly is, since `hal` handing over a fixed-size shift buffer produces
+    exactly that. No vector exercises it.
+  - the **precedence of two §Goal bullets is unstated**: `decode` checks the ready byte before
+    the announced length, so a frame that is both cut short *and* carries a wrong ready byte
+    reports `NotReady`, and the link records `FaultCause::NotReady` rather than
+    `AckTimeout`. Both §Goal bullets are written unconditionally and the overlap is real on a
+    bus — `not_ready.h` describes an undriven `DATA` line, `truncated_ack.h` describes the
+    bytes stopping, and a controller that does both is covered by neither. The distinction is
+    what trace mode prints.
+  - the driver's `CXXFLAGS` duplicates the Makefile's by hand and the spec never states them.
+
+
+### Taste from validation 2026-09-15, recorded and not fixed (step 5)
+
+- Several `map_frame` cases in `tests/ps2_codec_cases.cpp` evaluate `ps2::map_frame( *frame )`
+  on the line above the `frame.has_value()` term in `is_ok`, so the guard is checked after the
+  dereference and a regression in `decode` turns the case into UB rather than a clean `FAIL:`
+  line. Raised in a different form by round 3's reviewer too; still taste, still unfixed.
+- `case_report_gives_every_button_its_own_bit` declares a local `const ps2::HidReport report`
+  that shadows the file's `report()` helper four lines away.
+- `state_for` in `src/core/link.cpp` ends with an unreachable `return LinkState::Absent;` after
+  a switch covering every enumerator — deliberate and commented, but `-Wswitch` already
+  protects it.
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -882,4 +942,61 @@ output is the spec this round judges.
   Note that the two package defects this spec works around (§Notes to `/validate-phase`) both
   behaved as documented this round: naming `notes.md` as held out of the diff produced no false
   `contradicts`, and the `xargs` form produced a real sweep. `/belay-feedback` is still owed.
+- verdict: **returned to implementation**
+
+## Validation — 2026-09-15 (round 2 against the re-expanded spec)
+
+Iteration 2 since the `escaped to /expand-phase` verdict of 2026-09-11. The escape does not
+fire.
+
+- **file set, corrected before any gate ran.** `notes.md` §Outcome said `- base: working tree`,
+  true while the phase had no branch. Round 9 committed the work to `feat/01-ps2-codec`, so the
+  working tree is empty and that literal would have produced a file set of **zero files** — the
+  boundary sweep, the independent review and the closure test all reporting `pass` having looked
+  at nothing, which is the failure mode this command's own file-set section warns about. The
+  base is now `24d489f`; `git diff 24d489f` against the working tree gives 34 files, and no path
+  in `.claude/workflow/installed` falls inside it.
+- criteria: **20 passed / 0 failed.** `make test` **OK** in **2:07** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 9 vectors, 0 stray `tests/` headers,
+  0 / 0 for the two `src/` greps, **3** `TODO(09-guitar-observe)` markers against the newly
+  pinned `3`, both ADRs, driver exit 0, accounting 3 and 4 rule(s), `wiring cases: 10/10`,
+  **`false-positive cases: 20 (floor 20)`** against the newly pinned floor, `neutered: 33/33`,
+  `alternations: 64/64`, `test_phase_docs.sh` 0. The two backreference greps ran under
+  `/usr/bin/grep`. M1-M3 are the driver's rejection cases (`3/3`); **M4 ran with the corrected
+  instruction** — a `cp -a` copy, which carries both `.git` and the uncommitted work — and
+  produced exit 1 with `FAIL: test_ps2_codec.py declares R-PROTO-02, R-PROTO-03, R-PROTO-04,
+  reported by nothing but its own cases — the real run is gone`.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (34 files, 9 under `src/core/`; 13 active `deny` rules). Passed one
+  path per argument through `xargs` per §Notes to `/validate-phase` note 2, and proved live
+  before being recorded: `#include "src/hal/bus_io.h"` in `src/core/link.h` is caught as
+  `deny core -> hal`, and the file was restored identical.
+- index: **STALE on entry** (built at `24d489f`, HEAD now `5b04885`), rebuilt; fresh at `5b04885`.
+- independent review: **contradicts: 1** — §Files' `ps2_protocol.h` row declares its constant
+  list exhaustive; the header declares **twenty** `constexpr`s and the row names **eleven**.
+  Measured, not taken on the reviewer's word: missing are `kIdDigital`, `kIdAnalog`, `kIdConfig`,
+  `kHeaderIndex`, `kReadyIndex`, `kPayloadIndex`, `kPrefixLen`, `kPayloadNibbleMask`,
+  `kBytesPerNibble`. The sentence was added by round 9 to close the `kPadByte` pointer and was
+  never checked against the header. **undecidable: 3** — (1) whether an over-long buffer is
+  well-formed input: `decode` refuses only `bytes.size() < expected_len`, so trailing bytes are
+  silently ignored, and nothing in the spec or the vectors decides it; (2) the precedence of
+  §Goal's `NotReady` and `AckTimeout` bullets, both written unconditionally, where `decode`
+  checks the ready byte first and so reports `NotReady` for a frame that is both — which
+  decides what `FaultCause` trace mode prints; (3) the driver's hand-copied `CXXFLAGS`, which
+  the spec never states, so nothing can tell whether the duplicate is faithful. Three taste
+  items are in §Deviations, unfixed.
+- closure test: **fail** — three `undecidable` findings are three missing pointers. The rest
+  passes: four `notes.md` sections present and non-empty, every file in the set reachable, no
+  untracked path, and every quantified claim in the spec now carries its enumeration (the nine
+  vectors, ten controls, four concerns, three markers, four `LinkState`, five `FaultCause`, two
+  clang-tidy flags) — which is what the round-9 work bought and what the `contradicts` above is
+  the exception to.
+- upstream: **none** — no path in `.claude/workflow/installed` is in the phase's file set. The
+  `contradicts` routing defect recorded in round 9 stands: this round's `contradicts` is again a
+  spec sentence rather than a code fault, and the command would again route it to
+  `/implement-phase` as a code bug. `/belay-feedback` is owed for that and for the two
+  workarounds in §Notes to `/validate-phase`.
 - verdict: **returned to implementation**
