@@ -19,7 +19,8 @@ std::expected<Ps2Frame, DecodeStatus> decode( std::span<const std::uint8_t> byte
     // "reports the abort", so the abort has to win over every refusal that could still be
     // evaluated afterwards. Checking the ready byte first would report NotReady for a frame
     // that is both short and carrying 0xFF at the ready slot — and 0xFF there is an undriven
-    // line, not a controller saying it is not ready. See tests/vectors/truncated_not_ready.h.
+    // line, not a controller saying it is not ready. The vector covering that overlap lives
+    // with the other refusal vectors; R-PROTO-05 is why it is not named here.
     //
     // The id check above cannot move below this one: frame_len needs the id.
     const std::size_t expected_len = frame_len( *id );

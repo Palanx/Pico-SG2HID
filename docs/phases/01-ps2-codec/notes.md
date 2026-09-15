@@ -58,7 +58,8 @@ thread pool, not drift). `make lint` **0**, `planned: 01-ps2-codec` **0**,
 `planned: 03-pio-bus` **4**, **10** vector headers, 0 hits for `tests/vectors` under `src/`,
 0 hits for `.value()`, 3 `TODO(09-guitar-observe)` markers, one ADR-0011 file, one ADR-0012
 file, driver exit 0 with **32** `ok:` lines (30 through round 4, 31 through round 7), `accounting: test_ps2_codec.py 3 rule(s)`,
-`accounting: test_style.sh 4 rule(s)`, `wiring cases: 10/10`, `neutered: 33/33`,
+`accounting: test_style.sh 4 rule(s)`, `wiring cases: 10/10`, `rejection cases: 64`,
+`false-positive cases: 20 (floor 20)`, `neutered: 33/33`,
 `alternations: 64/64`, `test_phase_docs.sh` 0. All four §Acceptance-criteria mutation blocks
 (M1–M4) were run in scratch copies and each failed in the way the spec predicted; M4 produced
 exactly `test_ps2_codec.py declares R-PROTO-02, R-PROTO-03, R-PROTO-04, reported by nothing
@@ -951,6 +952,53 @@ Nothing needed fixing; the audit below is what this round is.
 - **Whoever revisits R-PROTO-05** — the "no code reference" reading is the semantically honest
   one and is rejected here only because defining "reference" is judgement surface this phase
   could not afford to add. Revisit it with budget to test the answer.
+
+
+### Round 16 — §Plan step 14. Three edits, one meaning, and the case that holds it there.
+
+- **`find_proto05` moved from `hits` to `raw_hits`.** The comment above it now states that the
+  scanner choice *is* the rule's meaning rather than a detail: a comment naming a vector is a
+  reference, so the check must read raw lines. `find_clean05` already used `raw_hits` for the
+  mirror-image reason, which is why this is a correction and not an invention.
+
+- **The path is out of `src/core/ps2_frame.cpp`.** The comment still explains why `0xFF` at the
+  ready slot of a short frame is an undriven line rather than a controller statement — that
+  reasoning is what a reader of `decode` needs. What it no longer does is name the file under
+  `tests/` that covers the overlap: it says the vector lives with the other refusal vectors and
+  that R-PROTO-05 is why it is not named. The pointer that was deleted pointed *out of* `core`,
+  which is the direction the rule exists to forbid.
+
+- **R-PROTO-05's text gained its scope clause**, which is what §What a `test:` binding does and
+  does not promise requires of any binding this phase owns. It states the reading ("any
+  occurrence of the path, comments included"), that the check reads raw lines to match, why the
+  literal reading was chosen over "no code reference" (nothing left to interpret), and **what is
+  given up**: a comment cannot create a dependency, so the check now refuses some references
+  that are harmless, and that over-strictness is the price of having no judgement in the rule.
+
+- **The rejection case that makes the scope real, and the probe that proves it.** A second
+  R-PROTO-05 case was added whose bad tree's only reference is *inside a comment*. Without it
+  the scanner could revert and the suite would not notice: measured, not assumed — putting
+  `hits` back in a scratch copy produces
+  `FAIL: R-PROTO-05 rejection case did not fire on: // see tests/vectors/digital.h for the bytes`,
+  drops the count to 63 and exits non-zero. The count moving 63 → 64 is pinned by the criterion
+  §Plan step 14 added.
+
+- **Generalised, and the enumeration was already done rather than redone.** The re-expansion
+  audited all 23 `test:`-bound rules and its table is in `spec.md`. What this round added is the
+  narrow check that the scanner change introduces no new failure of its own: `grep -rnE 'tests/'
+  src/` now returns nothing at all, so no other file was relying on the stripping. The two
+  scanners are now assigned by meaning across the whole file — `raw_hits` for `find_clean05`
+  (a rule about comments) and `find_proto05` (a rule about any occurrence), `hits` for
+  `find_clean03`, `find_clean09`, `find_err01` and `find_err02`, whose subjects are code
+  constructs a comment does not contain. R-ERR-03 is the one remaining candidate and it is not
+  this phase's rule; §For later phases owns it.
+
+- **Acceptance: all 21 criteria pass**, including the one that failed validation #3 —
+  `grep -rn 'tests/vectors' src/ | wc -l` → **0** — and the new `rejection cases: 64`.
+  `make test` **OK** in **1:38** against the 3m cap, `make lint` 0. M1-M3 are the driver's
+  rejection cases (`3/3`); **M4 re-run by hand** in a `cp -a` copy and produced exit 1 with
+  `FAIL: test_ps2_codec.py declares R-PROTO-02, R-PROTO-03, R-PROTO-04, reported by nothing but
+  its own cases — the real run is gone`.
 
 
 ## Debt

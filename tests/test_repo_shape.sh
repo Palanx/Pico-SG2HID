@@ -108,7 +108,13 @@ find_clean05( ){ raw_hits 'TODO([^(]|$)' $( src_files "$1" ); }
 # The default-specifier forms (`struct A : B`) are inheritance too — the rule says "at all".
 # `enum class Mode : uint8_t` is a fixed underlying type, not a base, so it is excluded.
 find_clean09( ){ hits '(:[[:space:]]*(public|private|protected)[[:space:]]|(struct|class)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:|\bvirtual\b)' 'enum[[:space:]]+class' $( core_files "$1" ); }
-find_proto05( ){ hits 'tests/vectors' '' $( src_files "$1" ); }
+# R-PROTO-05 uses raw_hits, NOT hits, and that is the rule's meaning rather than a detail of
+# the scanner. The rule says no file under src/ may REFERENCE tests/vectors/, and a comment
+# naming a vector is a reference. Decided 2026-09-15 after validation #3, where the acceptance
+# criterion (a plain grep, which counts comments) and this check (which stripped them) gave
+# opposite verdicts on the same tree. The literal reading is what both now use, so there is no
+# judgement left to interpret about what counts as a reference.
+find_proto05( ){ raw_hits 'tests/vectors' $( src_files "$1" ); }
 # R-ERR-01, narrowed on 2026-09-11 to its greppable core: a status enum is never a return type
 # of its own. It lives in std::expected's error slot (where it follows a `,` or a `<`, never the
 # start of a line) or as a member of Link (where the identifier is followed by `=` or `;`, never
@@ -179,6 +185,11 @@ reject R-CLEAN-03 find_clean03 src/core/x.cpp 'bool flag = true;'
 reject R-CLEAN-05 find_clean05 src/core/x.cpp '// TODO: fix this later'
 reject R-CLEAN-09 find_clean09 src/core/x.h   'struct A : public B { };'
 reject R-PROTO-05 find_proto05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
+# The scope case, not a duplicate of the one above: a reference inside a COMMENT. Until
+# 2026-09-15 find_proto05 went through hits(), which strips // before grepping, so this exact
+# tree passed while the acceptance criterion failed on it. Deleting this case would let the
+# check silently revert to the narrower scanner.
+reject R-PROTO-05 find_proto05 src/core/x.cpp '// see tests/vectors/digital.h for the bytes'
 # R-ERR-01: one case per alternative of (DecodeStatus|FaultCause). Neither alternative can be
 # reached by the other's case, which is what tests/test_checks_are_live.py requires.
 reject R-ERR-01   find_err01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
