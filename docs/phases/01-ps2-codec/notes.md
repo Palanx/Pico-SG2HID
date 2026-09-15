@@ -1183,6 +1183,68 @@ code change.
   gates ran. Nothing founds that number except the fix that wrote it.
 
 
+### Round 20 — three `undecidable`, no `contradicts`. Two are round 19's reconciliation misses.
+
+Second consecutive round with no `contradicts`: the reviewer walked all fifteen Plan steps and
+found a faithful hunk for each, and reconciled the derived counts against the diff itself —
+the accept floor 13 → 20 with exactly seven new `accept` lines, wiring 8 → 10, and the
+64-rejection distribution summing to 64 with the nine new `reject` lines landing in the
+R-ERR-01, R-ERR-02 and R-PROTO-05 buckets §Acceptance criteria names. The derivation added in
+round 19 is doing the work it was added for.
+
+- **1. `CLAUDE.md` is in the phase's diff and the spec never says this phase writes it.**
+  **Measured:** `git diff 24d489f --stat -- CLAUDE.md` → 16 insertions, the three pre-validation
+  checks. The spec names `CLAUDE.md` in §Context pointers as a file to **read**; it appears in
+  no Plan step and in no row of §Files this phase writes, and it is not one of the four
+  workflow-written paths the closure test exempts (`spec.md`, `notes.md`, `PHASES.md`,
+  `docs/index/`). The mechanical reachability check passes it — it is "named in Context
+  pointers" — which is exactly why the reviewer catches what that check cannot: being listed as
+  a file to read does not authorise writing it.
+  **This one is not a defect in the work; it is a question about whose change it is.** The
+  block was added by the operator, outside the phase's Plan, and lands in the phase's diff only
+  because the diff runs from `24d489f`. Three ways out and they are different claims: give
+  §Files this phase writes a row recording that the operator amended the root instruction file
+  mid-phase and why it appears here; move the edit to its own commit outside the phase's range;
+  or leave it and accept that this phase's diff carries a change it did not make. The first is
+  the only one that keeps the diff and the spec agreeing without rewriting history.
+
+- **2. R-ERR-02's second scope clause is in `docs/constraints.md` and no Plan step names it.**
+  Round 19 added it and did not add the step that describes it — the same shape as the stale
+  markers of round 17, one file over. Worse, two statements went stale in the same edit and
+  were not reconciled: §What a `test:` binding does and does not promise lists R-ERR-02 among
+  the four rules that **already** record their scope and then says "This phase owes that clause
+  for **R-PROTO-05**, which had none", and the audit table's row classifies R-ERR-02 as
+  already-declared. Both were true when written and describe a tree that no longer exists.
+  §Out of scope's "the narrowing is recorded in the rule's own text" is singular and now
+  undercounts.
+
+- **3. §Vectors fixes no length for `unknown_id.h`, and round 19 changed exactly that.**
+  The other nine rows pin the shape — "2 payload bytes", "6 payload bytes", "payload cut
+  short" — while this row says only "header `0x79`, the DualShock 2's real full-analog id,
+  deliberately undeclared here". The ten-line rationale for the 20-byte length lives in the
+  vector file and nowhere in the spec, so a reader working from the spec alone would write the
+  obvious 4-byte frame, satisfy the asserted outcome, and have no way to know it was wrong.
+  Round 19 made the change and recorded the reasoning in the file instead of in the table that
+  fixes every other vector's shape.
+
+**All three are spec bugs and none needs a code change.** Two and three are mine: an amendment
+that changes the tree owes the Plan step and the table row that describe it, and round 19
+delivered the amendments without them. Three taste items recorded below.
+
+### Taste from validation 2026-09-15 (round 5), recorded and not fixed
+
+- The deref-before-guard hazard, now named in **four** separate review rounds and enumerated
+  this time: `case_digital_idle_maps_to_nothing_pressed`,
+  `case_digital_pressed_maps_one_fret_and_one_strum`, `case_analog_whammy_full`,
+  `case_analog_idle_whammy_is_rest`, `case_config_mode_whammy_is_rest`,
+  `case_config_mode_maps_to_nothing_pressed`, `case_report_carries_the_whammy_end_to_end` and
+  `rule_proto04`. Still latent — no current mutant makes those vectors refuse — but it is the
+  hazard `src/core/ps2_frame.cpp`'s own comment argues against.
+- `src/core/guitar_state.h`'s `GuitarState` comment names `frets` and `ControllerFret`;
+  neither identifier exists (`is_fret_pressed`, `Fret`). Raised in round 4's taste list too.
+- §Plan step 2 says the missing-SDK path "prints a `note:`"; `tests/test_style.sh` prints two.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1616,3 +1678,50 @@ verdict, so the escape is not in play.
   `- base:` staleness trap, and the three workarounds in §Notes to `/validate-phase`.
 - verdict: **returned to implementation** — as spec amendments plus this Deviations entry, not
   as code changes. Status stays `in-progress`.
+
+## Validation — 2026-09-15 (round 2 against the second re-expanded spec)
+
+Iteration 2: one `## Validation` section follows the 2026-09-15 `escaped to /expand-phase`
+verdict, so the escape is not in play.
+
+- **file set, checked first per §Notes to `/validate-phase` note 3 and CLAUDE.md's check 2.**
+  `- base:` names `24d489f`, confirmed a real commit by `git cat-file -t`; the set against the
+  working tree is **36 files**, one more than last round because the lengthened vector counts
+  as a further modification; no path from `.claude/workflow/installed` inside it.
+- criteria: **21 passed / 0 failed.** `make test` **OK** in **1:59** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` **4**, **10** vectors, 0 stray `tests/`
+  headers, `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, **3** markers, both ADRs, driver
+  exit 0, accounting **3** and **4** rule(s), `wiring cases: 10/10`,
+  `false-positive cases: 20 (floor 20)`, `rejection cases: 64`, `neutered: 33/33`,
+  `alternations: 64/64`, `test_phase_docs.sh` 0. **The two derivations round 19 added check
+  out:** `grep -cE '^reject '` → 64 and `grep -cE '^accept '` → 20, equal to what the run
+  prints. M1-M3 are the driver's rejection cases (`3/3`); **M4 run by hand** in a `cp -a` copy,
+  exit 1 with `FAIL: test_ps2_codec.py declares R-PROTO-02, R-PROTO-03, R-PROTO-04, reported by
+  nothing but its own cases — the real run is gone`.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (36 files, 9 under `src/core/`; 13 active `deny` rules). One path
+  per argument through `xargs`, and proved live before being recorded: a
+  `#include "src/hal/bus_io.h"` in `src/core/ps2_protocol.h` is caught as `deny core -> hal`,
+  and the file was restored identical.
+- index: **STALE on entry** (built at `9e0dba7`, HEAD `2fe3788`), rebuilt; fresh at `2fe3788`.
+- independent review: **contradicts: none** — the second consecutive round with none; the
+  reviewer walked all fifteen Plan steps, found a faithful hunk for each, and reconciled the
+  derived counts against the diff. **undecidable: 3** — (1) `CLAUDE.md` carries 16 added lines
+  in the phase's diff while the spec names it only as a file to read, never as one this phase
+  writes, and it is not among the four exempt workflow-written paths; (2) R-ERR-02's second
+  scope clause in `docs/constraints.md` is named by no Plan step, and two statements that call
+  R-ERR-02 already-declared went stale when round 19 added it; (3) §Vectors fixes a byte shape
+  for nine vectors and none for `unknown_id.h`, which round 19 lengthened to 20 bytes with the
+  reasoning recorded in the file instead of the table. Three taste items in §Deviations.
+- closure test: **fail** — three `undecidable` findings are three missing pointers. Everything
+  else passes: four `notes.md` sections present and non-empty, no untracked path, and every
+  quantified claim carrying its enumeration — including the four counts round 19 fixed, which
+  this round's reviewer verified by arithmetic against the diff rather than by trusting them.
+- upstream: **none** — no path in `.claude/workflow/installed` is in the phase's file set.
+  `/belay-feedback` still owed for the `contradicts`-routing defect, the `- base:` staleness
+  trap, and the three workarounds in §Notes to `/validate-phase`.
+- verdict: **returned to implementation** — as spec amendments plus the Deviations entry above,
+  not as code changes. Status stays `in-progress`.
