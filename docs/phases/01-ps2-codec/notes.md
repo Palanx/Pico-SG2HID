@@ -1324,6 +1324,37 @@ delivered the amendments without them. Three taste items recorded below.
   and it did both.
 
 
+### Round 23 — the token, its generalisation, and the override.
+
+- **The pointer now names the heading, and the heading was read out of the file rather than
+  typed from memory.** §Goal said "the number `verify.md` §1 tells the operator to expect";
+  `verify.md` §1 is `## 1. Everything passes` and is about `make test` and `make lint`. The
+  fix names the section that actually carries the count — "What this phase does NOT prove" —
+  and the replacement text was produced by reading `verify.md`, finding the line with the
+  count, and walking back to the nearest `##`. The finding was an amendment asserting something
+  about another file without opening it; retyping the heading from memory would have been the
+  same move again.
+
+- **Generalised: every cross-file reference in the spec was checked against the file it
+  names, not just the ones about `verify.md`.** This is the third time in the phase that an
+  amendment claimed something about another file without verifying it, so the sweep covered the
+  class rather than the instance. Eleven references, all verified:
+  `verify.md` — three mentions, only one of which names a section, the broken one now fixed;
+  `notes.md` §Debt, §Deviations and §For later phases — all three headings exist;
+  `docs/phases/00-scaffold/notes.md` §Debt, §For later phases and §Owed — all present, and
+  **line 3256 is exactly the heading the spec says it is**,
+  `## For later phases (added round 13, at close — three patterns \`01-ps2-codec\` inherits)`;
+  `docs/constraints.md` §Invariants, §Layering, §Error handling, §Testing and §Observed
+  conventions — all five exist, at lines 39, 15, 262, 289 and 185. **Exactly one was wrong.**
+
+- **The escape was overridden by the operator and the override is recorded under the
+  validation #3 record**, with the trend table and the reason, so a later session reading only
+  `notes.md` sees a decision rather than a missing gate. The status was returned to
+  `in-progress` by that decision, not by this command's own rule.
+
+- **Nothing else was touched.** One token, its generalisation, and the record.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1708,6 +1739,38 @@ iteration-3+ escape fires.
   along with the three workarounds in §Notes to `/validate-phase`.
 - verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` →
   `pending` by this command.
+
+### Escape OVERRIDDEN by the operator, 2026-09-15 — deliberate, and recorded so it can be judged
+
+The re-expansion was **not** run. The status was returned to `in-progress` and the one finding
+was fixed in place. This is a decision, not a gate somebody skipped, and it is written here so
+that if the next round fails on something structural, this paragraph is what tells that session
+the override was the mistake.
+
+**Why.** The escape counts rounds and reads nothing else, so it cannot tell three rounds of
+structural failure from three rounds converging on a typo. Its premise is "if you're on
+iteration 3+, the spec is wrong". The evidence says this spec is not:
+
+| validation, since the 2026-09-15 escape | `undecidable` | `contradicts` |
+|---|---|---|
+| #1 | 5 | 0 |
+| #2 | 3 | 0 |
+| #3 | 0 | 1 — a section reference |
+
+The round-3 reviewer returned `undecidable: none` explicitly, after checking every quantified
+claim in the spec against the diff. The count was right, `verify.md` was right; only the
+spec's pointer to which section held the count was wrong.
+
+**And re-expanding has a cost measured in this phase, not a hypothetical one.** Every
+re-expansion here introduced at least one sentence founded only on the amendment that wrote it,
+which the following round returned as a finding — rounds 19, 20 and this one are all that class.
+Regenerating a spec that has just passed a full audit, to fix one token, is the worst
+cost-benefit trade this phase has been offered.
+
+**Filed as a package gap:** the escape should be able to read the trend in front of it and not
+only the round count. `/belay-feedback` owes it along with the `contradicts` routing, the
+`- base:` staleness trap and the operator-edit gap in the file set.
+
 
 ## Validation — 2026-09-15 (round 1 against the second re-expanded spec)
 

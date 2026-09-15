@@ -80,8 +80,8 @@ written out here because three documents have disagreed about the number.** One 
 whole block of button positions and masks — a block, not a single constant, which is why no
 count of `constexpr`s appears in this paragraph; and a third, also in `guitar_state.h`, covers
 the whammy's index and its rest value together. Three is the number §Acceptance criteria pins
-and the number `verify.md` §1 tells the operator to expect. `09-guitar-observe` exists to
-confront all four concerns with the real device. A vector here asserts that the codec does
+and the number `verify.md`'s "What this phase does NOT prove" section tells the operator to
+expect. `09-guitar-observe` exists to confront all four concerns with the real device. A vector here asserts that the codec does
 what the codec says, not that the guitar agrees.
 
 ### Rule work — landed, stated so the next round does not re-do it
