@@ -515,7 +515,7 @@ rebuild the phase, not because they are pending.
     is `03-pio-bus`'s `clang-query` upgrade. — check: `python3 tests/test_rule_traceability.py`
     → exit 0, and R-ERR-02's entry in `docs/constraints.md` names both narrowings.
 
-17. **Owed — R-CLEAN-04 records the file scope its check has.** Touches `docs/constraints.md`.
+17. **Landed 2026-09-15 — R-CLEAN-04 records the file scope its check has.** Touches `docs/constraints.md`.
     R-CLEAN-04 is bound to `tests/test_style.sh` and runs through `tidy_sources()`, which reads
     `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` and nothing else; the rule's text is
     unscoped and records only the `const`/`constexpr` initializer blindness. By the table above

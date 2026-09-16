@@ -1474,6 +1474,37 @@ delivered the amendments without them. Three taste items recorded below.
   `accounting: test_style.sh` still reports its four rules.
 
 
+### Round 27 — the stale marker, the audit in both directions, and two false alarms of my own.
+
+- **Step 17's marker was `Owed` with the work landed; it now reads `Landed 2026-09-15`,** the
+  same form as steps 12-16. No `Owed` markers remain.
+
+- **All seventeen steps audited in both directions against the artefact each names.** Nothing
+  is marked `Landed` whose work is undone: `planned: 01-ps2-codec` 0 (step 1), `make lint` 0
+  (2), both ADRs (3, 6), 10 vectors (4), the config-controls case (5), four `hid:` cases (7),
+  three driver mutations (8), `wiring cases: 10/10` (9), the uniformity case (10), the
+  stray-header criterion (11), the length check at line 26 above the ready check at 33 (12),
+  `rule_proto02` reading `kTruncatedNotReady` (13), `find_proto05` on `raw_hits` (14),
+  `drops_from_every_source` (15), R-ERR-02's second narrowing (16), R-CLEAN-04's scope clause
+  (17). The only drift was step 17's marker.
+
+- **Two of those came back wrong on the first pass and both were my grep, not the tree.**
+  `find_proto05` looked unmatched because the pattern expected a space before `{` that the file
+  does not have, and R-ERR-02's clause looked absent because the pattern was "return-type
+  spellings" while the text reads "three spellings of a return type". Recorded rather than
+  quietly corrected: I was one step from reporting two findings that did not exist, and the
+  mechanism is the same one that produced this phase's three real falsifications — asserting
+  something about a file from a pattern instead of reading the file. Both were resolved by
+  opening the lines.
+
+- **Generalised: the cause of the stale marker is named in §For later phases.** It is the second
+  time a step landed and kept its `Owed`, and both were caught by the operator rather than by a
+  gate. The marker lives in `spec.md` §Plan while the work lands elsewhere, and
+  `/implement-phase`'s final step writes `notes.md` and `PHASES.md` and never the Plan — so the
+  step's check runs and its marker does not. Two upgrade paths recorded there, one upstream and
+  one local.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1564,6 +1595,18 @@ delivered the amendments without them. Three taste items recorded below.
   Note also that `unknown_id.h` deliberately uses `0x79`, the DualShock 2's real full-analog
   id; if that phase finds the SG uses it, the vector must be repointed at another undeclared
   byte rather than the id simply being added.
+- **Whoever owns the phase workflow, and `/belay-feedback`** — a Plan step that lands keeps its
+  `Owed` marker, and nothing in the loop notices. It happened twice in this phase: step 14 in
+  round 17 and step 17 in round 26, both found by the operator reading the spec, neither by a
+  gate. **The cause is structural, not forgetfulness: the marker lives in `spec.md` §Plan while
+  the work lands in another file, and `/implement-phase`'s mandatory final step writes
+  `notes.md` and `PHASES.md`'s status and never revisits the Plan.** The step's own *check* does
+  get run — it is the criterion — but the marker is prose beside the check, not the check. Two
+  upgrade paths, one cheap and one mechanical: have the command's final step name the marker
+  alongside the notes it already writes, or bind a check that greps `spec.md` for `Owed` steps
+  whose check command passes. The first is `/implement-phase`'s and therefore upstream; the
+  second is this repo's and belongs with the other check-harness work below.
+
 - **Whoever next touches the check harness** — make the "no constant escapes the spec's list"
   property executable, if it is wanted. A check that greps `^constexpr` out of
   `src/core/ps2_protocol.h` and compares the names against the row in that phase's `spec.md`
