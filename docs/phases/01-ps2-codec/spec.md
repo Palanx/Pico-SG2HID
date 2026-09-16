@@ -96,51 +96,71 @@ R-CLEAN-04 binds to `tests/test_style.sh`. Nothing in this re-expansion moves a 
 
 ## What a `test:` binding does and does not promise
 
-Re-expanded into the spec on 2026-09-15, after validation #3, because four times in this phase
-a rule's own check printed `ok:` while the rule was broken: the config-mode button gate
-(round 2), the link-transition uniformity (round 7), the refusal ordering (round 11), and
-R-PROTO-05's blindness to comments (round 14). All four survived `tests/test_checks_are_live.py`.
+Four times in this phase a rule's check printed `ok:` while the rule was broken — the
+config-mode button gate, the link-transition uniformity, the refusal ordering, and R-PROTO-05's
+blindness to comments. All four survived `tests/test_checks_are_live.py`, because **that harness
+proves a check is *wired*, not that it is *adequate*.** It mutates the code the check reads and
+confirms the check reacts. A check whose reach is narrower than its rule's text passes that
+perfectly: it is alive, it just measures less than the sentence it is bound to.
 
-**That harness proves a check is *wired*, not that it is *adequate*.** It mutates the code the
-check reads and confirms the check reacts and names its rule. A check whose pattern is narrower
-than its rule's text passes that test perfectly: it is alive, it just measures less than the
-sentence it is bound to. Wiring and coverage are different properties and only one of them has
-a harness.
+The convention that closes the gap:
 
-**There is no machine-checkable form of "this pattern covers this English sentence."** So the
-binding is a convention with a named owner, and it already exists in this repo rather than
-being invented here:
+> **The phase that moves a rule from `planned:` to `test:` writes, in the rule's own text, what
+> the check does not see.** A rule whose text states no scope asserts that its check covers it
+> entirely, and that assertion is what a later reader is entitled to disbelieve and measure.
 
-> **The phase that moves a rule from `planned:` to `test:` writes, in the rule's own text,
-> what the check does not see.** A rule whose text states no scope is asserting that its check
-> covers it entirely — and that assertion is the thing a later reader is entitled to disbelieve
-> and measure.
+**Which rules owe a clause is derived from the function their check runs through, not from a
+list.** Three earlier attempts answered it by enumerating rules by hand and all three were
+falsified — the round-15 audit table, then R-ERR-02's return-type scope, then R-CLEAN-04's file
+scope. A list has to be remembered; a function can be grepped, and adding a rule to one drags
+the obligation along with it.
 
-Four rules already do this and are the precedent: **R-ARCH-01** (names the two edges its grep
-cannot reach), **R-ERR-01** (records the narrowing to "no bare status return"), **R-ERR-02**
-(records both that it scans `src/core/*.h` only and which return-type spellings its pattern
-knows), **R-CLEAN-04** (records that
-`readability-magic-numbers` does not see a literal inside a `const` or `constexpr` initializer).
+| the check runs through | what that costs it | so the rule's text owes |
+|---|---|---|
+| `tidy_sources()` in `tests/test_style.sh` | reads `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` and nothing else, **whatever the rule says** | a file-scope clause, unconditionally |
+| `hits()` in `tests/test_repo_shape.sh` | runs `sed 's\|//.*\|\|'` before grepping, so it cannot see an occurrence inside a comment | a comment clause **if the rule's subject can occur in a comment**; nothing if the subject is a code construct |
+| `raw_hits()` in `tests/test_repo_shape.sh` | reads raw lines — the un-stripping counterpart | a statement that occurrences count, since choosing this scanner is itself a claim about the rule |
+| `sources()` in `tests/test_style.sh` | every tracked-or-new `.cpp`/`.h` in the repo | nothing; it is the whole set already |
 
-This phase owes that clause for **R-PROTO-05**, which had none — §Plan step 14.
+R-PROTO-05 is why the `hits`/`raw_hits` column is a claim and not a detail: its subject is a
+*reference*, which can appear in a comment, so `hits()` made it narrower than its text — and
+that is the defect that failed validation #3 on 2026-09-15.
 
-### The audit behind that rule — all 23 `test:`-bound rules, with what was found
+### The assignment, measured against the files rather than recalled
 
-Run 2026-09-15. Listed in full because naming only the broken ones would make the next reader
-redo the search.
+Produced by reading the report lines and the finder definitions out of
+`tests/test_repo_shape.sh` and the source lists out of `tests/test_style.sh`, 2026-09-15.
+Recompute with:
 
-| finding | rules |
-|---|---|
-| **Narrower than its text, and the text does not say so** | **R-PROTO-05** (`hits()` strips `//` comments before grepping, so the check cannot see a reference in a comment — the validation #3 failure); **R-STYLE-02** and **R-CLEAN-02** (`tidy_sources()` is `src/core/*.cpp`, `src/core/*.h`, `tests/*.cpp`, while both rule texts are unscoped); **R-PROC-02** (the check asserts a `done` phase has a non-empty `verify.md`; the text demands it be "written for a non-specialist" with "exact physical steps and expected readings", which no check reads); **R-ERR-03** (text says "anywhere under `src/`" and the check strips comments — the weakest of the five, since `throw`/`try`/`catch` are constructs a comment does not contain) |
-| **Narrower than its text, and the text says so** — the precedent above | R-ARCH-01, R-ERR-01, R-CLEAN-04, and R-ERR-02 — whose *second* narrowing, the return-type spellings, this audit did not find; the independent review did, and §Plan step 16 is the clause |
-| **Not narrower; checked and sound** | R-STYLE-01 (`sources()` is every tracked-or-new `.cpp`/`.h`, which is exactly what the text says); R-CLEAN-05 (uses `raw_hits`, the un-stripping scanner, precisely because it is a rule *about* comments); R-ARCH-03, R-ERR-04, R-CLEAN-03, R-CLEAN-09 (their subjects are code constructs, so stripping comments matches the text rather than narrowing it); R-ARCH-02 (the five declared layers cover all of `src/`); R-PROC-01 (its text enumerates exactly what the check does); R-SEC-01, R-TOOL-01, R-TOOL-02 (scope varies with which tool is installed, and the checks declare that with `skip:` lines the accounting property counts) |
-| **Audited in earlier rounds of this phase** | R-PROTO-02 (was narrower; widened in round 12 to cover the overlap its rule quantifies over), R-PROTO-03 and R-PROTO-04 (checked in round 12 and found sound — R-PROTO-03's text is not about interaction, and a Config clause for R-PROTO-04 is unfalsifiable because `map_frame` returns early before the whammy gate) |
+```
+grep -E 'report R-' tests/test_repo_shape.sh          # rule -> finder
+grep -E '^find_[a-z0-9]+\( \)' tests/test_repo_shape.sh   # finder -> hits | raw_hits
+grep -nE 'tidy_sources\(\)|sources\(\)' tests/test_style.sh
+```
 
-The four undeclared gaps that are **not** this phase's rules — R-STYLE-02, R-CLEAN-02, R-PROC-02
-and R-ERR-03 — are recorded in `notes.md` §For later phases with an owner. Writing their scope
-clauses is not this phase's work: it does not own those bindings, and widening someone else's
-check during a closing round is the "new work wearing a fix's clothes" this spec already refuses
-elsewhere.
+| rule | runs through | owes | text carries it |
+|---|---|---|---|
+| R-ARCH-01 | `find_arch01` / `hits` | nothing — subject is `#include` | — |
+| R-ARCH-03 | `find_arch03` / `hits` | nothing — subject is allocation calls | — |
+| R-CLEAN-03 | `find_clean03` / `hits` | nothing — subject is a declaration's name | — |
+| R-CLEAN-09 | `find_clean09` / `hits` | nothing — subject is inheritance and `virtual` | — |
+| R-ERR-01 | `find_err01` / `hits` | nothing — subject is a return type | — |
+| R-ERR-02 | `find_err02` / `hits` | nothing on this axis; its two narrowings are file scope and return-type spellings | **yes**, both |
+| R-ERR-03 | `find_err03` / `hits` | nothing — subject is `throw`/`try`/`catch`; but its text says "anywhere under `src/`", which reads wider than its subject | not this phase's rule — `notes.md` §For later phases |
+| R-ERR-04 | `find_err04` / `hits` | nothing — subject is a call | — |
+| R-CLEAN-05 | `find_clean05` / `raw_hits` | occurrences count | **yes** — it is a rule about comments |
+| R-PROTO-05 | `find_proto05` / `raw_hits` | occurrences count | **yes** — §Plan step 14 |
+| R-STYLE-01 | `sources()` | nothing | — |
+| R-STYLE-02 | `tidy_sources()` | file scope | **no** — not this phase's rule, `notes.md` §For later phases |
+| R-CLEAN-02 | `tidy_sources()` | file scope | **no** — not this phase's rule, `notes.md` §For later phases |
+| R-CLEAN-04 | `tidy_sources()` | file scope | **no** — and this phase owns the binding: §Plan step 17 |
+
+The remaining `test:`-bound rules run no scanner this table covers and are unaffected by it:
+R-PROTO-02, R-PROTO-03 and R-PROTO-04 (`tests/test_ps2_codec.py`, audited in round 12),
+R-ARCH-02 (`tests/test_boundaries.sh`), R-SEC-01 (`tests/test_secrets.sh`), R-TOOL-01 and
+R-TOOL-02 (`tests/test_tool_versions.sh`), R-PROC-01 (`tests/test_rule_traceability.py`) and
+R-PROC-02 (`tests/test_phase_docs.sh`, whose text demands content no check reads —
+`notes.md` §For later phases).
 
 ## Context pointers
 
@@ -495,6 +515,20 @@ rebuild the phase, not because they are pending.
     is `03-pio-bus`'s `clang-query` upgrade. — check: `python3 tests/test_rule_traceability.py`
     → exit 0, and R-ERR-02's entry in `docs/constraints.md` names both narrowings.
 
+17. **Owed — R-CLEAN-04 records the file scope its check has.** Touches `docs/constraints.md`.
+    R-CLEAN-04 is bound to `tests/test_style.sh` and runs through `tidy_sources()`, which reads
+    `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` and nothing else; the rule's text is
+    unscoped and records only the `const`/`constexpr` initializer blindness. By the table above
+    that is an unconditional obligation, and §Plan step 9 moved this binding from `planned:` to
+    `test:`, so the phase owns it.
+    **The clause covers both narrowings on that axis**: the file list, and `.clang-tidy`'s
+    `HeaderFilterRegex` of `src/.*`, which means no header under `tests/` is diagnosed at all.
+    The second one is bound today only through step 11's criterion, which checks that no
+    non-vector header exists rather than saying what would happen if one did.
+    — check: `python3 tests/test_rule_traceability.py` → exit 0, and
+    `grep -c 'tidy_sources\|src/core/\*' <(grep '^- \*\*R-CLEAN-04\*\*' docs/constraints.md)`
+    → 1 or more.
+
 ## Acceptance criteria
 
 ```
@@ -649,6 +683,11 @@ it are the three that cost the most when they lie.
   and that is new judgement surface in a phase that is closing, on the exact axis this phase
   has failed on four times. The literal reading needs no definition. `notes.md` §For later
   phases carries it for whoever wants to revisit it with budget to test the answer.
+- **Writing the file-scope clause for R-STYLE-02 and R-CLEAN-02** — not this phase's
+  bindings. Both run through `tidy_sources()` and owe it by the table in §What a `test:`
+  binding does and does not promise; `00-scaffold` bound them and `notes.md` §For later phases
+  carries them with an owner. This phase writes the clause for R-CLEAN-04 only, which is the
+  one of the three it moved to `test:` itself.
 - **Widening R-ERR-02's check beyond `src/core/*.h`** — no phase yet; the file-scope narrowing
   is recorded in the rule's own text and the residual hole has no caller who could ignore a
   result.

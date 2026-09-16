@@ -1402,6 +1402,48 @@ delivered the amendments without them. Three taste items recorded below.
   decision from the first.
 
 
+### Round 25 — the re-expansion. The obligation moves from a list to the function.
+
+- **What was wrong was the method, not the instance.** Three times the same conclusion was
+  falsified — the round-15 audit table, R-ERR-02's return-type scope in round 20, R-CLEAN-04's
+  file scope in round 24 — because the spec answered "which rules declare their scope" by
+  **enumerating rules by hand**. §What a `test:` binding does and does not promise now derives
+  it from the function the check runs through: `tidy_sources()` costs a file scope
+  unconditionally, `hits()` costs comment blindness, `raw_hits()` is the counterpart and costs
+  nothing. Adding a rule to one of those functions drags the obligation along, and checking the
+  conclusion is three greps rather than a memory.
+
+- **The derivation is narrower than the obvious version, and the measurement is why.** Measured
+  first: **eight** rules run through `hits()` and **none** of their texts says anything about
+  comments. The naive rule — "runs through `hits()` ⇒ owes a comment clause" — would have
+  created eight obligations. It is wrong for all eight: `hits()` strips `//` before grepping, so
+  it narrows a rule only if that rule's **subject can occur in a comment**, and the eight
+  subjects are `#include`, allocation calls, a declaration's name, inheritance, return types,
+  `[[nodiscard]]`, `throw`/`try`/`catch` and a `.value()` call — a comment contains none of
+  them. Writing the naive version would have been the fourth falsification, produced by the fix
+  for the third. `tidy_sources()` is different and that difference is the point: it narrows
+  **whatever the rule says**, so its obligation is unconditional and mechanical.
+
+- **The assignment table was produced by reading the files, not by copying the old table** —
+  the old one is the artefact that was falsified three times. Rule → finder came from the
+  `report R-` lines, finder → scanner from the `find_*` definitions, and the source lists from
+  `tests/test_style.sh`. The three greps that reproduce it are in the section.
+
+- **What the measurement found.** Three rules run through `tidy_sources()` and **none** declares
+  the file scope: R-STYLE-02, R-CLEAN-02 and R-CLEAN-04. The first two are `00-scaffold`'s
+  bindings and stay released to §For later phases, now also stated in §Out of scope so the split
+  is visible where scope is decided. **R-CLEAN-04 is this phase's** — §Plan step 9 moved it to
+  `test:` — so §Plan step 17 owes its clause, covering both narrowings on that axis: the file
+  list, and `.clang-tidy`'s `HeaderFilterRegex` of `src/.*`, which the spec previously bound
+  only through step 11's criterion.
+
+- **The override of 2026-09-15 is marked superseded in place, under its own record**, with the
+  reason its own test came due and with the iteration count corrected: the reset is tied to an
+  escape producing a new spec, and the overridden one produced none, so those rounds were
+  iterations 4 and not 1. Not deleted — the record of a decision that turned out wrong is worth
+  more than its absence.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1815,7 +1857,19 @@ Regenerating a spec that has just passed a full audit, to fix one token, is the 
 cost-benefit trade this phase has been offered.
 
 **Filed as a package gap:** the escape should be able to read the trend in front of it and not
-only the round count. `/belay-feedback` owes it along with the `contradicts` routing, the
+only the round count.
+
+> **Superseded 2026-09-15 by validation round 4 — this override was a mistake, on its own
+> terms.** The test written above was "if the next round fails on something structural, this
+> note says the override was the mistake". The next round failed on something structural:
+> R-CLEAN-04's undeclared file scope, with the spec's own audit table asserting the opposite.
+> The escape was right and the round count was not the reason it was right — the reason is that
+> the spec answered "which rules declare their scope" by enumerating them, and the enumeration
+> had been falsified twice already when this override was written. That was visible at the time
+> and was not weighed.
+> **The iteration count in the record above is also wrong.** The reset is tied to an escape
+> *producing a new spec*, not to the verdict being written; this one produced none, so the
+> rounds that followed were iterations 4, not 1. `/belay-feedback` owes it along with the `contradicts` routing, the
 `- base:` staleness trap and the operator-edit gap in the file set.
 
 
