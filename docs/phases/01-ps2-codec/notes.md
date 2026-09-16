@@ -1444,6 +1444,36 @@ delivered the amendments without them. Three taste items recorded below.
   more than its absence.
 
 
+### Round 26 — §Plan step 17. One clause, one file, measured before and after.
+
+- **The check was run before as well as after, which is what makes it a check.**
+  `grep -c 'tidy_sources\|src/core/\*'` over R-CLEAN-04's line returned **0** before the edit
+  and **1** after. A criterion only ever run after the fix cannot distinguish a fix from a rule
+  that already satisfied it.
+
+- **Both facts were read out of the files being described, not recalled.**
+  `tests/test_style.sh:68` is `tidy_sources() { $LS 'src/core/*.cpp' 'src/core/*.h'
+  'tests/*.cpp'; }`, and `.clang-tidy:33` is `HeaderFilterRegex: 'src/.*'`.
+
+- **Reading rather than recalling changed what the clause says.** `.clang-tidy`'s own comment
+  states that the regex governs the headers an analysed file *includes* and that a file passed
+  as the main file is always diagnosed. Written from memory the clause would have said "no
+  header under `tests/` is diagnosed" as a bare fact; what is true is narrower and needs both
+  files: `tidy_sources()` passes `tests/*.cpp` and never `tests/*.h`, so headers under `tests/`
+  are only ever seen as includes, and the regex is what drops them. The clause says it that way.
+
+- **Founding, checked clause by clause.** The glob list traces to `tests/test_style.sh:68`; the
+  regex to `.clang-tidy:33`; the include-versus-main-file behaviour to `.clang-tidy`'s own
+  comment; "the vectors are the deliberate case" to R-CLEAN-04's pre-existing text, which
+  already names them as the rule's sole exception; and "which is why `01-ps2-codec` binds a
+  criterion asserting there are none" to §Plan step 11's criterion. Nothing rests on the
+  amendment that wrote it.
+
+- **Nothing else was touched.** `docs/constraints.md` only, one rule line. `make test` **OK**
+  in **2:38**, `make lint` 0, `python3 tests/test_rule_traceability.py` exit 0, and
+  `accounting: test_style.sh` still reports its four rules.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
