@@ -1355,6 +1355,53 @@ delivered the amendments without them. Three taste items recorded below.
 - **Nothing else was touched.** One token, its generalisation, and the record.
 
 
+### Round 24 — one `contradicts`, structural, and it meets the condition the override wrote for itself.
+
+- **The finding, verified in four places.** §What a `test:` binding does and does not promise
+  states the convention — *the phase that moves a rule from `planned:` to `test:` writes, in
+  the rule's own text, what the check does not see* — and its audit table puts **R-CLEAN-04**
+  in the row "**Narrower than its text, and the text says so**". Measured:
+  1. R-CLEAN-04's text in `docs/constraints.md` records exactly one gap, the `const`/`constexpr`
+     initializer blindness, plus the `tests/vectors/` exception to the *rule*. **It records no
+     file scope.**
+  2. `tests/test_style.sh:68` — `tidy_sources() { $LS 'src/core/*.cpp' 'src/core/*.h'
+     'tests/*.cpp'; }`.
+  3. `tests/test_style.sh:110-115` — R-STYLE-02, R-CLEAN-02 **and R-CLEAN-04** all run through
+     that same function.
+  4. The spec's own row 1 faults R-STYLE-02 and R-CLEAN-02 for precisely this: "`tidy_sources()`
+     is `src/core/*.cpp`, `src/core/*.h`, `tests/*.cpp`, while both rule texts are unscoped."
+  R-CLEAN-04's text is unscoped in the identical way and runs through the identical function,
+  so by the spec's own row-1 criterion it belongs in row 1 — and the table asserts row 2. The
+  spec contradicts itself, and R-CLEAN-04 is a binding **this phase owns**: §Plan step 9 moved
+  it from `planned:` to `test:`, so the convention obliges the clause.
+  The reviewer also names a second undeclared narrowing on the same rule: `.clang-tidy`'s
+  `HeaderFilterRegex` moved `(src|tests)/.*` → `src/.*`, so no header under `tests/` is
+  diagnosed at all. The spec binds the *consequence* through step 11's criterion and never the
+  rule text.
+
+- **This is not a typo, and that matters for what happens next.** It is the third time the
+  audit table written in round 15 has itself been wrong: R-ERR-02's return-type narrowing
+  (found by review in round 20), and now R-CLEAN-04's file scope. The audit's own conclusion —
+  which rules declare their scope — is the thing that keeps being falsified, and it is the
+  class this phase has paid for repeatedly.
+
+- **The escape condition is met again, and the override wrote the test for itself.** The
+  2026-09-15 override is recorded above with this sentence: *"si la ronda que viene falla con
+  algo estructural, esta anotación es lo que le dice a la próxima sesión que la anulación fue
+  un error."* The next round failed on something structural. That is the operator's own
+  criterion, not this gate reinterpreting it, and it is why the escape is fired rather than
+  reported: the command mandates it at iteration 3+, and the recorded condition for not
+  overriding it a second time is satisfied.
+  **Iteration count, stated because the mechanical count is misleading here.** The rule resets
+  the counter at an `escaped to /expand-phase` verdict "because the escape's own output is a
+  new spec". The 2026-09-15 escape produced no new spec — it was overridden — so the reset's
+  justification does not hold and this is **iteration 4 against the same spec**, not iteration 1.
+  Status moved `in-progress` → `pending` by `/validate-phase`.
+  The operator may override again; the point of this entry is that the second override would
+  be made against a structural finding rather than a section reference, which is a different
+  decision from the first.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1906,3 +1953,49 @@ iteration-3+ escape fires.
   `/validate-phase`.
 - verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` →
   `pending` by this command.
+
+## Validation — 2026-09-15 (round 4 against the second re-expanded spec)
+
+**Iteration 4**, not 1. The counter resets at an `escaped to /expand-phase` verdict because
+"the escape's own output is a new spec"; the 2026-09-15 escape was overridden and produced no
+new spec, so the reset does not apply and the three rounds before this one still count.
+
+- **file set, checked first.** `- base:` names `24d489f`, a real commit; 36 files against the
+  working tree; no path from `.claude/workflow/installed` inside it.
+- criteria: **21 passed / 0 failed.** `make test` **OK** in **2:07** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers,
+  `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, 3 markers, both ADRs, driver exit 0,
+  accounting 3 and 4 rule(s), `wiring cases: 10/10`, `false-positive cases: 20 (floor 20)`,
+  `rejection cases: 64`, `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0.
+  Round 23's fix re-verified by reading `verify.md` itself: the section carrying the marker
+  count is "What this phase does NOT prove", and that is what §Goal now names. M1-M3 are the
+  driver's rejection cases (`3/3`); **M4 run by hand**, exit 1 with the expected message.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (36 files, 9 under `src/core/`; 13 active `deny` rules). One path
+  per argument through `xargs`, proved live: `#include "src/hal/bus_io.h"` in
+  `src/core/link.cpp` is caught as `deny core -> hal`, file restored identical.
+- index: **fresh without rebuilding** — `37614b4` touched no source files.
+- independent review: **contradicts: 1** — the spec's audit table places **R-CLEAN-04** in
+  "Narrower than its text, and the text says so", but R-CLEAN-04's text records only the
+  `const`-initializer gap and no file scope, while its check runs through the same
+  `tidy_sources()` (`src/core/*.cpp`, `src/core/*.h`, `tests/*.cpp`) that the spec's row 1 uses
+  to fault R-STYLE-02 and R-CLEAN-02. By the spec's own criterion R-CLEAN-04 belongs in row 1;
+  the table says row 2. R-CLEAN-04 is a binding this phase owns (§Plan step 9), so the
+  convention obliges the clause. A second undeclared narrowing on the same rule:
+  `.clang-tidy`'s `HeaderFilterRegex` moved `(src|tests)/.*` → `src/.*`, which the spec binds
+  only through step 11's criterion and never in the rule text. **undecidable: none** — the
+  reviewer verified every claim the spec makes about another file, including the one round 23
+  fixed, `verify.md` §3's six predicted `FAIL:` lines in order, the case labels quoted by Plan
+  steps 5 and 12, the 64/20/10 distributions summing exactly, and both `docs/index/` line
+  counts. Three taste items in §Deviations.
+- closure test: **fail** — a `contradicts`, and the spec's self-contradiction is the finding.
+- upstream: **none** in the file set. `/belay-feedback` owes the `contradicts` routing, the
+  `- base:` staleness trap, the operator-edit gap, the escape reading round count rather than
+  trend, and the three workarounds in §Notes to `/validate-phase`.
+- verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` →
+  `pending` by this command. Fired rather than reported because the 2026-09-15 override
+  recorded its own test — "if the next round fails on something structural, this note says the
+  override was a mistake" — and this round failed on something structural.
