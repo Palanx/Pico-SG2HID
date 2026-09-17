@@ -44,9 +44,9 @@ enum class DecodeStatus : std::uint8_t {
 // than written down, so adding an id with a longer payload cannot leave this behind.
 constexpr std::size_t kMaxPayloadLen = payload_len( ControllerId::Analog );
 
-// A frame that decoded. Plain data, comparable as a whole, and carrying no length of its
-// own: how many payload bytes are meaningful is `payload_len( id )`, so the two can never
-// disagree. Bytes past that point are zero, not whatever the buffer held.
+// A frame that decoded. Plain data, carrying no length of its own: how many payload bytes are
+// meaningful is `payload_len( id )`, so the two can never disagree. Bytes past that point are zero,
+// not whatever the buffer held.
 struct Ps2Frame {
     ControllerId                             id;
     std::array<std::uint8_t, kMaxPayloadLen> payload;

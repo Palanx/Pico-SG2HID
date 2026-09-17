@@ -9,8 +9,8 @@
   the independent review and the closure test would all have reported `pass` having examined
   zero files. `24d489f` is `chore(belay): update workflow package to f001884`, the commit the
   branch came off and the last one before any of this phase's work. `git diff 24d489f` against
-  the working tree is the phase's diff, 34 files, and no path in `.claude/workflow/installed`
-  falls inside it.
+  the working tree is the phase's diff — 34 files when this line was corrected, 36 as of
+  2026-09-16 — and no path in `.claude/workflow/installed` falls inside it.
 
 `src/core/` now exists and holds the whole protocol brain, with no hardware anywhere in it.
 Five header/implementation pairs, all compiling and running under `make test` on the laptop
@@ -25,9 +25,9 @@ with only a C++23 compiler and `python3`:
 | `src/core/hid_report.h/.cpp` | `Button`, `HidReport`, `build_report`, and the byte layout `08-usb-hid` writes its descriptor from |
 
 Tests: **ten** hand-written vector headers under `tests/vectors/` (plus a `README.md` there
-explaining why they are hand-written), `tests/ps2_codec_cases.cpp` with **28** case functions
+explaining why they are hand-written), `tests/ps2_codec_cases.cpp` with **33** case functions
 and 3 rule functions (26 + 3 through round 4; round 7 added the link-uniformity case, round 11
-the refusal-precedence case), and `tests/test_ps2_codec.py` as the single driver — it compiles the cases
+the refusal-precedence case, round 28 the cut-before-the-ready-slot case and four `link:` cases), and `tests/test_ps2_codec.py` as the single driver — it compiles the cases
 against the real `src/core/`, runs them, forwards their lines, and carries three mutation
 rejection cases.
 
@@ -48,7 +48,8 @@ Rule work, all seven settled — `grep -c 'planned: 01-ps2-codec' docs/constrain
 | R-ERR-02 | → `test: tests/test_repo_shape.sh` |
 | R-CLEAN-04 | → `test: tests/test_style.sh` |
 
-New decision record: `docs/adr/0011-pure-link-step.md`. Operator document:
+New decision records: `docs/adr/0011-pure-link-step.md` and
+`docs/adr/0012-decode-status-carries-decode-outcomes-only.md`. Operator document:
 `docs/phases/01-ps2-codec/verify.md`.
 
 Acceptance, measured: `make test` **OK**, `real` between **1:40 and 2:18** across this
@@ -57,7 +58,7 @@ and the phase adds C++ compiles plus a third mutation-running check — the spre
 thread pool, not drift). `make lint` **0**, `planned: 01-ps2-codec` **0**,
 `planned: 03-pio-bus` **4**, **10** vector headers, 0 hits for `tests/vectors` under `src/`,
 0 hits for `.value()`, 3 `TODO(09-guitar-observe)` markers, one ADR-0011 file, one ADR-0012
-file, driver exit 0 with **32** `ok:` lines (30 through round 4, 31 through round 7), `accounting: test_ps2_codec.py 3 rule(s)`,
+file, driver exit 0 with **37** `ok:` lines (30 through round 4, 31 through round 7, 32 through round 27), `accounting: test_ps2_codec.py 3 rule(s)`,
 `accounting: test_style.sh 4 rule(s)`, `wiring cases: 10/10`, `rejection cases: 64`,
 `false-positive cases: 20 (floor 20)`, `neutered: 33/33`,
 `alternations: 64/64`, `test_phase_docs.sh` 0. All four §Acceptance-criteria mutation blocks
@@ -1505,6 +1506,118 @@ delivered the amendments without them. Three taste items recorded below.
   one local.
 
 
+### Round 28 — five `contradicts`, three `undecidable`: two generalised, one measured, one discarded.
+
+Input: the independent review of 2026-09-16 (recorded under that validation below). The same
+session that produced the review ran this round, so it cannot be the next reviewer; see the
+validation addendum.
+
+- **Contradicts 1 — the assignment table read "no" for R-CLEAN-04 after step 17 landed the
+  clause.** Fixed in the table (now `yes`, steps 17 and 20). **Same fact, checked before closing:**
+  step 17's prose said "the rule's text is unscoped" in the present tense — now "before this step
+  … was". §Out of scope's R-STYLE-02/R-CLEAN-02 bullet and §What a `test:` binding promise are
+  still true. The whole "text carries it" column was then re-read out of `docs/constraints.md`
+  instead of carried forward, which is what the table claims to be.
+
+- **Contradicts 2 — "Steps 10 and 11 are the only work owed" with steps 12-17 landed.** Rewritten:
+  every step is landed, 18-22 added by this round. **Same fact, checked before closing:** the same
+  paragraph's "three validation rounds have run" (dropped, not recounted — a count of rounds in
+  the spec is one more thing to go stale); the header comment's "Re-expanded 2026-09-14 … code
+  from rounds 1-4" (now names all three re-expansions, dates from `git log`); §Context pointers'
+  "the account of rounds 1-6 and of three validation rounds" (now uncounted).
+
+- **Contradicts 3 — "two package workarounds" titling three.** Retitled and split by upstream
+  state, read from sources rather than assumed: 1 and 2 are fixed in 792e9d9 (round 6 above); 3
+  is the `- base:` staleness entry dated 2026-09-15 in `~/.claude-belay/feedback/pico-sg2hid.md`
+  with no fix recorded. **Same fact, checked:** "Neither is a fact … Both are defects … already
+  fixed upstream" and "re-emit it" were in the same section and are rewritten with it; nothing
+  else in the spec, `CLAUDE.md` or `verify.md` counts the workarounds.
+
+- **Contradicts 4 — step 10's check claimed any source-state mutation fails `R-PROTO-02`.**
+  **Generalised before fixing, and the measurement changed the diagnosis.** Property: *a rule line
+  stays green only while its rule holds*. Enumeration — every mutation point behind the three rule
+  lines, each applied alone in a scratch copy, `FAIL:` lines recorded:
+
+  | mutant | lines that failed before this round |
+  |---|---|
+  | each of 6 outcomes × 4 sources sent to a wrong target (24) | uniformity 24/24; `R-PROTO-02` 7 (4 `AckTimeout`, 3 good frames from `Absent` via its set-up); 17 fail nothing else |
+  | each outcome from **every** source at once (6) | `NotReady` **survived everything**; the others hit a per-outcome case |
+  | delete the size-below-prefix check | **survived everything** |
+  | delete the ready check | `not_ready` case |
+  | length check uses `kPrefixLen` (M3) | `R-PROTO-02` + 3 cases |
+  | unknown id → `Analog`; → `Config` | `R-PROTO-03` + 2 cases, each |
+  | controls gate admits `Config` | `config_mode` controls case |
+  | whammy gate `id != Digital` | survived — equivalent, recorded in round 12 / step 13 |
+  | timeout `>=`; entering elapsed counted; good frame clears `last_fault`; `NotReady` recorded as `AckTimeout` | **survived everything**, all four |
+  | counter wraps | survived — §Debt, unasserted by decision |
+
+  **What that says about the finding, stated as a correction:** the step-10 sentence was an
+  overclaim, not a green rule line over a broken rule. The 17 transitions it wrongly credited to
+  `R-PROTO-02` are on a good frame, `UnknownId` or `NotReady`, and no rule's text covers them —
+  §The link's table does, and the uniformity case caught all 17. The spec sentence is fixed with
+  the measured table (step 10). **The real instance of the class was elsewhere and the enumeration
+  found it:** deleting the prefix check made a lone undeclared header report `UnknownId` instead of
+  the abort, every line green — that one is the fifth, and step 18 fixes it with a case and a
+  `rule_proto02` clause over `kUnknownId`'s first byte. The spec's "Four times" became "Five times".
+  `CLAUDE.md`'s "measured four times" is the operator's text and was **not** edited.
+  **Same fact, checked:** §Goal's precedence item 1 said "Nothing else is knowable yet", false for
+  one byte — rewritten as a choice; the sentence introducing the list said "the earliest decidable
+  one wins", which item 1 contradicts — rewritten; step 13's "every overlap still reports
+  `UnknownId`" — scoped to refusals below it; `src/core/ps2_frame.cpp`'s "there is no header to
+  read" — rewritten. `verify.md` §3's six predicted `FAIL:` lines for M1 were re-run in a `cp -a`
+  copy and are unchanged, so it was not touched. After the round every mutant in the table fails
+  at least one line except the two already declared.
+  **Deviation:** `rule_proto02` then exceeded R-CLEAN-02's 60 lines (`make test` failed, the edit
+  hook had passed it); its source-state clause moved to `cut_drops_the_link_from_every_source`,
+  re-measured live afterwards.
+
+- **Contradicts 5 — `find_err01` misses `static`/`inline` returns.** **Generalised:** the scanner
+  table derived obligations from the scanner *function* and never from the pattern, and every
+  regex has spellings it does not match — the fourth falsification of "which rules owe a clause",
+  and the first of the function-derived method. The table gained a row: every `find_*` owes a
+  spelling clause, unconditionally. Enumeration over all ten finders: seven are `00-scaffold`'s
+  bindings (R-ARCH-01, R-ARCH-03, R-CLEAN-03, R-CLEAN-05, R-CLEAN-09, R-ERR-03, R-ERR-04) —
+  released in §Out of scope, **not measured**, so no form is claimed for them; three are this
+  phase's and were measured one line per form: R-ERR-01 (10 forms missed), R-ERR-02 (9 missed plus
+  a false positive on `[[nodiscard]]` on the preceding line), R-PROTO-05 (4 missed, a relative
+  `../../tests/vectors` caught). R-PROTO-05's existing clause said it stated "what is given up"
+  and gave only the over-strict half. **Checked before writing "none occurs today":** a grep for
+  every missed form over `src/` returns a parameter, a local and a `.cpp` definition — no return;
+  and nothing passes `-Itests`.
+
+- **Undecidable 1 — four §The link behaviours asserted by nothing.** By operator decision, four
+  cases (step 21), each killed its mutant from the table above. The spec's saturation "Nothing
+  asserts it" is still true and unchanged.
+
+- **Undecidable 2 — claims about `notes.md` and `00-scaffold/notes.md`.** **Discarded, and not
+  as a spec gap:** the reviewer was denied those files by construction (`/validate-phase` step 5),
+  so "could not open the file I was forbidden to open" is the starvation working, not a missing
+  pointer. The pointers exist; a reviewer with the files could check them.
+
+- **Undecidable 3 — `HeaderFilterRegex` unanchored.** **Measured, not argued:** two clones of
+  HEAD, one at a path with no `src/`, one under `…/scratchpad/src/pico-sg2hid`. Unmodified, both
+  `make lint` 0 — which proves nothing, since the vectors' literals are `constexpr` and not
+  diagnosed anyway. With `inline int BadProbeName = 0;` planted in
+  `tests/vectors/digital_idle.h`: exit 0 at the plain path, exit 2 under `src/` with
+  `invalid case style for variable 'BadProbeName'` on the absolute path. **Real.** R-CLEAN-04's
+  text records it (step 20). **Same fact, checked:** `.clang-tidy`'s comment ("naming src/
+  excludes them") — qualified; spec steps 11 and 17 — qualified. `verify.md` does not state it.
+  `ExcludeHeaderFilterRegex` exists in the installed clang-tidy (`--help`, LLVM 23.1.0) and would
+  close it; not applied, it was not asked for — §For later phases.
+
+- **Aside — comments asserting code that does not exist.** `Fret`'s comment (`frets`,
+  `ControllerFret`, and the claim that the indexing keeps the HID descriptor in step) and
+  "comparable as a whole" on `GuitarState`/`Ps2Frame`. **Generalised:** every backticked and every
+  CamelCase/snake_case identifier in comments across `src/core/`, `tests/ps2_codec_cases.cpp`,
+  `tests/test_ps2_codec.py` and `tests/vectors/` checked against the code by script; the remaining
+  unmatched names are bus lines, ADR-retired sketches, a cited rejected name and proper nouns.
+  Taste items from the review are in §For later phases, untouched.
+
+- **Acceptance after the round:** all 21 criteria pass; `make test` **OK** in **1:39**, `make lint`
+  0, driver 37 `ok:` lines, 3/3 rejection cases. Steps 18-22's own checks pass. M4 not re-run
+  here — it is the validator's.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1652,6 +1765,28 @@ delivered the amendments without them. Three taste items recorded below.
 
 - **Whoever runs `/refresh-index`** — `docs/index/` predates `src/core/` entirely and is stale
   as of this phase.
+
+- **Whoever next touches `tests/test_repo_shape.sh` or `00-scaffold`'s bindings** — seven
+  grep-bound rules owe a spelling clause by `spec.md` §What a `test:` binding does and does not
+  promise and were **not measured** in `01-ps2-codec`: R-ARCH-01, R-ARCH-03, R-CLEAN-03,
+  R-CLEAN-05, R-CLEAN-09, R-ERR-03, R-ERR-04. The method is cheap and is in round 28: extract
+  the finder, feed it one line per spelling, record what it misses in the rule's own text.
+
+- **Whoever next touches `.clang-tidy`** — `HeaderFilterRegex: 'src/.*'` is matched against the
+  absolute path, so lint's reach into `tests/` headers depends on whether the checkout path
+  contains `src/` (measured 2026-09-16, R-CLEAN-04's text). It reaches R-STYLE-02 and R-CLEAN-02
+  the same way. `ExcludeHeaderFilterRegex` is supported by the installed LLVM 23.1.0 and would
+  make the vectors' exclusion path-independent; nothing was changed because nothing asked for it.
+
+- **Operator — `CLAUDE.md` §Conventions check 1** says a green rule line over a violated rule was
+  "measured four times here". Round 28 measured a fifth (the prefix check). The file is the
+  operator's and was not edited.
+
+- **Taste from validation 2026-09-16, recorded and not fixed (step 5):** `kButtonCount = 10` is a
+  literal not tied to `enum class Button`, though `spec.md` says the layout constants are "derived
+  from each other"; `tests/vectors/unknown_id.h` cites a section of the spec ("§Goal's
+  precedence") from a test file; `rule_proto02`'s comment narrates its clauses as a history
+  ("Three claims… fourth… fifth… sixth") rather than stating what it asserts now.
 
 ## Validation — 2026-09-11
 - criteria: 16 passed / 0 failed
@@ -2169,3 +2304,21 @@ verdict, and that escape **did** produce a new spec, so the reset applies.
   `in-progress` pending the review, which the command's step 5 offers two ways to obtain — the
   operator pastes a three-input review from a fresh session, or this one is re-dispatched after
   the limit resets.
+
+### Addendum 2026-09-16 — the independent review, obtained after the rate limit
+
+- independent review: **contradicts: 5** — (1) the assignment table read "no" for R-CLEAN-04's
+  scope clause, which the catalogue carries; (2) §Plan said steps 10-11 were the only work owed
+  with 12-17 landed; (3) "two package workarounds" titled three; (4) step 10's check claimed any
+  source-state mutation fails `R-PROTO-02`, true only for `AckTimeout`; (5) `find_err01` misses
+  `static`/`inline` returns and R-ERR-01's text does not say so. **undecidable: 3** — (1) four
+  §The link behaviours neither asserted nor declared unasserted; (2) claims about `notes.md`
+  files withheld from the reviewer; (3) `HeaderFilterRegex` unanchored, low confidence, not
+  verified. Three factual comment errors and three taste items listed apart.
+- **How it was obtained, stated because it limits the next one.** It ran with exactly the three
+  inputs step 5 prescribes and nothing else — `notes.md` was not opened. It ran in the session
+  that then implemented round 28, so that session holds this phase's context and **must not**
+  produce the next review; the next one is a fresh agent or the operator's fresh session.
+- closure test: **fail** — five `contradicts`, and `undecidable` 1 and 3 are missing pointers.
+- verdict: **returned to implementation.** Iteration 1 against the def180c spec; the next
+  validation is iteration 2, below the escape threshold.

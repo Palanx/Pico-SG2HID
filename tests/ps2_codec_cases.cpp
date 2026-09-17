@@ -267,6 +267,21 @@ constexpr std::uint8_t kZeroFill = 0x00;
                    "truncated_not_ready: a cut-short frame reports the abort, not NotReady" );
 }
 
+// The first refusal in §Goal's order: a frame cut short before the ready slot. One byte is
+// already enough to decide the header, so an undeclared one is what makes this the case where
+// the abort has to outrank UnknownId. The input is the first byte of unknown_id's literal —
+// what the bus delivers when it stops after the header — and the expected value is a status,
+// not a byte, so nothing here is generated (R-PROTO-05).
+[[nodiscard]] bool case_cut_before_the_ready_slot_reports_the_abort() {
+    const std::span<const std::uint8_t> header_only =
+        std::span<const std::uint8_t>{ vectors::kUnknownId }.first( ps2::kReadyIndex );
+
+    const auto frame = ps2::decode( header_only );
+
+    const bool is_ok = !frame.has_value() && frame.error() == ps2::DecodeStatus::AckTimeout;
+    return report( is_ok, "cut before the ready slot: reports the abort, even for an unknown id" );
+}
+
 // --- the link state machine -------------------------------------------------------------
 // Pure transitions over a decode outcome and an elapsed duration (ADR-0011), so these need no
 // clock and no bus — which is the whole reason the signature changed.
@@ -408,6 +423,77 @@ constexpr std::uint32_t kOnePollUs = 1000;
     }
 
     return report( is_uniform, "link: the target of a transition depends on the outcome alone" );
+}
+
+// The uniformity case asserts the four targets are equal and the cases above each assert one
+// row from one source, which leaves the NotReady row asserted by nothing: a `step` sending
+// NotReady to the same wrong state from every source passes both. Started from a streaming
+// link so the drop is a real transition, and the cause is checked as well as the target.
+[[nodiscard]] bool case_link_not_ready_drops_and_records_why() {
+    ps2::Link                           link{};
+    const std::span<const std::uint8_t> good{ vectors::kDigitalIdle };
+    const std::span<const std::uint8_t> not_ready{ vectors::kNotReady };
+    const ps2::LinkState streaming = ps2::step( link, ps2::decode( good ), kOnePollUs );
+
+    const ps2::LinkState now = ps2::step( link, ps2::decode( not_ready ), kOnePollUs );
+
+    const bool is_ok = streaming == ps2::LinkState::DigitalStreaming &&
+                       now == ps2::LinkState::Absent &&
+                       link.last_fault == ps2::FaultCause::NotReady;
+    return report( is_ok, "link: a wrong ready byte drops the link and records NotReady" );
+}
+
+// last_fault is history: the cause of the most recent drop, kept after the link recovers,
+// because that is exactly when trace mode prints it.
+[[nodiscard]] bool case_link_good_frame_keeps_the_last_fault() {
+    ps2::Link                           link{};
+    const std::span<const std::uint8_t> cut{ vectors::kTruncatedAck };
+    const std::span<const std::uint8_t> good{ vectors::kDigitalIdle };
+    const ps2::LinkState                dropped = ps2::step( link, ps2::decode( cut ), kOnePollUs );
+
+    const ps2::LinkState recovered = ps2::step( link, ps2::decode( good ), kOnePollUs );
+
+    const bool is_ok = dropped == ps2::LinkState::Absent &&
+                       recovered == ps2::LinkState::DigitalStreaming &&
+                       link.last_fault == ps2::FaultCause::AckTimeout;
+    return report( is_ok, "link: a good frame after a drop keeps the fault that caused it" );
+}
+
+// The bound is exclusive: exactly kNegotiationTimeoutUs in Negotiating is still negotiating,
+// and one microsecond more is not. The timeout case above crosses the bound by a whole budget,
+// which a `>=` passes just as well.
+[[nodiscard]] bool case_link_negotiation_bound_is_exclusive() {
+    constexpr std::uint32_t kOneMicrosecond = 1;
+
+    ps2::Link                           link{};
+    const std::span<const std::uint8_t> config{ vectors::kConfigMode };
+    const ps2::LinkState entered = ps2::step( link, ps2::decode( config ), kOnePollUs );
+
+    const ps2::LinkState at_bound =
+        ps2::step( link, ps2::decode( config ), ps2::kNegotiationTimeoutUs );
+    const ps2::LinkState past_bound = ps2::step( link, ps2::decode( config ), kOneMicrosecond );
+
+    const bool is_ok = entered == ps2::LinkState::Negotiating &&
+                       at_bound == ps2::LinkState::Negotiating &&
+                       past_bound == ps2::LinkState::Absent;
+    return report( is_ok, "link: exactly kNegotiationTimeoutUs in config mode is not yet past it" );
+}
+
+// The elapsed time handed to the step that ENTERS a state passed before the transition, so it
+// belongs to the state being left. A long silence before the first config-mode frame must not
+// count against the negotiation it precedes.
+[[nodiscard]] bool case_link_time_before_entering_is_not_counted() {
+    ps2::Link                           link{};
+    const std::span<const std::uint8_t> config{ vectors::kConfigMode };
+    const ps2::LinkState                entered =
+        ps2::step( link, ps2::decode( config ), ps2::kNegotiationTimeoutUs );
+
+    const ps2::LinkState next = ps2::step( link, ps2::decode( config ), kOnePollUs );
+
+    const bool is_ok =
+        entered == ps2::LinkState::Negotiating && next == ps2::LinkState::Negotiating;
+    return report( is_ok,
+                   "link: time before entering Negotiating does not count toward its timeout" );
 }
 
 // --- the HID report ---------------------------------------------------------------------
@@ -567,37 +653,14 @@ constexpr std::uint32_t kOnePollUs = 1000;
                    "R-PROTO-04 (the whammy is read only from an analog frame; otherwise rest)" );
 }
 
-[[nodiscard]] bool rule_proto02() {
-    ps2::Link                           link{};
-    ps2::Link                           overlap_link{};
-    const std::span<const std::uint8_t> cut{ vectors::kTruncatedAck };
-    const std::span<const std::uint8_t> cut_and_idle{ vectors::kTruncatedNotReady };
-    const std::span<const std::uint8_t> whole{ vectors::kDigitalIdle };
-
-    const auto           refused  = ps2::decode( cut );
-    const ps2::LinkState now      = ps2::step( link, refused, kOnePollUs );
-    const auto           overlap  = ps2::decode( cut_and_idle );
-    const ps2::LinkState now_too  = ps2::step( overlap_link, overlap, kOnePollUs );
-    const auto           accepted = ps2::decode( whole );
-
-    // Three claims, and the rule is all three: no frame comes out of a cut-short read, the
-    // reason names the bus event, and the link transitions to Absent rather than reporting a
-    // failed call. The fourth clause keeps a decoder that refused everything from passing.
-    //
-    // The fifth is the one this rule line was missing until 2026-09-15, and it is not an extra
-    // case bolted on: R-PROTO-02 says a cut-short frame reports the abort, with no exception
-    // for frames that are ALSO wrong some other way. Exercising truncation only where no other
-    // refusal competes leaves the rule line green while the rule is broken by the order of two
-    // `if`s — measured, and the reason this clause exists. `truncated_not_ready` is cut short
-    // and carries 0xFF at the ready slot, so it is the configuration where the abort has to
-    // outrank something.
-    // Sixth clause, added 2026-09-15 for the same reason as the fifth: the rule says the link
-    // transitions to Absent and does not qualify the source state, but every step above starts
-    // from a fresh (Absent) link. A `step` that sent a cut-short frame somewhere else from ONE
-    // source state would break the rule and leave this line green — measured, not supposed.
-    // The four source states are the four LinkState members, so the claim is asserted over all
-    // of them. This is not the uniformity case restated: that one asserts the four targets are
-    // EQUAL, this one asserts what they equal.
+// Sixth clause of rule_proto02, a function of its own only to keep that one under the size
+// limit (R-CLEAN-02). The rule says the link transitions to Absent and does not qualify the
+// source state, but every other step in the rule line starts from a fresh (Absent) link. A
+// `step` that sent a cut-short frame somewhere else from ONE source state would break the rule
+// and leave the line green — measured, not supposed. The four source states are the four
+// LinkState members, so the claim is asserted over all of them. This is not the uniformity case
+// restated: that one asserts the four targets are EQUAL, this one asserts what they equal.
+[[nodiscard]] bool cut_drops_the_link_from_every_source( std::span<const std::uint8_t> cut ) {
     ps2::Link                           from_digital{};
     ps2::Link                           from_analog{};
     ps2::Link                           from_negotiating{};
@@ -611,17 +674,53 @@ constexpr std::uint32_t kOnePollUs = 1000;
             ps2::LinkState::AnalogStreaming &&
         ps2::step( from_negotiating, ps2::decode( config_frame ), kOnePollUs ) ==
             ps2::LinkState::Negotiating;
-    const bool drops_from_every_source =
-        sources_reached &&
-        ps2::step( from_digital, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
-        ps2::step( from_analog, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
-        ps2::step( from_negotiating, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent;
 
+    return sources_reached &&
+           ps2::step( from_digital, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
+           ps2::step( from_analog, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
+           ps2::step( from_negotiating, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent;
+}
+
+[[nodiscard]] bool rule_proto02() {
+    ps2::Link                           link{};
+    ps2::Link                           overlap_link{};
+    const std::span<const std::uint8_t> cut{ vectors::kTruncatedAck };
+    const std::span<const std::uint8_t> cut_and_idle{ vectors::kTruncatedNotReady };
+    const std::span<const std::uint8_t> whole{ vectors::kDigitalIdle };
+
+    const auto           refused     = ps2::decode( cut );
+    const ps2::LinkState now         = ps2::step( link, refused, kOnePollUs );
+    const auto           overlap     = ps2::decode( cut_and_idle );
+    const ps2::LinkState now_too     = ps2::step( overlap_link, overlap, kOnePollUs );
+    const auto           accepted    = ps2::decode( whole );
+    const auto           header_only = ps2::decode(
+        std::span<const std::uint8_t>{ vectors::kUnknownId }.first( ps2::kReadyIndex ) );
+
+    // Three claims, and the rule is all three: no frame comes out of a cut-short read, the
+    // reason names the bus event, and the link transitions to Absent rather than reporting a
+    // failed call. The fourth clause keeps a decoder that refused everything from passing.
+    //
+    // The fifth is the one this rule line was missing until 2026-09-15, and it is not an extra
+    // case bolted on: R-PROTO-02 says a cut-short frame reports the abort, with no exception
+    // for frames that are ALSO wrong some other way. Exercising truncation only where no other
+    // refusal competes leaves the rule line green while the rule is broken by the order of two
+    // `if`s — measured, and the reason this clause exists. `truncated_not_ready` is cut short
+    // and carries 0xFF at the ready slot, so it is the configuration where the abort has to
+    // outrank something.
+    //
+    // The sixth, added 2026-09-15, is cut_drops_the_link_from_every_source above.
+    //
+    // The seventh, added 2026-09-16: a frame cut short before the ready slot. Without it the
+    // first refusal in §Goal's order was asserted by nothing — deleting that check made an
+    // undeclared header that arrived alone report UnknownId instead of the abort, and every
+    // line stayed green. Measured by mutating each refusal and each transition in turn, not
+    // only the one already known to be covered.
     const bool is_ok = !refused.has_value() && refused.error() == ps2::DecodeStatus::AckTimeout &&
                        now == ps2::LinkState::Absent && !overlap.has_value() &&
                        overlap.error() == ps2::DecodeStatus::AckTimeout &&
-                       now_too == ps2::LinkState::Absent && drops_from_every_source &&
-                       accepted.has_value();
+                       now_too == ps2::LinkState::Absent &&
+                       cut_drops_the_link_from_every_source( cut ) && !header_only.has_value() &&
+                       header_only.error() == ps2::DecodeStatus::AckTimeout && accepted.has_value();
     return report( is_ok,
                    "R-PROTO-02 (a cut-short frame yields no frame and the link goes Absent)" );
 }
@@ -641,6 +740,7 @@ int main() {
     is_ok = case_truncated_ack() && is_ok;
     is_ok = case_not_ready() && is_ok;
     is_ok = case_truncated_and_not_ready_reports_the_abort() && is_ok;
+    is_ok = case_cut_before_the_ready_slot_reports_the_abort() && is_ok;
 
     is_ok = case_digital_idle_maps_to_nothing_pressed() && is_ok;
     is_ok = case_digital_pressed_maps_one_fret_and_one_strum() && is_ok;
@@ -657,6 +757,10 @@ int main() {
     is_ok = case_link_drops_from_streaming() && is_ok;
     is_ok = case_link_negotiation_times_out() && is_ok;
     is_ok = case_link_target_depends_on_the_outcome_alone() && is_ok;
+    is_ok = case_link_not_ready_drops_and_records_why() && is_ok;
+    is_ok = case_link_good_frame_keeps_the_last_fault() && is_ok;
+    is_ok = case_link_negotiation_bound_is_exclusive() && is_ok;
+    is_ok = case_link_time_before_entering_is_not_counted() && is_ok;
 
     is_ok = case_report_gives_every_button_its_own_bit() && is_ok;
     is_ok = case_report_idle_is_all_zero_buttons() && is_ok;

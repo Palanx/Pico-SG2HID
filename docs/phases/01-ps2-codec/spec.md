@@ -1,9 +1,11 @@
 # Phase 01-ps2-codec — Pure PS2 frame codec, id table, link state machine, button/axis map, HID report builder
 
-<!-- Re-expanded 2026-09-14 after /validate-phase's iteration-3+ escape. The code from
-     rounds 1-4 is on disk and green; this spec is derived from the PHASES.md row's Goal and
-     from notes.md, never from that code. Where the two disagree, §Plan says so and the code
-     is what changes. notes.md is the account of how we got here and is not rewritten. -->
+<!-- Re-expanded three times after /validate-phase's iteration-3+ escape: 2026-09-14, and
+     twice on 2026-09-15 (c159aef, def180c). Each re-expansion was derived from the PHASES.md
+     row's Goal and from notes.md, never from the code on disk; where the two disagree, §Plan
+     says so and the code is what changes. Steps 18-22 were added in place on 2026-09-16 by an
+     implementation round, not by a re-expansion. notes.md is the account of how we got here and
+     is not rewritten. -->
 
 ## Goal
 
@@ -46,10 +48,14 @@ exactly the number of bytes the header announces either way. Nothing asserts thi
 today: `notes.md` §Debt carries it.
 
 **Where two refusals are both true, the order is fixed, and it is chosen rather than
-inherited from the order somebody happened to write the checks in.** Each refusal is taken at
-the first point where it is decidable, and the earliest decidable one wins:
+inherited from the order somebody happened to write the checks in.** The list is evaluated top
+to bottom and the first refusal that applies wins. No refusal is placed above a point where it
+is decidable, but decidability alone does not set the order — item 1 says why:
 
-1. fewer bytes than a header and a ready slot → `AckTimeout`. Nothing else is knowable yet.
+1. fewer bytes than a header and a ready slot → `AckTimeout`. A single byte would already
+   decide the header, so this is a choice and not a necessity: the frame is cut short, and the
+   abort outranks every refusal still evaluable (R-PROTO-02) — an undeclared header that
+   arrived alone included. §Plan step 18 is what asserts it.
 2. the header is not a declared id → `UnknownId`. This one cannot move later: `frame_len`
    needs the id, so the length is not yet knowable above it.
 3. fewer bytes than the id announces → `AckTimeout`.
@@ -96,9 +102,9 @@ R-CLEAN-04 binds to `tests/test_style.sh`. Nothing in this re-expansion moves a 
 
 ## What a `test:` binding does and does not promise
 
-Four times in this phase a rule's check printed `ok:` while the rule was broken — the
-config-mode button gate, the link-transition uniformity, the refusal ordering, and R-PROTO-05's
-blindness to comments. All four survived `tests/test_checks_are_live.py`, because **that harness
+Five times in this phase a rule's check printed `ok:` while the rule was broken — the
+config-mode button gate, the link-transition uniformity, the refusal ordering, R-PROTO-05's
+blindness to comments, and the first refusal in §Goal's order (§Plan step 18). All five survived `tests/test_checks_are_live.py`, because **that harness
 proves a check is *wired*, not that it is *adequate*.** It mutates the code the check reads and
 confirms the check reacts. A check whose reach is narrower than its rule's text passes that
 perfectly: it is alive, it just measures less than the sentence it is bound to.
@@ -109,11 +115,19 @@ The convention that closes the gap:
 > the check does not see.** A rule whose text states no scope asserts that its check covers it
 > entirely, and that assertion is what a later reader is entitled to disbelieve and measure.
 
-**Which rules owe a clause is derived from the function their check runs through, not from a
-list.** Three earlier attempts answered it by enumerating rules by hand and all three were
-falsified — the round-15 audit table, then R-ERR-02's return-type scope, then R-CLEAN-04's file
-scope. A list has to be remembered; a function can be grepped, and adding a rule to one drags
-the obligation along with it.
+**Which rules owe a clause is derived from what their check is made of, not from a list.**
+Three earlier attempts answered it by enumerating rules by hand and all three were falsified —
+the round-15 audit table, then R-ERR-02's return-type scope, then R-CLEAN-04's file scope. A
+list has to be remembered; a function can be grepped, and adding a rule to one drags the
+obligation along with it.
+
+**The first version of this derivation was itself incomplete, and validation on 2026-09-16
+found it.** It derived obligations from the scanner *function* only — which files it reads,
+whether it strips comments — and missed the axis every grep-based check has regardless of
+function: its own pattern. A regex matches the spellings it anchors and no others, so every
+`find_*` owes a spelling clause, measured by feeding it one form per spelling. That is the last
+row below, and it binds per finder rather than per function because each finder has its own
+pattern.
 
 | the check runs through | what that costs it | so the rule's text owes |
 |---|---|---|
@@ -121,6 +135,7 @@ the obligation along with it.
 | `hits()` in `tests/test_repo_shape.sh` | runs `sed 's\|//.*\|\|'` before grepping, so it cannot see an occurrence inside a comment | a comment clause **if the rule's subject can occur in a comment**; nothing if the subject is a code construct |
 | `raw_hits()` in `tests/test_repo_shape.sh` | reads raw lines — the un-stripping counterpart | a statement that occurrences count, since choosing this scanner is itself a claim about the rule |
 | `sources()` in `tests/test_style.sh` | every tracked-or-new `.cpp`/`.h` in the repo | nothing; it is the whole set already |
+| the regex of any `find_*` in `tests/test_repo_shape.sh` | matches only the spellings it anchors — a qualifier before a type, a line break inside a declaration, a path assembled another way | a spelling clause, **unconditionally**, naming the forms measured as unmatched |
 
 R-PROTO-05 is why the `hits`/`raw_hits` column is a claim and not a detail: its subject is a
 *reference*, which can appear in a comment, so `hits()` made it narrower than its text — and
@@ -129,7 +144,9 @@ that is the defect that failed validation #3 on 2026-09-15.
 ### The assignment, measured against the files rather than recalled
 
 Produced by reading the report lines and the finder definitions out of
-`tests/test_repo_shape.sh` and the source lists out of `tests/test_style.sh`, 2026-09-15.
+`tests/test_repo_shape.sh` and the source lists out of `tests/test_style.sh`, 2026-09-15;
+re-measured against the files on 2026-09-16, when the spelling axis was added and the "text
+carries it" column was re-read out of `docs/constraints.md` rather than carried forward.
 Recompute with:
 
 ```
@@ -138,22 +155,25 @@ grep -E '^find_[a-z0-9]+\( \)' tests/test_repo_shape.sh   # finder -> hits | raw
 grep -nE 'tidy_sources\(\)|sources\(\)' tests/test_style.sh
 ```
 
+The "owes" column is the comment/occurrence/file axis first and the spelling axis second. A rule
+whose check is not a `find_*` has no spelling axis.
+
 | rule | runs through | owes | text carries it |
 |---|---|---|---|
-| R-ARCH-01 | `find_arch01` / `hits` | nothing — subject is `#include` | — |
-| R-ARCH-03 | `find_arch03` / `hits` | nothing — subject is allocation calls | — |
-| R-CLEAN-03 | `find_clean03` / `hits` | nothing — subject is a declaration's name | — |
-| R-CLEAN-09 | `find_clean09` / `hits` | nothing — subject is inheritance and `virtual` | — |
-| R-ERR-01 | `find_err01` / `hits` | nothing — subject is a return type | — |
-| R-ERR-02 | `find_err02` / `hits` | nothing on this axis; its two narrowings are file scope and return-type spellings | **yes**, both |
-| R-ERR-03 | `find_err03` / `hits` | nothing — subject is `throw`/`try`/`catch`; but its text says "anywhere under `src/`", which reads wider than its subject | not this phase's rule — `notes.md` §For later phases |
-| R-ERR-04 | `find_err04` / `hits` | nothing — subject is a call | — |
-| R-CLEAN-05 | `find_clean05` / `raw_hits` | occurrences count | **yes** — it is a rule about comments |
-| R-PROTO-05 | `find_proto05` / `raw_hits` | occurrences count | **yes** — §Plan step 14 |
+| R-ARCH-01 | `find_arch01` / `hits` | nothing on comments — subject is `#include`; a spelling clause | spelling: **no** — not this phase's rule, `notes.md` §For later phases |
+| R-ARCH-03 | `find_arch03` / `hits` | nothing on comments — subject is allocation calls; a spelling clause | spelling: **no** — not this phase's rule, `notes.md` §For later phases |
+| R-CLEAN-03 | `find_clean03` / `hits` | nothing on comments — subject is a declaration's name; a spelling clause | spelling: **no** — not this phase's rule, `notes.md` §For later phases |
+| R-CLEAN-09 | `find_clean09` / `hits` | nothing on comments — subject is inheritance and `virtual`; a spelling clause | spelling: **no** — not this phase's rule, `notes.md` §For later phases |
+| R-ERR-01 | `find_err01` / `hits` | nothing on comments — subject is a return type; a spelling clause | **yes** — §Plan step 19 |
+| R-ERR-02 | `find_err02` / `hits` | nothing on comments; file scope; a spelling clause | **yes**, all three — file scope and two spelling narrowings (§Plan steps 16 and 19) |
+| R-ERR-03 | `find_err03` / `hits` | nothing on comments — subject is `throw`/`try`/`catch`, though its text says "anywhere under `src/`", which reads wider than its subject; a spelling clause | **no** — not this phase's rule, `notes.md` §For later phases |
+| R-ERR-04 | `find_err04` / `hits` | nothing on comments — subject is a call; a spelling clause | spelling: **no** — not this phase's rule, `notes.md` §For later phases |
+| R-CLEAN-05 | `find_clean05` / `raw_hits` | occurrences count; a spelling clause | occurrences: **yes** — it is a rule about comments. Spelling: **no** — not this phase's rule, `notes.md` §For later phases |
+| R-PROTO-05 | `find_proto05` / `raw_hits` | occurrences count; a spelling clause | **yes**, both — §Plan steps 14 and 19 |
 | R-STYLE-01 | `sources()` | nothing | — |
 | R-STYLE-02 | `tidy_sources()` | file scope | **no** — not this phase's rule, `notes.md` §For later phases |
 | R-CLEAN-02 | `tidy_sources()` | file scope | **no** — not this phase's rule, `notes.md` §For later phases |
-| R-CLEAN-04 | `tidy_sources()` | file scope | **no** — and this phase owns the binding: §Plan step 17 |
+| R-CLEAN-04 | `tidy_sources()` | file scope, including the header filter's dependence on the checkout path | **yes** — §Plan steps 17 and 20 |
 
 The remaining `test:`-bound rules run no scanner this table covers and are unaffected by it:
 R-PROTO-02, R-PROTO-03 and R-PROTO-04 (`tests/test_ps2_codec.py`, audited in round 12),
@@ -166,8 +186,8 @@ R-PROC-02 (`tests/test_phase_docs.sh`, whose text demands content no check reads
 
 - `CLAUDE.md` — the architecture paragraph, the hardware-safety rules, and the reading rule
   that scopes this list. `core` depends on nothing; `make` is the only entry point.
-- `docs/phases/01-ps2-codec/notes.md` — the account of rounds 1-6 and of three validation
-  rounds. §Deviations is where every decision this spec states was argued; §Debt and §For
+- `docs/phases/01-ps2-codec/notes.md` — the account of every implementation round and every
+  validation round, each under its own heading. §Deviations is where every decision this spec states was argued; §Debt and §For
   later phases are what this phase hands on. Read it before changing anything here.
 - `docs/phases/00-scaffold/notes.md` — the dependency. §Debt, §For later phases and §Owed.
   Three patterns this phase inherits, at line 3256: amending a Goal clause creates
@@ -369,10 +389,11 @@ that is all this vector can honestly witness.
 
 ## Plan
 
-Rounds 1-4 landed steps 1-9; `make test` and `make lint` are green and three validation rounds
-have run against them. **Steps 10 and 11 are what this re-expansion adds and are the only work
-`/implement-phase` is owed.** Steps 1-9 are stated because a cold session must be able to
-rebuild the phase, not because they are pending.
+**Every step below is landed; none is owed.** Each carries a `Landed` marker, dated from step 10
+on; steps 1-9 landed in rounds 1-4, before markers carried dates. They are all stated because a
+cold session must be able to rebuild the phase, not because any is pending. Steps 18-22 are what
+the 2026-09-16 round added after validation of the def180c spec returned five `contradicts` and
+three `undecidable`.
 
 1. **Landed — catalogue surgery.** Touches `docs/constraints.md`, `docs/phases/PHASES.md`. The
    seven rules as §Rule work describes. The `PHASES.md` change is an **in-place edit of the
@@ -421,12 +442,24 @@ rebuild the phase, not because they are pending.
     `LinkState` values and asserts the same target each time. Without it the uniformity claim
     in §The link is prose with no check behind it — the pattern `00-scaffold` §For later phases
     names at line 3256. — check: the new case's line is `ok:`, and cutting the uniformity (make
-    one source state map an outcome elsewhere) turns **both** that line **and the
-    `R-PROTO-02` rule line** to `FAIL:` — the rule line since step 15, which was found by
-    running this very check against the rule lines instead of only against this case.
+    one source state map an outcome elsewhere) turns that line to `FAIL:` for **every** outcome
+    and source. It also turns the `R-PROTO-02` rule line to `FAIL:` **only when the outcome is
+    `AckTimeout`** — the rule line since step 15, found by running this check against the rule
+    lines instead of only against this case.
+    **Measured over all twenty-four, not argued from one (2026-09-16).** Each of the six outcomes,
+    from each of the four source states, was sent to a wrong target in turn. The uniformity line
+    failed 24 of 24. `R-PROTO-02` failed 7: the four `AckTimeout` mutants, and the three good
+    frames sent astray from `Absent`, which break the set-up that line drives its source states
+    with rather than its rule. It stayed `ok:` for the other 17, and correctly so: those are
+    transitions on a good frame, `UnknownId` or `NotReady`, and R-PROTO-02's text is about
+    frames the bus cut short. No rule's text covers them. §The link's table does, and what holds
+    it is the uniformity case for "equal from every source" plus one `link:` case per outcome for
+    "equal to what" — `NotReady`'s being §Plan step 21, because before it a `step` sending
+    `NotReady` to the same wrong state from every source passed everything.
 11. **Landed 2026-09-14 — one acceptance criterion: no non-vector header under `tests/`.** Touches
     §Acceptance criteria only. `.clang-tidy`'s `HeaderFilterRegex` is `src/.*`, which stops
-    clang-tidy diagnosing every header under `tests/`, not only the vectors — correct today
+    clang-tidy diagnosing every header under `tests/`, not only the vectors — wherever the
+    checkout's path contains no `src/` (§Plan step 20) — correct today
     only because the vectors are the only such headers, which is a claim about the tree that
     nothing checks. Bind it. — check: the criterion below runs and reports `0`.
 
@@ -459,8 +492,9 @@ rebuild the phase, not because they are pending.
     not just the case.
     **The same question was asked of the other two rule lines and answered by measurement, not
     by reading.** `rule_proto03`: R-PROTO-03 is about never decoding an undeclared header on a
-    best-effort basis, not about interaction, and every overlap still reports `UnknownId` under
-    §Goal's precedence — not an instance. `rule_proto04`: a clause for `config_mode` was
+    best-effort basis, not about interaction, and every overlap with a refusal *below* it in
+    §Goal's precedence still reports `UnknownId` — not an instance. The one refusal above it, a
+    frame cut short before its ready slot, is R-PROTO-02's, and §Plan step 18 asserts it there. `rule_proto04`: a clause for `config_mode` was
     written, probed, and **reverted**. `map_frame` returns early for an id that reports no
     controls, so only `Digital` and `Analog` ever reach the whammy gate, which makes
     `id != Digital` an *equivalent* mutant rather than a violation — no single mutation can
@@ -517,17 +551,80 @@ rebuild the phase, not because they are pending.
 
 17. **Landed 2026-09-15 — R-CLEAN-04 records the file scope its check has.** Touches `docs/constraints.md`.
     R-CLEAN-04 is bound to `tests/test_style.sh` and runs through `tidy_sources()`, which reads
-    `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` and nothing else; the rule's text is
-    unscoped and records only the `const`/`constexpr` initializer blindness. By the table above
+    `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` and nothing else; before this step the
+    rule's text was unscoped and recorded only the `const`/`constexpr` initializer blindness. By the table above
     that is an unconditional obligation, and §Plan step 9 moved this binding from `planned:` to
     `test:`, so the phase owns it.
     **The clause covers both narrowings on that axis**: the file list, and `.clang-tidy`'s
-    `HeaderFilterRegex` of `src/.*`, which means no header under `tests/` is diagnosed at all.
+    `HeaderFilterRegex` of `src/.*`, which means no header under `tests/` is diagnosed at all
+    in a checkout whose path contains no `src/` — §Plan step 20 measured the other case.
     The second one is bound today only through step 11's criterion, which checks that no
     non-vector header exists rather than saying what would happen if one did.
     — check: `python3 tests/test_rule_traceability.py` → exit 0, and
     `grep -c 'tidy_sources\|src/core/\*' <(grep '^- \*\*R-CLEAN-04\*\*' docs/constraints.md)`
     → 1 or more.
+
+18. **Landed 2026-09-16 — `rule_proto02` asserts the first refusal in §Goal's order.** Touches
+    `tests/ps2_codec_cases.cpp`, and `src/core/ps2_frame.cpp` for one comment only: it said a
+    frame shorter than the prefix has "no header to read", which is false for a single byte.
+    §Goal's item 1 and step 13's `rule_proto03` sentence were reconciled in the same edit. Found by generalising a validation finding rather than fixing
+    it: instead of mutating only the transition already known to be covered, every refusal in
+    `decode`, every gate in `map_frame` and every transition in `step` was mutated in turn and
+    each mutant's `FAIL:` lines recorded (`notes.md` §Deviations round 28 has the table).
+    Deleting the size-below-prefix check survived every line, because no input was shorter than
+    header plus ready slot: a lone undeclared header then reports `UnknownId` instead of the abort
+    R-PROTO-02 requires. Fixed with one case and one clause in the rule line, both decoding
+    `unknown_id`'s literal cut to its first byte (`.first( kReadyIndex )`). That is a prefix of a
+    hand-written vector, not a new one and not a generated byte — the expected value is a status —
+    so §Vectors' ten files and R-PROTO-05 are unchanged. — check: the `cut before the ready slot:
+    reports the abort, even for an unknown id` case is `ok:`, and deleting the prefix check turns
+    **both** that line **and the `R-PROTO-02` rule line** to `FAIL:`. Two mutants still survive
+    everything, both already declared: `id != Digital` as the whammy gate (equivalent, see step 13)
+    and a wrapping `us_in_state` (`notes.md` §Debt).
+
+19. **Landed 2026-09-16 — the spelling axis: three rule texts record what their pattern does not
+    match.** Touches `docs/constraints.md`. §What a `test:` binding does and does not promise now
+    derives a spelling clause for every `find_*`; of the rules this phase bound or re-scoped,
+    three run through one. Each clause names only forms measured by feeding the finder one line
+    per form:
+    - R-ERR-01 — `static`/`inline`/`extern`/`friend`/`const` before the type, `ps2::`
+      qualification, a trailing return, a return type on its own line.
+    - R-ERR-02 — the same prefixes and qualification, a trailing return, a return type on its own
+      line, a `std::expected<…>` split across lines; plus the false positive on `[[nodiscard]]`
+      written on the line before.
+    - R-PROTO-05 — an include resolved through `-Itests`, a path split across string literals, a
+      doubled or backslash separator. This clause also corrects R-PROTO-05's existing text, which
+      stated only what the literal reading over-refuses.
+    The other grep-bound rules owe the same clause and are not this phase's; §Out of scope
+    releases them. — check: `python3 tests/test_rule_traceability.py` → exit 0, and
+    `grep -c 'spelling narrowing\|third narrowing\|under-strict' docs/constraints.md` → `3`.
+
+20. **Landed 2026-09-16 — R-CLEAN-04 records that its header filter depends on the checkout
+    path.** Touches `docs/constraints.md`, `.clang-tidy` (comment only). Measured, not argued:
+    the same naming violation planted in `tests/vectors/digital_idle.h` passes `make lint` in a
+    clone whose path contains no `src/` and fails it in a clone under `…/src/pico-sg2hid`, because
+    `HeaderFilterRegex: 'src/.*'` is unanchored and clang-tidy matches it against the absolute
+    path. The unmodified tree is green in both. Steps 11 and 17 are reconciled to say "in a
+    checkout whose path contains no `src/`". — check: `grep -c 'depends on where the repository is
+    checked out' docs/constraints.md` → `1`.
+
+21. **Landed 2026-09-16 — four `link:` cases for §The link behaviours nothing asserted.** Touches
+    `tests/ps2_codec_cases.cpp`. The exclusive bound, the counter reset on entry, `last_fault`
+    surviving a good frame, and the `NotReady` row. Each is proven by the mutant it exists for,
+    and each mutant survived every line before the case landed: `>=` for `>`; the entering step's
+    elapsed time counted toward the new state; a good frame clearing `last_fault`; `NotReady`
+    recorded as `AckTimeout`. The saturation stays unasserted, as §The link says. — check: the
+    four cases are `ok:`, and each mutant turns its own case to `FAIL:`.
+
+22. **Landed 2026-09-16 — two comments that asserted what the code does not have.** Touches
+    `src/core/guitar_state.h`, `src/core/ps2_frame.h`. `Fret`'s comment named `frets` and
+    `ControllerFret`, neither of which exists, and credited the indexing with keeping the HID
+    descriptor in step, which `Button` in `build_report` does. Both structs were called
+    "comparable as a whole" and neither declares `operator==`. Generalised: every identifier
+    named in a comment across `src/core/`, `tests/ps2_codec_cases.cpp` and `tests/vectors/` was
+    checked against the code; the rest are bus line names (`ACK`, `DATA`), names ADR-0007 sketched
+    and ADR-0011/0012 retired (`BusIo`, `NotAnalog`), a name `DecodeStatus`'s comment cites as
+    rejected (`TooShort`), and proper nouns and file names. — check: `grep -rn 'ControllerFret\|comparable as a whole' src/` → no output.
 
 ## Acceptance criteria
 
@@ -611,13 +708,20 @@ that reads the file, replaces the anchor, **asserts the replacement changed the 
 it back and runs the command — a block whose anchor has moved otherwise mutates nothing and
 reports the exit 0 it was handed (`00-scaffold` §Owed).
 
-## Notes to `/validate-phase` — two package workarounds, both temporary
+## Notes to `/validate-phase` — three package workarounds, all temporary
 
-Neither is a fact about this phase. Both are defects in the Belay commands this repo runs,
-already fixed upstream in **792e9d9**; this repo is pinned at **f001884** and takes the update
-when the phase closes. **Delete this whole section then** — it is one section precisely so that
-removal is one cut. Carried forward from the previous spec at `notes.md` §Deviations round 6,
-which requires this re-expansion to re-emit it.
+None is a fact about this phase. All three are defects in the Belay commands this repo runs,
+and they do not share an upstream state:
+
+- **1 and 2 are fixed upstream in 792e9d9.** This repo is pinned at **f001884** and takes the
+  update when the phase closes; delete both then. Carried forward from `notes.md` §Deviations
+  round 6, which requires every re-expansion to re-emit them.
+- **3 is filed and not fixed.** It is the `- base:` staleness entry dated 2026-09-15 in
+  `~/.claude-belay/feedback/pico-sg2hid.md`, and no upstream commit is recorded as fixing it.
+  Delete it when that fix lands — the same trigger as check 2 in `CLAUDE.md` §Conventions, which
+  guards the same failure from the implementer's side.
+
+They are one section so that removal stays a cut per item rather than a search.
 
 **1. Tell step 5's reviewer which paths were held out of its diff.** When dispatching the
 independent review, name in the prompt every path excluded from the diff it receives —
@@ -687,7 +791,14 @@ it are the three that cost the most when they lie.
   bindings. Both run through `tidy_sources()` and owe it by the table in §What a `test:`
   binding does and does not promise; `00-scaffold` bound them and `notes.md` §For later phases
   carries them with an owner. This phase writes the clause for R-CLEAN-04 only, which is the
-  one of the three it moved to `test:` itself.
+  one of the three it moved to `test:` itself. The header filter's dependence on the checkout
+  path (§Plan step 20) reaches R-STYLE-02 and R-CLEAN-02 the same way, and goes with them.
+- **Writing the spelling clause for R-ARCH-01, R-ARCH-03, R-CLEAN-03, R-CLEAN-05, R-CLEAN-09,
+  R-ERR-03 and R-ERR-04** — not this phase's bindings; `00-scaffold` bound all seven. Each runs
+  through a `find_*` and owes the clause by the last row of the table in §What a `test:` binding
+  does and does not promise. None of the seven was measured on that axis here, so no form is
+  claimed to escape them; `notes.md` §For later phases carries the obligation. This phase writes
+  the clause for R-ERR-01, R-ERR-02 and R-PROTO-05 only (§Plan step 19).
 - **Widening R-ERR-02's check beyond `src/core/*.h`** — no phase yet; the file-scope narrowing
   is recorded in the rule's own text and the residual hole has no caller who could ignore a
   result.

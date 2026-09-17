@@ -3,7 +3,8 @@
 namespace ps2 {
 
 std::expected<Ps2Frame, DecodeStatus> decode( std::span<const std::uint8_t> bytes ) {
-    // Nothing announced anything: there is no header to read, let alone a length to check.
+    // Cut short before the ready slot. One byte would already decide the header, but a frame the
+    // bus cut short reports the abort (R-PROTO-02), even when the header is also undeclared.
     if ( bytes.size() < kPrefixLen ) {
         return std::unexpected( DecodeStatus::AckTimeout );
     }

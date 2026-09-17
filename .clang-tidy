@@ -30,6 +30,10 @@ WarningsAsErrors: '*'
 # (R-PROTO-05). The vectors are the only headers under tests/, so naming src/ excludes them
 # without a negative pattern — llvm::Regex has no lookahead to write one with. A file passed
 # as the main file is always diagnosed; this governs the headers it includes.
+#
+# The exclusion only holds where the checkout's own path contains no `src/`: the regex is
+# unanchored and matched against the absolute path, so in a clone under e.g. ~/src/ every
+# header under tests/ is diagnosed too. Measured 2026-09-16 and recorded in R-CLEAN-04's text.
 HeaderFilterRegex: 'src/.*'
 
 CheckOptions:

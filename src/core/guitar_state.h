@@ -62,9 +62,7 @@ constexpr std::size_t kFretCount = 5;
 
 // --- The state --------------------------------------------------------------------------
 
-// Plain data, comparable as a whole, in ADR-0003's order. `frets` is indexed by
-// ControllerFret so the HID descriptor and this array cannot disagree about which bit is
-// green.
+// The frets in ADR-0003's order; `GuitarState::is_fret_pressed` is indexed by them.
 // The enumerators are left unnumbered on purpose: C++ fixes them at 0..4 in declaration
 // order, which is exactly the contract `is_fret_pressed` needs, and writing the numbers out
 // would add five literals that could drift from it.
