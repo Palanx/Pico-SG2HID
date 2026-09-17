@@ -1618,6 +1618,86 @@ validation addendum.
   here — it is the validator's.
 
 
+### Round 29 — three `contradicts` closed by measurement, four pointers decided, one discarded.
+
+Input: the independent review of 2026-09-17 (dispatched to a fresh agent by `/validate-phase`,
+recorded below). Iteration 3 against the def180c spec, so the next failure fires the escape.
+
+- **Contradicts 1 — `ps2_protocol.h:68` kept the sentence step 18 deleted from `ps2_frame.cpp`.**
+  Rewritten to say what is true: a frame shorter than the prefix is cut short before the ready
+  slot, its header may well be readable, and the abort is reported anyway.
+  **Generalised, because every reconciliation this phase has done was inside one file and this one
+  crossed a pair.** Three passes: (a) every comment line deleted from `src/` or `tests/` since
+  `24d489f` grepped for in the current tree — two hits, both text that moved within its own file;
+  (b) every comment sentence compared with every other across files by word overlap ≥ 0.45 — four
+  hits, all legitimate restatements (a vector header echoing `DecodeStatus`'s wording, three
+  vectors sharing a byte-comment shape); (c) the *fact* grepped tree-wide rather than the wording.
+  Only (c) found it, because the twin was worded differently — **match on the claim, not the
+  string**, and that is the transferable part. The same pass over the other facts fixed this
+  phase (the zero fill, "no length of its own") found no second survivor.
+
+- **Contradicts 2 — §Out of scope claimed mutation coverage `tests/test_style.sh` does not have.**
+  `tests/test_checks_are_live.py:49` is `NO_MUTATE = {"test_style.sh"}`, skipped by both the
+  neutering and alternation properties (lines 398 and 451). Fixed as instructed, in the spec and
+  not in the harness: §Out of scope now says four of the five `.sh` checks are mutation-tested,
+  adds a bullet releasing the mutation of that file with the reason the code's own comment gives,
+  and the assignment table carries a paragraph saying all four rules bound to it — R-STYLE-01,
+  R-STYLE-02, R-CLEAN-02 and this phase's R-CLEAN-04 — stand on the accounting property alone.
+
+- **Contradicts 3 — §Plan step 10 asserted two different answers eleven lines apart.**
+  Re-measured on the current tree: the uniformity mutation fails `R-PROTO-02` in **7** of 24 —
+  the four `AckTimeout` mutants plus the three good frames sent astray from `Absent`, which break
+  `cut_drops_the_link_from_every_source`'s set-up. The "only when the outcome is `AckTimeout`"
+  sentence is **deleted**, not reworded; the measured table stands as written.
+
+- **Pointer — `tidy_sources()`'s notation.** They are git pathspecs, where `*` crosses `/`, so
+  the three patterns read recursively. Verified: `git ls-files 'docs/*.md'` returns 38 files in
+  subdirectories. The set is wider than a shell-glob reading, never narrower, and today no `.cpp`
+  lives below `tests/` at all. Written into both the axis table and R-CLEAN-04's text.
+
+- **Decision — the `HeaderFilterRegex` narrowing is reverted, not owned (§Plan step 23).**
+  Measured in two clones before deciding, one at a path containing `src/`: with
+  `(src|tests)/.*` restored, `make lint` and `make test` are green in both, and a naming probe
+  planted in `tests/vectors/digital_idle.h` is diagnosed in both. So the narrowing protected
+  nothing — the vectors' literals are `constexpr` initializers `readability-magic-numbers` never
+  sees — while it silenced naming and function-size diagnostics for every header under `tests/`,
+  which is R-STYLE-02's and R-CLEAN-02's reach and `00-scaffold`'s to set. Reverting also deletes
+  the checkout-path dependence rather than documenting it, so round 28's step 20 is marked
+  superseded in place and R-CLEAN-04's clause now records what the exception really rests on.
+  **Cost, measured:** `make test` goes from **1:41** to **2:37** against a 3m cap, because
+  clang-tidy now analyses the headers under `tests/` as includes. That is the price of the
+  coverage those two bindings are supposed to have; if the cap is ever hit, §Out of scope's
+  standing answer is to raise it in a re-expansion, not to re-narrow a filter.
+
+- **Decision — `kZeroFill` is not an expected protocol byte (§Plan step 27).** R-PROTO-05 governs
+  what the controller puts on the wire; the fill is `decode`'s own contract, so no vector could
+  carry it. `CLAUDE.md` already scoped the rule that way; the catalogue now does too.
+
+- **Decision — ADR-0007's status names all three partial supersessions (§Plan step 28).** Its
+  status line already named ADR-0009, which is the precedent that the line is maintained; it now
+  names ADR-0011 and ADR-0012 as well. Body untouched — the status is the mutable part.
+
+- **Discarded — the fifth `undecidable`.** It quantifies `docs/phases/00-scaffold/notes.md` and
+  this file's own §Deviations, both denied to the reviewer by `/validate-phase` step 5. A finding
+  that the starved reviewer could not open the files it was starved of is the deprivation working
+  as designed, not a missing pointer: a reader with those files can check both claims, and the
+  spec names where each lives. Recorded rather than silently dropped.
+
+- **Two checks I wrote this round were wrong before they were right, and the cause is worth
+  keeping:** a `grep -c '<phrase>' spec.md` counts the check's own line, because the check lives
+  in the file it greps. The first attempt reported 2 where it wanted 1, the second 1 where it
+  wanted 0. Step 25's check now reads `tests/test_checks_are_live.py` instead, and step 26's is an
+  absence whose phrase its own text no longer contains.
+
+- **Acceptance after the round:** 21/21, `make test` **OK** in **2:37**, `make lint` 0, driver 37
+  `ok:` lines, `rejection cases: 3/3`, `neutered: 33/33`, `alternations: 64/64`. Steps 23-28's own
+  checks pass.
+
+- **Taste from the 2026-09-17 review is in §For later phases, untouched** — six items, one of
+  which (`case_report_is_wide_enough` asserting tautologies of its own constants) looks like real
+  debt and is recorded as such rather than fixed in a closing round.
+
+
 ## Debt
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
@@ -1781,6 +1861,29 @@ validation addendum.
 - **Operator — `CLAUDE.md` §Conventions check 1** says a green rule line over a violated rule was
   "measured four times here". Round 28 measured a fifth (the prefix check). The file is the
   operator's and was not edited.
+
+- **Taste from validation 2026-09-17, recorded and not fixed (step 5).** Six items; the first
+  is the one that looks like debt rather than preference:
+  1. `case_report_is_wide_enough` cannot fail — `kButtonBytes` is *derived* from `kButtonCount`
+     and `kBitsPerByte`, so `kButtonBytes * kBitsPerByte >= kButtonCount` and
+     `kReportLen == kButtonBytes + 1` restate the definitions. Its comment claims it fails if
+     `kButtonCount` grows past what `kButtonBytes` covers, which the arithmetic forbids. Same
+     shape as the green paint §Plan step 13 rejected for `rule_proto04`.
+  2. `src/core/hid_report.h`'s "adding an eleventh button widens the report" holds only if
+     `kButtonCount` is bumped with the enumerator; nothing ties the constant to `Button`, and the
+     loop in `case_report_gives_every_button_its_own_bit` iterates to `kButtonCount`. What would
+     catch an unbumped enumerator is `-Wswitch` in the test's `state_with`, not the report width.
+  3. `case_analog_whammy_full`'s comment says reading the wrong index yields `kWhammyRest`; true
+     only of the three other *axis* indices — payload indices 0 and 1 hold `0xFF`, which satisfies
+     both halves of that case. `case_analog_idle_whammy_is_rest` is what rejects those two.
+  4. Eight of the ten controls are never asserted *pressed* anywhere: a mapper that swapped
+     `kMaskStart`/`kMaskSelect`, or read tilt out of the low byte, passes every line. Consistent
+     with §Vectors as written, and the positions are `TODO(09-guitar-observe)` guesses.
+  5. `tests/test_style.sh:22-24` still points at `.clang-tidy` "for the upgrade path" to a
+     `compile_commands.json`, while `.clang-tidy`'s header now opens that section with "**NOT** a
+     generated compile_commands.json".
+  6. §Context pointers calls `tests/test_repo_shape.sh` "a reject/accept/wiring case per rule";
+     R-ERR-03, R-ERR-04 and R-PROTO-05 have reject and wiring cases but no accept case.
 
 - **Taste from validation 2026-09-16, recorded and not fixed (step 5):** `kButtonCount = 10` is a
   literal not tied to `enum class Button`, though `spec.md` says the layout constants are "derived

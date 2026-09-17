@@ -25,16 +25,18 @@
 
 Checks: '-*,readability-identifier-naming,readability-function-size,readability-magic-numbers'
 WarningsAsErrors: '*'
-# src/ only, and the exclusion is R-CLEAN-04's own: the literals under tests/vectors/ are the
-# sole exception to "no magic numbers", because being a literal is their entire purpose
-# (R-PROTO-05). The vectors are the only headers under tests/, so naming src/ excludes them
-# without a negative pattern — llvm::Regex has no lookahead to write one with. A file passed
-# as the main file is always diagnosed; this governs the headers it includes.
+# src/ and tests/, which is what 00-scaffold set and what R-STYLE-02 and R-CLEAN-02 are bound
+# to. 01-ps2-codec narrowed this to 'src/.*' when it enabled readability-magic-numbers, to keep
+# the literals under tests/vectors/ — R-CLEAN-04's own stated exception (R-PROTO-05) — out of
+# reach, and reverted it on 2026-09-17 having measured that the narrowing bought nothing: those
+# literals live in constexpr initializers, which readability-magic-numbers never diagnoses
+# either way. What the narrowing cost was real: it also silenced naming and function-size
+# diagnostics for every header under tests/, which are two other phases' bindings, and it made
+# lint's reach depend on the checkout path, since the regex is unanchored and matched against
+# the absolute path. Measured both ways in two clones, one under a path containing src/.
 #
-# The exclusion only holds where the checkout's own path contains no `src/`: the regex is
-# unanchored and matched against the absolute path, so in a clone under e.g. ~/src/ every
-# header under tests/ is diagnosed too. Measured 2026-09-16 and recorded in R-CLEAN-04's text.
-HeaderFilterRegex: 'src/.*'
+# A file passed as the main file is always diagnosed; this governs the headers it includes.
+HeaderFilterRegex: '(src|tests)/.*'
 
 CheckOptions:
   # Types read as CamelCase; things you call read as lower_case. The case tells you

@@ -3,8 +3,8 @@
 <!-- Re-expanded three times after /validate-phase's iteration-3+ escape: 2026-09-14, and
      twice on 2026-09-15 (c159aef, def180c). Each re-expansion was derived from the PHASES.md
      row's Goal and from notes.md, never from the code on disk; where the two disagree, §Plan
-     says so and the code is what changes. Steps 18-22 were added in place on 2026-09-16 by an
-     implementation round, not by a re-expansion. notes.md is the account of how we got here and
+     says so and the code is what changes. Steps 18-28 were added in place on 2026-09-16 and
+     2026-09-17 by implementation rounds, not by a re-expansion. notes.md is the account of how we got here and
      is not rewritten. -->
 
 ## Goal
@@ -131,7 +131,7 @@ pattern.
 
 | the check runs through | what that costs it | so the rule's text owes |
 |---|---|---|
-| `tidy_sources()` in `tests/test_style.sh` | reads `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` and nothing else, **whatever the rule says** | a file-scope clause, unconditionally |
+| `tidy_sources()` in `tests/test_style.sh` | passes `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` to `git ls-files`, and nothing else, **whatever the rule says**. These are git pathspecs, not shell globs: `*` crosses `/`, so each prefix is read recursively — `tests/*.cpp` would include `tests/fixtures/x.cpp`. Measured: `git ls-files 'docs/*.md'` returns 38 files in subdirectories | a file-scope clause, unconditionally, in the notation the check actually uses |
 | `hits()` in `tests/test_repo_shape.sh` | runs `sed 's\|//.*\|\|'` before grepping, so it cannot see an occurrence inside a comment | a comment clause **if the rule's subject can occur in a comment**; nothing if the subject is a code construct |
 | `raw_hits()` in `tests/test_repo_shape.sh` | reads raw lines — the un-stripping counterpart | a statement that occurrences count, since choosing this scanner is itself a claim about the rule |
 | `sources()` in `tests/test_style.sh` | every tracked-or-new `.cpp`/`.h` in the repo | nothing; it is the whole set already |
@@ -173,7 +173,13 @@ whose check is not a `find_*` has no spelling axis.
 | R-STYLE-01 | `sources()` | nothing | — |
 | R-STYLE-02 | `tidy_sources()` | file scope | **no** — not this phase's rule, `notes.md` §For later phases |
 | R-CLEAN-02 | `tidy_sources()` | file scope | **no** — not this phase's rule, `notes.md` §For later phases |
-| R-CLEAN-04 | `tidy_sources()` | file scope, including the header filter's dependence on the checkout path | **yes** — §Plan steps 17 and 20 |
+| R-CLEAN-04 | `tidy_sources()` | file scope; and what the `tests/vectors/` exception actually rests on | **yes** — §Plan steps 17, 20 and 23 |
+
+One limit is not a scanner's and belongs beside them: `tests/test_style.sh` is the one `.sh`
+check `tests/test_checks_are_live.py` does not mutate (`NO_MUTATE`), so all four rules bound to
+it — R-STYLE-01, R-STYLE-02, R-CLEAN-02 and **R-CLEAN-04**, the one this phase moved there — are
+held to the accounting property only: their lines are proven to be printed, not proven to fire.
+§Out of scope states it; nothing in this phase closes it.
 
 The remaining `test:`-bound rules run no scanner this table covers and are unaffected by it:
 R-PROTO-02, R-PROTO-03 and R-PROTO-04 (`tests/test_ps2_codec.py`, audited in round 12),
@@ -262,6 +268,14 @@ the length recomputes it: `payload_matches` in the cases file loops to
 `payload_len( frame.id )`, and the zero-fill case starts its scan at
 `payload_len( ControllerId::Digital )`. Both read as redundant until you know there is no
 member to read, which is why it is written here.
+
+**The fill value itself is not a protocol byte, and R-PROTO-05 does not reach it** (ruled
+2026-09-17, §Plan step 27). `tests/ps2_codec_cases.cpp` declares `kZeroFill` and asserts the
+unannounced payload bytes against it, which reads like an expected byte written outside
+`tests/vectors/`. It is not: the controller never sent those bytes. The fill is this project's
+own decision about what `decode` leaves in a buffer it did not fill, so no vector could carry it
+— a vector holds what the bus put on the wire. R-PROTO-05 governs the bytes the protocol fixes,
+which is how `CLAUDE.md` §Conventions already states it, and the catalogue now says it too.
 
 This is load-bearing and validation round 3 found the spec crediting the wrong mechanism for
 it. `kWhammyIndex` is 5, so a *naive* analog read of a two-byte digital payload never touches
@@ -384,6 +398,7 @@ that is all this vector can honestly witness.
 | `tests/ps2_codec_cases.cpp` | the assertions. Deliberately **not** named `test_*`: the Makefile glob would build and run it a second time, and the driver is the single entry point. |
 | `tests/test_ps2_codec.py` | the driver: compiles and runs the cases against the real `src/core/`, prints one `ok:`/`FAIL:` line per case and per rule, and carries the three rejection cases |
 | `docs/adr/0011-*.md`, `docs/adr/0012-*.md` | the `step` signature and the `DecodeStatus` membership decisions |
+| `docs/adr/0007-error-model.md` | **status line only** (§Plan step 28): it names the three later ADRs that supersede parts of it. The body is untouched — an ADR is immutable except for its status. |
 | `docs/phases/01-ps2-codec/verify.md` | the operator procedure (R-PROC-02) |
 | `CLAUDE.md` | **not written by this phase.** The operator amended it mid-phase, adding the three pre-validation checks to §Conventions. It appears in this phase's diff only because the base ref `24d489f` precedes that edit. Listed here so the file is accounted for rather than read as scope this phase escaped into. |
 
@@ -393,7 +408,8 @@ that is all this vector can honestly witness.
 on; steps 1-9 landed in rounds 1-4, before markers carried dates. They are all stated because a
 cold session must be able to rebuild the phase, not because any is pending. Steps 18-22 are what
 the 2026-09-16 round added after validation of the def180c spec returned five `contradicts` and
-three `undecidable`.
+three `undecidable`; steps 23-28 are the 2026-09-17 round, after the next validation returned
+three `contradicts` and five `undecidable`.
 
 1. **Landed — catalogue surgery.** Touches `docs/constraints.md`, `docs/phases/PHASES.md`. The
    seven rules as §Rule work describes. The `PHASES.md` change is an **in-place edit of the
@@ -443,10 +459,8 @@ three `undecidable`.
     in §The link is prose with no check behind it — the pattern `00-scaffold` §For later phases
     names at line 3256. — check: the new case's line is `ok:`, and cutting the uniformity (make
     one source state map an outcome elsewhere) turns that line to `FAIL:` for **every** outcome
-    and source. It also turns the `R-PROTO-02` rule line to `FAIL:` **only when the outcome is
-    `AckTimeout`** — the rule line since step 15, found by running this check against the rule
-    lines instead of only against this case.
-    **Measured over all twenty-four, not argued from one (2026-09-16).** Each of the six outcomes,
+    and source.
+    **Measured over all twenty-four, not argued from one (2026-09-16, re-measured 2026-09-17).** Each of the six outcomes,
     from each of the four source states, was sent to a wrong target in turn. The uniformity line
     failed 24 of 24. `R-PROTO-02` failed 7: the four `AckTimeout` mutants, and the three good
     frames sent astray from `Absent`, which break the set-up that line drives its source states
@@ -457,11 +471,15 @@ three `undecidable`.
     "equal to what" — `NotReady`'s being §Plan step 21, because before it a `step` sending
     `NotReady` to the same wrong state from every source passed everything.
 11. **Landed 2026-09-14 — one acceptance criterion: no non-vector header under `tests/`.** Touches
-    §Acceptance criteria only. `.clang-tidy`'s `HeaderFilterRegex` is `src/.*`, which stops
-    clang-tidy diagnosing every header under `tests/`, not only the vectors — wherever the
-    checkout's path contains no `src/` (§Plan step 20) — correct today
+    §Acceptance criteria only. At the time, `.clang-tidy`'s `HeaderFilterRegex` was `src/.*`,
+    which stopped clang-tidy diagnosing every header under `tests/`, not only the vectors —
+    correct today
     only because the vectors are the only such headers, which is a claim about the tree that
     nothing checks. Bind it. — check: the criterion below runs and reports `0`.
+    **The motive changed under it and the criterion stays (§Plan step 23).** With the filter back
+    at `(src|tests)/.*` a stray header under `tests/` is diagnosed rather than silenced, so this
+    no longer guards a silence. What it still asserts is that R-CLEAN-04's exception, which names
+    `tests/vectors/` and nothing else, has no other header under `tests/` to be confused with.
 
 12. **Landed 2026-09-15 — `decode` checks the announced length before the ready byte.**
     Touches `src/core/ps2_frame.cpp`, `tests/vectors/truncated_not_ready.h` (new),
@@ -555,11 +573,10 @@ three `undecidable`.
     rule's text was unscoped and recorded only the `const`/`constexpr` initializer blindness. By the table above
     that is an unconditional obligation, and §Plan step 9 moved this binding from `planned:` to
     `test:`, so the phase owns it.
-    **The clause covers both narrowings on that axis**: the file list, and `.clang-tidy`'s
-    `HeaderFilterRegex` of `src/.*`, which means no header under `tests/` is diagnosed at all
-    in a checkout whose path contains no `src/` — §Plan step 20 measured the other case.
-    The second one is bound today only through step 11's criterion, which checks that no
-    non-vector header exists rather than saying what would happen if one did.
+    **The clause covered two narrowings on that axis** when it was written: the file list, and
+    `.clang-tidy`'s `HeaderFilterRegex` of `src/.*`. The second is gone — step 23 reverted that
+    regex — and the clause now says what the `tests/vectors/` exception really rests on instead.
+    The file list stands, in the pathspec notation the check uses (step 23).
     — check: `python3 tests/test_rule_traceability.py` → exit 0, and
     `grep -c 'tidy_sources\|src/core/\*' <(grep '^- \*\*R-CLEAN-04\*\*' docs/constraints.md)`
     → 1 or more.
@@ -599,8 +616,10 @@ three `undecidable`.
     releases them. — check: `python3 tests/test_rule_traceability.py` → exit 0, and
     `grep -c 'spelling narrowing\|third narrowing\|under-strict' docs/constraints.md` → `3`.
 
-20. **Landed 2026-09-16 — R-CLEAN-04 records that its header filter depends on the checkout
-    path.** Touches `docs/constraints.md`, `.clang-tidy` (comment only). Measured, not argued:
+20. **Landed 2026-09-16, and superseded by step 23 the next day — R-CLEAN-04 records that its
+    header filter depends on the checkout path.** The measurement stands; what changed is that
+    the regex it measured is gone, so recording the dependence was the wrong fix and step 23 is
+    the right one. Kept rather than deleted because step 23 is only legible next to it. Touches `docs/constraints.md`, `.clang-tidy` (comment only). Measured, not argued:
     the same naming violation planted in `tests/vectors/digital_idle.h` passes `make lint` in a
     clone whose path contains no `src/` and fails it in a clone under `…/src/pico-sg2hid`, because
     `HeaderFilterRegex: 'src/.*'` is unanchored and clang-tidy matches it against the absolute
@@ -625,6 +644,73 @@ three `undecidable`.
     checked against the code; the rest are bus line names (`ACK`, `DATA`), names ADR-0007 sketched
     and ADR-0011/0012 retired (`BusIo`, `NotAnalog`), a name `DecodeStatus`'s comment cites as
     rejected (`TooShort`), and proper nouns and file names. — check: `grep -rn 'ControllerFret\|comparable as a whole' src/` → no output.
+
+23. **Landed 2026-09-17 — the `HeaderFilterRegex` narrowing is reverted, not owned.** Touches
+    `.clang-tidy`, `docs/constraints.md`. No Plan step ever claimed
+    `(src|tests)/.*` → `src/.*`; it arrived with step 2's clang-tidy work to keep the vectors'
+    literals out of `readability-magic-numbers`. **Measured before deciding, in two clones:** with
+    the regex reverted, `make lint` and `make test` are green at a path containing no `src/` and
+    at one under `…/src/pico-sg2hid`, and a naming violation planted in
+    `tests/vectors/digital_idle.h` is diagnosed in **both** — so the narrowing never protected the
+    vectors (their literals are `constexpr` initializers the check cannot see, §Observed
+    conventions) while it did silence naming and function-size diagnostics for every header under
+    `tests/`. Those are R-STYLE-02's and R-CLEAN-02's reach, which are `00-scaffold`'s bindings and
+    which §Out of scope says this phase does not touch — so the honest move is to put the regex
+    back, not to write a clause owning a narrowing this phase had no business making. Reverting
+    also removes the checkout-path dependence entirely, since both prefixes then match whatever
+    the absolute path is. R-CLEAN-04's text now says its `tests/vectors/` exception rests on the
+    `constexpr` blindness, and `tidy_sources()`'s three patterns are recorded as **git pathspecs**,
+    where `*` crosses `/` — measured with `git ls-files 'docs/*.md'`, 38 files in subdirectories.
+    — check: `grep -c "HeaderFilterRegex: '(src|tests)/.*'" .clang-tidy` → `1`; `make lint` → 0.
+
+24. **Landed 2026-09-17 — the twin of a sentence step 18 deleted, in the other file of the pair.**
+    Touches `src/core/ps2_protocol.h`. `kPrefixLen`'s comment still read "A frame shorter than this
+    announced nothing at all" — the claim §Goal item 1 contradicts and step 18 removed from
+    `src/core/ps2_frame.cpp`. **Generalised across files, since every earlier reconciliation this
+    phase did was within one:** every comment line deleted from `src/` or `tests/` since the base
+    ref was searched for in the current tree (two hits, both text that moved inside its own file);
+    every comment sentence was compared against every other across files by word overlap; and the
+    fact itself — what a frame shorter than the prefix means — was grepped tree-wide. That last one
+    is what found it, and it is the method that generalises: match on the claim, not the wording.
+    — check: `grep -rn 'announced nothing at all' src/` → no output.
+
+25. **Landed 2026-09-17 — §Out of scope stops claiming mutation coverage `tests/test_style.sh`
+    does not have.** Touches §Out of scope, and the table in §What a `test:` binding does and does
+    not promise. `tests/test_checks_are_live.py:49` holds `NO_MUTATE = {"test_style.sh"}`, so that
+    file is skipped by both the neutering and the alternation properties — and it is where §Plan
+    step 9 bound R-CLEAN-04. The fix is the spec saying so, not mutating the file: the code's own
+    comment records the exclusion as a decision, and mutating a clang-tidy invocation means
+    mutating the tool's configuration, which is the harness work §Out of scope already releases.
+    All four rules bound to that file stand on the accounting property alone. — check:
+    `grep -n 'NO_MUTATE' tests/test_checks_are_live.py` names `test_style.sh`, which is the
+    fact §Out of scope now states. The check reads that file and not this one on purpose: a
+    `grep` of a phrase in `spec.md` counts the check's own line, which is how the first two
+    attempts at this check reported 2 and 1 where they wanted 1 and 0.
+
+26. **Landed 2026-09-17 — step 10's check keeps the measurement and drops the sentence that
+    contradicted it.** Touches §Plan step 10. It claimed the uniformity mutation fails
+    `R-PROTO-02` for the `AckTimeout` outcome and no other, eleven lines above its own table
+    saying it failed 7 of 24. Re-measured on the current tree: **7** — the four `AckTimeout` mutants plus
+    the three good frames sent astray from `Absent`, which break `cut_drops_the_link_from_every_source`'s
+    set-up. The "only" sentence is deleted rather than reworded. — check: `grep -c 'only when the
+    outcome is' docs/phases/01-ps2-codec/spec.md` → `0`.
+
+27. **Landed 2026-09-17 — the zero fill is ruled not an expected protocol byte.** Touches
+    §The frame, `docs/constraints.md`. `tests/ps2_codec_cases.cpp` writes
+    `constexpr std::uint8_t kZeroFill = 0x00;` and asserts the unannounced payload bytes against
+    it, while the cases file's own header says no expected byte is written there. The ruling:
+    R-PROTO-05 governs bytes **the protocol** fixes — what the controller puts on the wire — and
+    the fill is not one. It is `decode`'s own contract (§The frame), decided by this project, so a
+    vector could not carry it: a vector holds what the bus sent, and the bus never sent those
+    bytes. `CLAUDE.md` already scopes the rule that way ("expected protocol bytes"); R-PROTO-05's
+    text in the catalogue did not, and now says it. — check: `grep -c 'protocol fixes' docs/constraints.md` → `1`.
+
+28. **Landed 2026-09-17 — ADR-0007's status names both partial supersessions.** Touches
+    `docs/adr/0007-error-model.md` (status line only). `CLAUDE.md` says superseded ADRs say so;
+    ADR-0007's status already named ADR-0009 for its result struct, which is the precedent that
+    the line is maintained, while ADR-0011 and ADR-0012 each say they supersede part of it and
+    ADR-0007 said nothing back. Status lines are the one mutable part of an ADR; the body is
+    untouched. — check: `grep -c 'ADR-0011' docs/adr/0007-error-model.md` → 1 or more.
 
 ## Acceptance criteria
 
@@ -775,10 +861,19 @@ it are the three that cost the most when they lie.
   Stated rather than left implied, because §Context pointers naming it as inherited while no
   step closed it is what made it undecidable in round 3. What stands behind
   `tests/test_ps2_codec.py` instead is its three rejection cases and M4. Closing it properly is
-  check-harness work — the honest statement is that the `.sh` checks are mutation-tested and the
-  `.py` checks are not — and it belongs to whichever phase next touches that harness, alongside
+  check-harness work — the honest statement is that four of the five `.sh` checks are
+  mutation-tested, `tests/test_style.sh` and the `.py` checks are not — and it belongs to
+  whichever phase next touches that harness, alongside
   the `clang-query` + `compile_commands.json` upgrade `03-pio-bus` already owes and the
   "no new untracked paths after `make test`" check that `notes.md` §For later phases names.
+- **Mutating `tests/test_style.sh`** — released to no phase, and it is `tests/test_checks_are_live.py:49`'s
+  `NO_MUTATE = {"test_style.sh"}` that this bullet exists to state rather than leave to a reader of
+  that file. It is the one `.sh` check the neutering and alternation properties skip, so the
+  binding this phase moved to it — R-CLEAN-04, §Plan step 9 — stands on the accounting property
+  alone: its rules are proven to be *reported*, not proven to *fire*. The other three rules on
+  that file (R-STYLE-01, R-STYLE-02, R-CLEAN-02) are `00-scaffold`'s and inherit the same limit.
+  Not closed here because mutating a clang-tidy invocation means mutating the tool's
+  configuration rather than a `grep` alternative, which is the harness work released above.
 - **Reading R-PROTO-05 as "no *code* reference" rather than "no occurrence"** — no phase;
   considered on 2026-09-15 and rejected with the reason recorded, not merely dropped. It is the
   more honest reading semantically: a comment cannot make `core` depend on test data, which is
@@ -792,7 +887,9 @@ it are the three that cost the most when they lie.
   binding does and does not promise; `00-scaffold` bound them and `notes.md` §For later phases
   carries them with an owner. This phase writes the clause for R-CLEAN-04 only, which is the
   one of the three it moved to `test:` itself. The header filter's dependence on the checkout
-  path (§Plan step 20) reaches R-STYLE-02 and R-CLEAN-02 the same way, and goes with them.
+  path is gone: §Plan step 23 reverted the regex this phase had narrowed, which is what put
+  those two bindings' reach back where `00-scaffold` set it. Their file-scope clause is still
+  theirs to write.
 - **Writing the spelling clause for R-ARCH-01, R-ARCH-03, R-CLEAN-03, R-CLEAN-05, R-CLEAN-09,
   R-ERR-03 and R-ERR-04** — not this phase's bindings; `00-scaffold` bound all seven. Each runs
   through a `find_*` and owes the clause by the last row of the table in §What a `test:` binding

@@ -65,7 +65,8 @@ constexpr std::size_t kHeaderIndex  = 0;
 constexpr std::size_t kReadyIndex   = 1;
 constexpr std::size_t kPayloadIndex = 2;
 
-// Header and ready byte. A frame shorter than this announced nothing at all.
+// Header and ready byte. A frame shorter than this is cut short before the ready slot: its
+// header may well be readable, and `decode` reports the abort anyway (R-PROTO-02).
 constexpr std::size_t kPrefixLen = kPayloadIndex;
 
 // The header's low nibble announces how many payload bytes follow, in pairs.
