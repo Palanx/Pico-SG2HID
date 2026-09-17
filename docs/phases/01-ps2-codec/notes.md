@@ -2474,3 +2474,64 @@ verdict (2026-09-16, returned to implementation). Below the escape threshold.
   spec text; the five `undecidable` are spec pointers, and finding 2 is a fact about the harness
   that the spec states more favourably than the harness supports — that one is a measurement to
   redo, not a sentence to soften.
+
+## Validation — 2026-09-17 (iteration 3 against the def180c spec — escape fired)
+
+Iteration 3: two `## Validation` sections follow the 2026-09-15 `escaped to /expand-phase`
+verdict (2026-09-16, and earlier today). A gate failed, so the iteration-3+ escape fires.
+
+- **file set, checked first.** `- base:` names `24d489f`, a real commit; **37 files** against the
+  working tree (36 plus `docs/adr/0007-error-model.md`, §Plan step 28); no path from
+  `.claude/workflow/installed` inside it; tree clean.
+- criteria: **21 passed / 0 failed.** `make test` **OK** in **2:21** (cap 3m; 1:41 before step 23
+  put the header filter back, which is the cost recorded in round 29), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers,
+  `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, 3 markers, both ADRs, driver exit 0,
+  accounting 3 and 4 rule(s), `wiring cases: 10/10`, `false-positive cases: 20 (floor 20)`,
+  `rejection cases: 64`, `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (37 files, 9 under `src/core/`; 13 active `deny` rules). One path per
+  argument through `xargs`, input counted at 37. Proved live: `#include "src/hal/bus_io.h"` in
+  `src/core/ps2_frame.h` is caught as `deny core -> hal`, exit 1, file restored byte-identical.
+- index: **was stale** at `81d838a`, rebuilt to `a1d2a48`.
+- independent review: **contradicts: 5** — (1) §Plan step 20's own `— check:` returns **0**: the
+  phrase it greps was removed by step 23, while §Plan's header says every step is landed;
+  (2) step 20 says steps 11 and 17 were "reconciled to say 'in a checkout whose path contains no
+  `src/`'" and neither says it — the phrase occurs once in the spec, in step 20 itself;
+  (3) §Out of scope says "four of the five `.sh` checks are mutation-tested"; there are **six**
+  and **five** are mutated (boundaries, phase_docs, repo_shape, secrets, tool_versions);
+  (4) §Context pointers still calls `.clang-tidy`'s `HeaderFilterRegex` the one "§Vectors depends
+  on", which step 23 and the `.clang-tidy` comment both deny; (5) §Context pointers promises
+  "a reject/accept/wiring case per rule" in `tests/test_repo_shape.sh` — 20 `accept` cases cover
+  seven finders, and R-PROTO-05, R-ERR-03 and R-ERR-04 have none, which §Acceptance criteria's own
+  distribution already showed. **undecidable: 2** — (1) the derivation in §What a `test:` binding
+  does and does not promise generates a file-scope obligation only in the `tidy_sources()` row, yet
+  the assignment table gives R-ERR-02 one while it runs through `hits()`; `find_clean03` and
+  `find_clean05` scan `src/` only and their rules' texts are silent, and the spec gives no rule for
+  when a `hits`/`raw_hits` finder owes file scope; (2) the sentences deferring to `notes.md`, which
+  the reviewer is starved of by construction. Four taste items.
+- closure test: **fail** — five `contradicts`, and one `undecidable` is a missing derivation rule.
+- upstream: **none** in the file set.
+- verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` → `pending`
+  by this command.
+
+**Why the escape is right rather than unlucky, stated for whoever re-expands.** Four of the five
+`contradicts` are sentences written **in round 29, while fixing round 28's findings** — a step
+asserting a check that its own sibling step had just invalidated, a step describing reconciliations
+it did not make, a count invented in the same edit that removed a wrong one, and a pointer left
+behind by a revert. The fifth has survived every round since the section was written. Each
+individual fix has been correct and measured; what is failing is the document, which now carries
+28 Plan steps, several marked superseded in place, and a §Context pointers section describing a
+tree three rounds older than the one on disk. A re-expansion derives the spec from the PHASES.md
+row's Goal and this file, which is exactly the operation that drops accumulated scar tissue instead
+of patching it again.
+
+**What the re-expansion must carry forward** (beyond §Debt and §For later phases, which it reads
+anyway): the refusal precedence and its four items; the `(src|tests)/.*` header filter and why the
+narrowing was reverted; that `tests/test_style.sh` is not mutation-tested, so R-CLEAN-04 stands on
+the accounting property; the spelling axis for every `find_*`; the `kZeroFill` ruling; and §Notes
+to `/validate-phase`'s three package workarounds, items 1 and 2 of which die with the package
+update and item 3 with an upstream fix that has not landed.
