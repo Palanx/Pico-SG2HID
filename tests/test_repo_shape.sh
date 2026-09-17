@@ -330,10 +330,19 @@ accept "nodiscard std::expected return"     find_err02 src/core/x.h '[[nodiscard
 accept "nodiscard DecodeOutcome return"     find_err02 src/core/x.h '[[nodiscard]] DecodeOutcome poll_once( Link& link );'
 accept "nodiscard LinkState return"         find_err02 src/core/x.h '[[nodiscard]] LinkState step( Link& link );'
 accept "a DecodeOutcome parameter, not a return" find_err02 src/core/x.h 'void trace( const DecodeOutcome& outcome );'
-if [ "$accepted" -ge 20 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 20)"
+# The three finders that had no accept case at all until 2026-09-17. None of them carries an
+# exclusion pattern, so there is no alternative to cover here and that is not what these are
+# for: each is the legitimate NEIGHBOUR of the violation its reject case plants, and nothing
+# else proves the finder stays silent on it. A pattern loosened by one character — `\bthrow\b`
+# to `throw`, `\.value[[:space:]]*\(` to `\.value`, `tests/vectors` to `tests/vector` — passes
+# every rejection case above and fails exactly these.
+accept "an identifier containing throw"     find_err03   src/core/x.cpp 'int throwaway = 0;'
+accept "values( ) is not value( )"          find_err04   src/core/x.cpp 'const auto n = report.values( );'
+accept "a tests/ path that is not the vectors" find_proto05 src/core/x.cpp '#include "tests/vector_math.h"'
+if [ "$accepted" -ge 23 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 23)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 20)"
+    echo "  FAIL: false-positive cases: $accepted (floor 23)"
     fail=1
 fi
 

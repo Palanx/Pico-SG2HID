@@ -326,7 +326,7 @@ open, so it must match the tree even though the Goal and the Plan must not be de
 
 - `CLAUDE.md` — the architecture paragraph, the hardware-safety rules, the three pre-validation
   checks in §Conventions, and the reading rule that scopes this list.
-- `docs/phases/01-ps2-codec/notes.md` — 2537 lines. `grep -c '^### Round ' ` returns **28** and
+- `docs/phases/01-ps2-codec/notes.md` — 2575 lines. `grep -c '^### Round ' ` returns **28** and
   `grep -c '^## Validation'` **13**; the first implementation round predates the heading style and
   sits unheaded at the top of §Deviations, so the rounds are 29. §Deviations is where every decision this spec states was argued; §Debt and
   §For later phases are what this phase hands on, including six taste items from the last review.
@@ -383,26 +383,10 @@ open, so it must match the tree even though the Goal and the Plan must not be de
 
 ## Plan
 
-**One item of work is outstanding. Everything else this phase set out to do is in the tree; its
-history is in `notes.md` and is deliberately not repeated here.**
-
-1. **Three `accept` cases, one each for R-PROTO-05, R-ERR-03 and R-ERR-04.** Touches
-   `tests/test_repo_shape.sh`. §Context pointers describes that file as carrying a
-   `reject`/`accept`/`wiring` case per rule, and three rules have no `accept` case: the 20 existing
-   ones cover seven finders (`find_arch01` 5, `find_err02` 4, `find_clean03` 4, `find_err01` 3,
-   `find_arch03` 2, `find_clean09` 1, `find_clean05` 1). This is a real hole rather than drift —
-   it has been true since the section was written, and a missing `accept` case is a missing
-   false-positive guard: nothing proves the finder stays silent on the legitimate neighbour of a
-   violation. Each new case is a line the finder must **not** fire on, and each must be a line no
-   `reject` case can also produce:
-   - R-PROTO-05 — a path that is not `tests/vectors`, e.g. an include of `tests/vector_math.h`.
-   - R-ERR-03 — an identifier containing the keyword, e.g. `int throwaway = 0;`, which
-     `\bthrow\b` must not match.
-   - R-ERR-04 — a call that is not `.value(`, e.g. `report.values( )`.
-   Raise the floor from 20 to 23 in the same edit, since the floor's purpose is "no accept case
-   was deleted". — check: `sh tests/test_repo_shape.sh | grep 'false-positive cases'` reports
-   `23 (floor 23)`, `grep -cE '^accept ' tests/test_repo_shape.sh` → `23`, and deleting any one of
-   the three new lines makes that line report `22` and `FAIL`.
+**No work is outstanding.** Everything this phase set out to do is in the tree, and `notes.md`
+is the account of how it got there — this section stays empty rather than logging it, because a
+Plan that lists what already happened duplicates `notes.md` and goes stale against it. If a later
+round finds work, it is written here and nowhere else.
 
 ## Acceptance criteria
 
@@ -449,11 +433,11 @@ grep returns for `tests/test_ps2_codec.py`, `tests/test_style.sh` and `tests/tes
 Measured 2026-09-17, stated as a distribution because a total with no members is the defect this
 phase kept paying for. The 64 rejection cases: **31** R-ARCH-01, **8** R-ARCH-03, **7** R-CLEAN-09,
 **4** each for R-ERR-01, R-ERR-02 and R-ERR-03, **2** each for R-PROTO-05 and R-CLEAN-05, **1**
-each for R-ERR-04 and R-CLEAN-03. The false-positive cases are **20** today — **5** `find_arch01`,
-**4** each for `find_err02` and `find_clean03`, **3** `find_err01`, **2** `find_arch03`, **1** each
-for `find_clean09` and `find_clean05` — and **23** once §Plan step 1 adds one each for
-`find_proto05`, `find_err03` and `find_err04`. The floor equals the count, so it asserts "no accept
-case was deleted" rather than "at least this many exist".
+each for R-ERR-04 and R-CLEAN-03. The 23 false-positive cases: **5** `find_arch01`, **4**
+each for `find_err02` and `find_clean03`, **3** `find_err01`, **2** `find_arch03`, and **1** each
+for `find_clean05`, `find_clean09`, `find_err03`, `find_err04` and `find_proto05` — one per finder,
+which is the property the count is for. The floor equals the count, so it asserts "no accept case
+was deleted" rather than "at least this many exist".
 
 **Two of those need the real `grep`.** The `neutered:` and `alternations:` lines use an ERE
 backreference (`([0-9]+)/\1`), which is the point — it makes the two sides *equal* rather than

@@ -32,7 +32,7 @@ against the real `src/core/`, runs them, forwards their lines, and carries three
 rejection cases.
 
 Checks extended: `tests/test_repo_shape.sh` grew `find_err01`, `find_err02` and a
-`core_headers` lister (eight checks → ten, wiring 8/8 → 10/10, accept floor 13 → 20);
+`core_headers` lister (eight checks → ten, wiring 8/8 → 10/10, accept floor 13 → 20, then 23 in round 30);
 `tests/test_style.sh` gained the two clang-tidy flags and now reports R-CLEAN-04;
 `.clang-tidy` enabled `readability-magic-numbers` and narrowed `HeaderFilterRegex` to `src/.*`.
 
@@ -1696,6 +1696,44 @@ recorded below). Iteration 3 against the def180c spec, so the next failure fires
 - **Taste from the 2026-09-17 review is in §For later phases, untouched** — six items, one of
   which (`case_report_is_wide_enough` asserting tautologies of its own constants) looks like real
   debt and is recorded as such rather than fixed in a closing round.
+
+
+### Round 30 — the one item the re-expanded Plan carried, and its liveness measured both ways.
+
+- **What the spec asked for and what landed.** Three `accept` cases in `tests/test_repo_shape.sh`,
+  one each for R-PROTO-05, R-ERR-03 and R-ERR-04 — the three finders that had none — and the
+  floor raised 20 → 23. Nothing else was touched.
+
+- **Generalised, since "three rules have no accept case" is an instance of a property.** The
+  property: *every finder has at least one case proving it stays silent on the legitimate
+  neighbour of the violation it hunts.* Enumerated over all ten finders after the edit, by
+  counting `^accept ` lines per finder: `find_arch01` 5, `find_err02` 4, `find_clean03` 4,
+  `find_err01` 3, `find_arch03` 2, and 1 each for `find_clean05`, `find_clean09`, `find_err03`,
+  `find_err04` and `find_proto05` — 23, and no finder left at zero. That is the whole set; there
+  is no eleventh finder, because `run_all` reports exactly ten rules.
+
+- **Liveness measured in both directions, six probes in scratch copies.** Deleting each of the
+  three new lines makes the file report `false-positive cases: 22 (floor 23)` and `FAIL` — so each
+  is load-bearing rather than decorative. And loosening each finder's pattern by one character —
+  `\bthrow\b` → `throw`, `\.value[[:space:]]*\(` → `\.value`, `tests/vectors` → `tests/vector` —
+  leaves `rejection cases: 64` fully green and fails exactly the new accept case. That second half
+  is the one worth keeping: it is the measurement behind the comment written above the three
+  lines, and it shows what a rejection case structurally cannot catch.
+
+- **Reconciled in the same edit, because the fix invalidated a sentence.** §Acceptance criteria
+  said the false-positive cases were "**20** today … and **23** once §Plan step 1 adds one each";
+  that is now false in both halves, and it is replaced by the measured 23-case distribution. The
+  §Plan section is left **empty** rather than carrying the step with a `Landed` marker: the
+  re-expansion's own rule is that the Plan holds work that is not done, and a step marked landed is
+  precisely the shape that rotted across rounds 28 and 29. `grep -n '§Plan' spec.md` returns only
+  the two references in the header comment, so nothing points at a step number that no longer
+  exists. §Outcome's "accept floor 13 → 20" is updated to 23.
+
+- **Acceptance: 23 of 23 pass.** `make test` **OK** in **2:29** (cap 3m), `make lint` 0, driver
+  exit 0, `rejection cases: 64`, `false-positive cases: 23 (floor 23)`, `wiring cases: 10/10`,
+  `neutered: 33/33`, `alternations: 64/64`, `accounting` 3 and 4 rule(s), `test_phase_docs.sh` 0,
+  and the four criteria added by the re-expansion (`HeaderFilterRegex`, ADR-0007's status, both
+  ADR files). M4 is the validator's and was not run here.
 
 
 ## Debt
