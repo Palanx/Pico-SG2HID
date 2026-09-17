@@ -2322,3 +2322,52 @@ verdict, and that escape **did** produce a new spec, so the reset applies.
 - closure test: **fail** — five `contradicts`, and `undecidable` 1 and 3 are missing pointers.
 - verdict: **returned to implementation.** Iteration 1 against the def180c spec; the next
   validation is iteration 2, below the escape threshold.
+
+## Validation — 2026-09-17 (iteration 2 against the def180c spec)
+
+Iteration 2: one `## Validation` section follows the 2026-09-15 `escaped to /expand-phase`
+verdict (2026-09-16, returned to implementation). Below the escape threshold.
+
+- **file set, checked first.** `- base:` names `24d489f`, confirmed a real commit; 36 files
+  against the working tree; no path from `.claude/workflow/installed` inside it; tree clean.
+- criteria: **21 passed / 0 failed.** `make test` **OK** in **1:41** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers,
+  `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, 3 markers, both ADRs, driver exit 0,
+  accounting 3 and 4 rule(s), `wiring cases: 10/10`, `false-positive cases: 20 (floor 20)`,
+  `rejection cases: 64`, `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0.
+  Both derivations recompute (`reject` 64, `accept` 20). Steps 18-22's own checks pass.
+  M1-M3 are the driver's rejection cases (`3/3`); **M4 run by hand** in a `cp -a` copy, exit 1
+  with exactly the predicted message.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (36 files, 9 under `src/core/`; 13 active `deny` rules, `src/core/`
+  is a declared layer). One path per argument through `xargs`, input counted at 36. Proved live:
+  `#include "src/hal/bus_io.h"` in `src/core/link.cpp` is caught as `deny core -> hal`, exit 1,
+  file restored byte-identical.
+- index: **was stale** at `2fe3788`, rebuilt to `81d838a`; `--check` now fresh.
+- independent review: **contradicts: 3** — (1) `src/core/ps2_protocol.h:68` still says "A frame
+  shorter than this announced nothing at all", the very sentence §Plan step 18 says it removed
+  from `ps2_frame.cpp` and which §Goal item 1 contradicts; (2) §Out of scope says "the `.sh`
+  checks are mutation-tested and the `.py` checks are not", while
+  `tests/test_checks_are_live.py:49` holds `NO_MUTATE = {"test_style.sh"}` — so the file this
+  phase bound R-CLEAN-04 to is held to the accounting property only; (3) §Plan step 10 says the
+  uniformity mutation fails `R-PROTO-02` "only when the outcome is `AckTimeout`" and eleven lines
+  later records it failing 7, the four plus three good frames from `Absent`. **undecidable: 5** —
+  (1) which Plan step owns the `HeaderFilterRegex` narrowing `(src|tests)/.*` → `src/.*`, and
+  whether narrowing two other phases' bindings was intended; (2) `tidy_sources()`'s "and nothing
+  else" is stated in a glob notation the spec never fixes — git pathspec wildcards cross `/`;
+  (3) whether the zero fill `kZeroFill` counts as an "expected byte" under R-PROTO-05;
+  (4) whether ADR-0007's status line owes a partial-supersession note; (5) two spec claims that
+  quantify files the reviewer was denied by construction. Six taste items.
+- closure test: **fail** — three `contradicts`, and five `undecidable` are five missing pointers.
+  Its mechanical half passes: four `notes.md` sections non-empty, all 36 files reachable from the
+  spec or exempt, no untracked path, no `Owed` marker in the Plan.
+- upstream: **none** in the file set. `/belay-feedback` owes the `contradicts` routing, the
+  `- base:` staleness trap, the operator-edit gap, the escape reading round count rather than
+  trend, and the `Owed`-marker gap.
+- verdict: **returned to implementation.** Status stays `in-progress`. Findings 1-3 are code and
+  spec text; the five `undecidable` are spec pointers, and finding 2 is a fact about the harness
+  that the spec states more favourably than the harness supports — that one is a measurement to
+  redo, not a sentence to soften.
