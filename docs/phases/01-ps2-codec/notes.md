@@ -2126,3 +2126,46 @@ new spec, so the reset does not apply and the three rounds before this one still
   `pending` by this command. Fired rather than reported because the 2026-09-15 override
   recorded its own test — "if the next round fails on something structural, this note says the
   override was a mistake" — and this round failed on something structural.
+
+## Validation — 2026-09-16 (round 1 against the spec re-expanded at def180c)
+
+Iteration 1: zero `## Validation` sections follow the 2026-09-15 `escaped to /expand-phase`
+verdict, and that escape **did** produce a new spec, so the reset applies.
+
+- **file set, checked first.** `- base:` names `24d489f`, a real commit; 36 files against the
+  working tree; no path from `.claude/workflow/installed` inside it.
+- criteria: **21 passed / 0 failed.** `make test` **OK** in **2:07** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers,
+  `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, 3 markers, both ADRs, driver exit 0,
+  accounting 3 and 4 rule(s), `wiring cases: 10/10`, `false-positive cases: 20 (floor 20)`,
+  `rejection cases: 64`, `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0.
+  §Plan step 17's own check returns **1** and `test_rule_traceability.py` exits 0. M1-M3 are the
+  driver's rejection cases (`3/3`); **M4 run by hand**, exit 1 with the expected message.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (36 files, 9 under `src/core/`; 13 active `deny` rules). One path
+  per argument through `xargs`, proved live: `#include "src/hal/bus_io.h"` in
+  `src/core/guitar_state.cpp` is caught as `deny core -> hal`, file restored identical.
+- index: **fresh without rebuilding** — `2e9e987` touched no source files.
+- independent review: **NOT RUN — the subagent terminated on a session rate limit before
+  producing a verdict** (`rate_limit`, HTTP 429; the limit resets 00:50 America/Santiago).
+  It returned no `contradicts`, no `undecidable` and no taste list. **Nothing is inferred from
+  its partial output and nothing is recorded in its place.**
+- closure test: **not decidable this round.** Its mechanical half passes — four `notes.md`
+  sections present and non-empty, 36 files accounted for, no untracked path, no `Owed` marker
+  left in the Plan, every quantified claim carrying its enumeration or derivation. Its other
+  half is the review, which did not run: an `undecidable` finding is defined as a missing
+  pointer *found from outside your own head*, and there was no outside this round.
+- upstream: **none** in the file set. `/belay-feedback` owes the `contradicts` routing, the
+  `- base:` staleness trap, the operator-edit gap, the escape reading round count rather than
+  trend, the `Owed`-marker gap named in §For later phases, and the three workarounds in
+  §Notes to `/validate-phase`.
+- verdict: **none of the three.** Not `done`: the gate that has returned a real finding in each
+  of the last several rounds — including the one that fired the escape — did not run, and
+  self-declaring the closure test on the round that would close the phase is the worst round to
+  do it. Not `returned to implementation` and not `escaped`: nothing failed. Status stays
+  `in-progress` pending the review, which the command's step 5 offers two ways to obtain — the
+  operator pastes a three-input review from a fresh session, or this one is re-dispatched after
+  the limit resets.
