@@ -1900,6 +1900,15 @@ recorded below). Iteration 3 against the def180c spec, so the next failure fires
   "measured four times here". Round 28 measured a fifth (the prefix check). The file is the
   operator's and was not edited.
 
+- **Taste from validation 2026-09-21, recorded and not fixed (step 5):** `spec.md` §clang-tidy's
+  header filter says `make test` "goes from about 1:40 to about 2:30", while
+  `verify.md:178-180` tells the operator that runs land "between 1:40 and 2:20". Two files in one
+  diff give different prose ranges for the same measurement (the reviewer measured 2:06.86, inside
+  both). The acceptance criterion is `real < 3m` and passes either way. Also: §Files this phase
+  writes describes the `tests/test_repo_shape.sh` row as "the checks behind R-ERR-01, R-ERR-02 and
+  R-CLEAN-04", while that file also carries R-PROTO-05's re-scoped finder and the three new accept
+  cases — an incomplete summary rather than a wrong one, both accounted for elsewhere in the spec.
+
 - **Taste from validation 2026-09-17, recorded and not fixed (step 5).** Six items; the first
   is the one that looks like debt rather than preference:
   1. `case_report_is_wide_enough` cannot fail — `kButtonBytes` is *derived* from `kButtonCount`
@@ -2573,3 +2582,47 @@ narrowing was reverted; that `tests/test_style.sh` is not mutation-tested, so R-
 the accounting property; the spelling axis for every `find_*`; the `kZeroFill` ruling; and §Notes
 to `/validate-phase`'s three package workarounds, items 1 and 2 of which die with the package
 update and item 3 with an upstream fix that has not landed.
+
+## Validation — 2026-09-21 (iteration 1 against the spec re-expanded at 90d7564)
+
+Iteration 1: zero `## Validation` sections follow the 2026-09-17 `escaped to /expand-phase`
+verdict, and that escape produced a new spec, so the reset applies.
+
+- **file set, checked first.** `- base:` names `24d489f`, a real commit; **37 files** against the
+  working tree; no path from `.claude/workflow/installed` inside it; tree clean but for the two
+  `docs/index/` files this command rebuilt.
+- criteria: **23 passed / 0 failed.** `make test` **OK** in **2:14** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers,
+  `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, 3 markers, `HeaderFilterRegex` 1, both ADRs,
+  ADR-0007 naming ADR-0011, driver exit 0, accounting 3 and 4 rule(s), `wiring cases: 10/10`,
+  `false-positive cases: 23 (floor 23)`, `rejection cases: 64`, `neutered: 33/33`,
+  `alternations: 64/64`, `test_phase_docs.sh` 0. Both derivations recompute (64 and 23).
+  M1-M3 are the driver's rejection cases (`3/3`); **M4 run by hand** in a `cp -a` copy, exit 1
+  with exactly the predicted message.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (37 files, 9 under `src/core/`; 13 active `deny` rules, `src/core/` is
+  a declared layer). One path per argument through `xargs`, input counted at 37. Proved live:
+  `#include "src/hal/bus_io.h"` in `src/core/hid_report.h` is caught as `deny core -> hal`, exit 1,
+  file restored byte-identical.
+- index: **was stale** at `a1d2a48`, rebuilt to `bc6fa5c`.
+- independent review: **contradicts: 1** — §Context pointers says `grep -c '^### Round ' notes.md`
+  returns **28** and that the rounds are therefore 29; the file returns **29**, so the sentence is
+  false and its arithmetic now yields 30. Verified on the file. **undecidable: none** — the
+  reviewer listed, separately and explicitly as not-defects, the claims it is structurally barred
+  from checking (the sentences deferring to this file, to `00-scaffold/notes.md`, to the package
+  and to `~/.claude-belay/feedback/`), having confirmed the half of each that is visible in the
+  tree. Two taste items, in §For later phases above. The first dispatch of this review died on a
+  session rate limit before producing any verdict; nothing was inferred from it and it was
+  re-dispatched to a fresh agent after the limit reset.
+- closure test: **fail** — one `contradicts`.
+- upstream: **none** in the file set.
+- verdict: **returned to implementation.** Status stays `in-progress`. The fix is a **deletion**,
+  not a rewording: the sentence is a prose count of another file, which `00-scaffold` §For later
+  phases already names as the shape with no check behind it, and this round is the third time it
+  has rotted — the count was measured at 28, the same round then appended the `### Round 30`
+  heading, and the line count beside it was updated while the round count was not. The line count
+  is equally brittle and goes with it; §Context pointers needs the file named and its sections
+  described, not measured.
