@@ -17,21 +17,17 @@ R-CLEAN-09, R-ERR-03, R-ERR-04)
 Every `find_*` regex has spellings it does not match, so every grep-bound rule owes a **spelling
 clause** in its own text naming them (`docs/phases/01-ps2-codec/spec.md` §What a `test:` binding
 does and does not promise). Seven `00-scaffold` rules carry none: R-ARCH-01, R-ARCH-03,
-R-CLEAN-03, R-CLEAN-05, R-CLEAN-09, R-ERR-03, R-ERR-04. R-CLEAN-03 and R-CLEAN-05 also owe a
+R-CLEAN-03, R-CLEAN-05, R-CLEAN-09, R-ERR-04, and R-ERR-03, whose clause (written by
+`13-scaffold-check-gaps`) covers `strip_line_comments( )` only, not the regex. R-CLEAN-03 and R-CLEAN-05 also owe a
 **file-scope clause**: their text is unscoped while the check reads `src_files( )` only. None of
 the missed forms has been measured, so no specific form is claimed; one is known — `try` with `{`
-on the next line is not seen by `find_err03`. A second is measured for R-ERR-03 and already
-written into its clause (2026-09-23): a `'` outside a character literal (digit separator
-`1'000`) can make `strip_line_comments( )` cut a line inside a string and hide the code after
-it. Nothing breaks today: every check is live and
+on the next line is not seen by `find_err03`. Nothing breaks today: every check is live and
 green over the current tree; the rules only assert full coverage they do not have.
 
-Deliberately deferred, not dropped: `13-scaffold-check-gaps` changes `hits( )` (string-literal
-handling) and `src_files( )` (adds `.hpp`, `.cc`, `.inl`), which back all seven. A clause written
-before 13 lands describes a scanner and a file list that stop existing. **Evaluate after 13 is
-`done`**: re-read the finders as 13 left them, then schedule a clause-only row via
-`/plan-feature` ("Scheduling a fix to a phase already done"), shaped like
-`12-scaffold-scope-clauses`.
+**Scheduled as `16-scaffold-spelling-clauses`** (2026-09-23), re-evaluated after
+`13-scaffold-check-gaps` closed: the premise held. It depends on `15-scaffold-file-lists`,
+because R-ARCH-01 and R-CLEAN-09 read `core_files( )`, which 15 widens — a clause written first
+would describe a file list that stops existing.
 
 Fix, with its cost: documentation only, no check changes. Per rule, extract the finder into a
 scratch directory, feed it one fixture line per spelling, write what it misses into the rule's
@@ -64,8 +60,10 @@ leaves the other four file lists alone because its row names only `src_files( )`
 clang-tidy and clang-format `.cpp`/`.h` only. Nothing breaks today: every C++ file in the
 repo is `.cpp` or `.h`. It stops being true the first time a file with another extension is
 added — the Pico SDK and TinyUSB examples `03-pio-bus` onward will copy from use `.c`/`.h`,
-but nothing forbids `.hpp`. No rule text states these file lists, so the rules assert
-coverage they do not have.
+but nothing forbids `.hpp`. R-STYLE-01 (`.cpp` and `.h`) and R-ERR-02 (`src/core/*.h`) state
+their lists in their own text, and 13 wrote the missed extensions into R-STYLE-02, R-CLEAN-02
+and R-CLEAN-04; R-ARCH-01, R-CLEAN-09 and R-ERR-01 state nothing, so they assert coverage they
+do not have.
 
 Fix, cheapest first: (a) a rule that allows only `.cpp` and `.h` under `src/`, checked by one
 `find` — one rejection case, and every other list becomes correct by definition; (b) widen
@@ -73,9 +71,9 @@ the four lists to match `src_files( )`, with a rejection case per extension per 
 liveness harness demands one per alternation branch) and a clang-format/clang-tidy probe per
 extension — roughly one session; (c) a scope clause per rule, documentation only.
 
-Deliberately deferred, not dropped: **evaluate after 13 is `done`**, together with the
-spelling-clause entry above — 13 changes `src_files( )` into the one-line `grep -E`
-alternation shape these lists would copy.
+**Scheduled as `15-scaffold-file-lists`** (2026-09-23) with fix (b), chosen by the operator
+after 13 closed: (a) would forbid the `.c` files the SDK and TinyUSB examples carry and
+contradict 13's widening of `src_files( )`.
 
 What already works: `13-scaffold-check-gaps` spec Plan step 3 is the pattern for (b) — a
 one-line body with the extensions as one `grep -E` alternation, so
