@@ -13,7 +13,9 @@ ROOT=$( pwd )
 fail=0
 
 # missing_verify <phases-file> <phases-dir> — prints one line per closed phase with no
-# usable verify.md.
+# usable verify.md: missing, empty, or lacking either of the two headings R-PROC-02 names —
+# a line matching `^#+ What was built` and one matching `^#+ .*[Cc]heck it`. The headings are
+# all it reads; whether the prose under them serves a non-specialist is judged by no check.
 missing_verify( ) {
     awk -F'|' '/^\|/ {
         id = $2; status = $(NF-1)
@@ -21,8 +23,10 @@ missing_verify( ) {
         gsub(/^[ \t]+|[ \t]+$/, "", status)
         if ( id ~ /^[0-9][0-9]-/ && status == "done" ) { print id }
     }' "$1" | while read -r phase_id; do
-        if [ ! -s "$2/$phase_id/verify.md" ]; then
-            echo "$phase_id is done but $2/$phase_id/verify.md is missing or empty"
+        mv_f="$2/$phase_id/verify.md"
+        if [ ! -s "$mv_f" ] || ! grep -qE '^#+ What was built' "$mv_f" \
+             || ! grep -qE '^#+ .*[Cc]heck it' "$mv_f"; then
+            echo "$phase_id is done but $mv_f is missing, empty, or lacks a '# What was built' or '# … Check it' heading"
         fi
     done
 }
@@ -84,12 +88,35 @@ else
     fail=1
 fi
 
-# ...and a closed phase that DOES have one must not be reported.
-printf 'how to check this by hand\n' > "$tmp/phases/03-something/verify.md"
+# A verify.md that exists but lacks a required heading: one case per heading, plus the
+# one-line file the check used to accept. Each must be caught on its own.
+reject_verify( ) { # reject_verify <verify.md-content> <what-it-lacks>
+    printf '%s\n' "$1" > "$tmp/phases/03-something/verify.md"
+    if run_all "$tmp/PHASES.md" "$tmp/phases" >/dev/null 2>&1; then
+        echo "  FAIL: R-PROC-02 rejection case did not fire on a verify.md with $2"
+        fail=1
+    else
+        echo "  ok:   R-PROC-02 rejection case (a verify.md with $2 is caught)"
+        verify_rejected=$(( verify_rejected + 1 ))
+    fi
+}
+verify_rejected=0
+reject_verify 'see above' 'one line and no heading'
+reject_verify '## What was built' 'no check-it heading'
+reject_verify '## Check it yourself' 'no what-was-built heading'
+# The count is what makes a helper that silently runs nothing fail: its ok lines vanish, and
+# nothing else would notice.
+if [ "$verify_rejected" -ne 3 ]; then
+    echo "  FAIL: R-PROC-02 heading rejection cases: $verify_rejected/3"
+    fail=1
+fi
+
+# ...and a closed phase whose verify.md carries both headings must not be reported.
+printf '## What was built\nx\n## Check it yourself\ny\n' > "$tmp/phases/03-something/verify.md"
 if run_all "$tmp/PHASES.md" "$tmp/phases" >/dev/null 2>&1; then
     echo "  ok:   R-PROC-02 false-positive case"
 else
-    echo "  FAIL: false positive — a done phase with a verify.md was reported"
+    echo "  FAIL: false positive — a done phase with both verify.md headings was reported"
     fail=1
 fi
 rm -rf "$tmp"

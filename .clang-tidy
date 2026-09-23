@@ -5,9 +5,10 @@
 # behind R-STYLE-02 works by feeding it a deliberately misnamed sample and asserting
 # that every category is reported, which is the only way to know these keys still bind.
 #
-# Scope limit: clang-tidy needs to know how to compile the file. It runs over src/core/
-# and tests/ only; src/hal/, src/usb/, src/app/ and src/emu/ pull in Pico SDK and TinyUSB
-# headers and are skipped.
+# Scope: every .cpp and .h under src/ plus tests/*.cpp (tidy_sources() in tests/test_style.sh).
+# clang-tidy needs to know how to compile the file, so a file under src/hal/, src/usb/,
+# src/app/ or src/emu/ that includes a Pico SDK or TinyUSB header fails lint with
+# clang-diagnostic-error until 03-pio-bus supplies its include flags.
 #
 # The flags are NOT trivial, and this comment used to say they were. Two are required and
 # neither is guessable from a naming-rule failure, because both arrive as
