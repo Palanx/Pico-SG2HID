@@ -49,31 +49,32 @@ resolve( ) {
     return 1
 }
 
-# check_version <label> <binary> <min-major> <version-flag>
+# check_version <binary> <min-major> <version-flag> — messages name <binary> as given, not
+# the path resolve( ) found, so each LIVE label above still prefixes exactly one line.
 # Absent tool: skip under OPTIONAL_TOOLS, fail otherwise. Present tool: must meet the floor.
 check_version( ) {
-    cv_label="$1"; cv_bin="$2"; cv_min="$3"; cv_flag="$4"
-    cv_bin=$( resolve "$cv_bin" ) || cv_bin=""
+    cv_name="$1"; cv_min="$2"; cv_flag="$3"
+    cv_bin=$( resolve "$cv_name" ) || cv_bin=""
     if [ -z "$cv_bin" ]; then
         if [ "${OPTIONAL_TOOLS:-0}" = "1" ]; then
-            echo "  skip: R-TOOL-01: $cv_label not on PATH"
+            echo "  skip: R-TOOL-01: $cv_name not on PATH"
             return 0
         fi
-        echo "  FAIL: R-TOOL-01: $cv_label not on PATH"
+        echo "  FAIL: R-TOOL-01: $cv_name not on PATH"
         return 1
     fi
     cv_out=$( "$cv_bin" "$cv_flag" 2>&1 | head -1 )
     cv_have=$( ver_num "$cv_out" ) || cv_have=""
     cv_want=$( ver_num "$cv_min" )
     if [ -z "$cv_have" ]; then
-        echo "  FAIL: R-TOOL-01: cannot parse a version from $cv_label: $cv_out"
+        echo "  FAIL: R-TOOL-01: cannot parse a version from $cv_name: $cv_out"
         return 1
     fi
     if [ "$cv_have" -lt "$cv_want" ]; then
-        echo "  FAIL: R-TOOL-01: $cv_label is below the floor of $cv_min ($cv_out)"
+        echo "  FAIL: R-TOOL-01: $cv_name is below the floor of $cv_min ($cv_out)"
         return 1
     fi
-    echo "  ok:   R-TOOL-01: $cv_label $cv_min+ ($cv_out)"
+    echo "  ok:   R-TOOL-01: $cv_name $cv_min+ ($cv_out)"
     return 0
 }
 
@@ -100,7 +101,7 @@ arm_compiles( ) {
 # arm-none-eabi-g++ 12, the release in which libstdc++ gained <expected> — inferred from
 # the library's history, NOT verified here; only 15.3.1 has been measured (ADR-0008
 # §Verification). python3 3.8 for the meta-test — floors carry a minor number for a reason.
-# probe <label> <binary> <min> <flag> — one probe, and the ONLY place R-TOOL-01's failure
+# probe <binary> <min> <flag> — one probe, and the ONLY place R-TOOL-01's failure
 # flag is set. Four call sites used to carry `|| fail=1` each, which is four independent
 # failure paths and would need four wiring cases to cover; collapsing them to one path is
 # cheaper than writing four cases and proves the same thing.
@@ -110,10 +111,10 @@ probe( ) { check_version "$@" || fail=1; }
 # the real machine and for the wiring cases at the bottom, which is what makes those cases
 # able to prove that a printed FAIL reaches the exit code.
 run_all( ) {
-    probe "clang-format"      clang-format      23 --version
-    probe "clang-tidy"        clang-tidy        23 --version
-    probe "arm-none-eabi-g++" arm-none-eabi-g++ 12 -dumpversion
-    probe "python3"           python3          3.8 --version
+    probe clang-format      23 --version
+    probe clang-tidy        23 --version
+    probe arm-none-eabi-g++ 12 -dumpversion
+    probe python3          3.8 --version
 
     # --- R-TOOL-02 -----------------------------------------------------------------------
     if command -v arm-none-eabi-g++ >/dev/null 2>&1; then
@@ -147,7 +148,7 @@ cat > "$stub_dir/clang-format" <<'STUB'
 echo "clang-format version 14.0.6"
 STUB
 chmod +x "$stub_dir/clang-format"
-if PATH="$stub_dir:$PATH" check_version "clang-format" clang-format 23 --version >/dev/null 2>&1; then
+if PATH="$stub_dir:$PATH" check_version clang-format 23 --version >/dev/null 2>&1; then
     echo "  FAIL: R-TOOL-01 rejection case did not fire — version 14 passed a floor of 23"
     fail=1
 else
@@ -172,7 +173,7 @@ cat > "$stub_dir/noversion" <<'STUB'
 echo "no digits here"
 STUB
 chmod +x "$stub_dir/noversion"
-if PATH="$stub_dir:$PATH" check_version "noversion" noversion 1 --version >/dev/null 2>&1; then
+if PATH="$stub_dir:$PATH" check_version noversion 1 --version >/dev/null 2>&1; then
     echo "  FAIL: R-TOOL-01 rejection case did not fire — an unparsable banner passed"
     fail=1
 else
@@ -185,7 +186,7 @@ cat > "$stub_dir/oldpython" <<'STUB'
 echo "Python 3.7.9"
 STUB
 chmod +x "$stub_dir/oldpython"
-if PATH="$stub_dir:$PATH" check_version "oldpython" oldpython 3.8 --version >/dev/null 2>&1; then
+if PATH="$stub_dir:$PATH" check_version oldpython 3.8 --version >/dev/null 2>&1; then
     echo "  FAIL: R-TOOL-01 rejection case did not fire — 3.7.9 passed a floor of 3.8"
     fail=1
 else

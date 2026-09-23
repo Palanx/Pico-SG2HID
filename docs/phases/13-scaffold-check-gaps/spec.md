@@ -82,7 +82,10 @@ stay green on the real tree.
    comments in `tests/test_style.sh` and `.clang-tidy` to state the new scope, and that a file
    under `src/hal`, `src/usb`, `src/app` or `src/emu` which includes a Pico SDK or TinyUSB
    header fails lint with `clang-diagnostic-error` until `03-pio-bus` supplies its include
-   flags — touches `tests/test_style.sh`, `.clang-tidy` — check: the G1 probe in §Acceptance
+   flags. Record the same fact, including that the FAIL line keeps its
+   R-STYLE-02 / R-CLEAN-02 / R-CLEAN-04 label until then, as a finding in
+   `docs/constraints.md` §Observed conventions — touches `tests/test_style.sh`, `.clang-tidy`,
+   `docs/constraints.md` — check: the G1 probe in §Acceptance
    criteria prints `4`; `make lint` → exit 0.
 7. **G1 and G3 — rule text.** R-STYLE-02, R-CLEAN-02 and R-CLEAN-04: file scope becomes
    `src/` `.cpp`/`.h` plus `tests/*.cpp` and included headers; drop "every other layer under

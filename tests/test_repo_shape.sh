@@ -20,11 +20,16 @@
 # as of phase 01-ps2-codec, so the real run now examines something — and the cases are still
 # what prove it would notice if it did not.
 #
-# belay-debt: these are greps, not parsed C++. Most checks strip line comments first;
-# R-CLEAN-05 deliberately does not, because it is a rule ABOUT comments. Block comments
-# and string literals are stripped by neither. That is enough to catch the
-# realistic violation (someone writes the forbidden thing) and will produce a false
-# positive on a forbidden token inside a /* */ block or a string. Upgrade path if it ever
+# belay-debt: these are greps, not parsed C++. Most checks strip line comments first — a `//`
+# outside any string or character literal, through strip_line_comments( ); R-CLEAN-05 and
+# R-PROTO-05 deliberately do not. Block comments are never stripped and string literals are
+# never blanked (blanking would hide quoted #include paths from R-ARCH-01). That is enough to
+# catch the realistic violation (someone writes the forbidden thing) and will produce a false
+# positive on a forbidden token inside a /* */ block or a string. strip_line_comments( ) also
+# takes every ' as a character-literal quote, so a C++14 digit separator (1'000) or an
+# apostrophe in a /* */ block flips its tracking for the rest of the line: a later // comment
+# is kept (false positive), or a // inside a real string is cut, hiding the code after it
+# (a miss: `1'000; u = "a'"; v = "http://x"; throw E;` loses the throw). Upgrade path if it ever
 # bites: clang-query, which needs the compile_commands.json that .clang-tidy also wants,
 # so 03-pio-bus is the earliest phase that can land it.
 set -u
@@ -32,7 +37,8 @@ cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )
 fail=0
 
-src_files( )  { find "$1/src" -type f \( -name '*.cpp' -o -name '*.h' \) 2>/dev/null; }
+# One alternation, not -name clauses, so tests/test_checks_are_live.py mutates each extension.
+src_files( )  { find "$1/src" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl)$'; }
 core_files( ) { find "$1/src/core" -type f \( -name '*.cpp' -o -name '*.h' \) 2>/dev/null; }
 # R-ERR-02 scans HEADERS only, and that is a property of the rule rather than a shortcut: a
 # [[nodiscard]] belongs on the declaration, where it governs every call, and C++ does not
@@ -45,12 +51,35 @@ core_files( ) { find "$1/src/core" -type f \( -name '*.cpp' -o -name '*.h' \) 2>
 # clang-query upgrade in 03-pio-bus is what closes it.
 core_headers( ) { find "$1/src/core" -type f -name '*.h' 2>/dev/null; }
 
+# strip_line_comments <file> — each line cut at the first `//` that sits outside a "…" string
+# (honouring \" escapes) and outside a '…' character literal; every other character is kept,
+# so `#include "pico/stdlib.h"` still reaches R-ARCH-01 and `"http://x"; throw E;` still
+# reaches R-ERR-03. A plain `s|//.*||` cut that line at the URL and hid the throw.
+strip_line_comments( ) {
+    awk -v sq="'" '{
+        q = ""
+        for ( i = 1; i <= length( $0 ); i++ ) {
+            c = substr( $0, i, 1 )
+            if ( q != "" ) {
+                if ( c == "\\" ) i++
+                else if ( c == q ) q = ""
+            } else if ( c == "\"" || c == sq ) {
+                q = c
+            } else if ( substr( $0, i, 2 ) == "//" ) {
+                $0 = substr( $0, 1, i - 1 )
+                break
+            }
+        }
+        print
+    }' "$1"
+}
+
 # hits <pattern> <exclude-pattern-or-empty> <file...>  — prints "path:line: text" per match
 hits( ) {
     hits_pat="$1"; hits_not="$2"; shift 2
     for hits_f in "$@"; do
         [ -f "$hits_f" ] || continue
-        hits_out=$( sed 's|//.*||' "$hits_f" | grep -nE "$hits_pat" 2>/dev/null )
+        hits_out=$( strip_line_comments "$hits_f" | grep -nE "$hits_pat" 2>/dev/null )
         if [ -n "$hits_not" ] && [ -n "$hits_out" ]; then
             hits_out=$( printf '%s\n' "$hits_out" | grep -vE "$hits_not" 2>/dev/null )
         fi
@@ -158,13 +187,15 @@ run_all "$ROOT"
 case_tmp=$( mktemp -d ) || exit 1
 trap 'rm -rf "$case_tmp"' EXIT
 
-reject( ) { # reject <rule-id> <finder> <relative-path> <content>
+# reject <finder> <relative-path> <content> — the finder's name is report()'s label, so a
+# FAIL line names the finder; which rule a finder backs is in run_all above.
+reject( ) {
     rm -rf "$case_tmp/src"
-    mkdir -p "$case_tmp/$( dirname "$3" )"
-    printf '%s\n' "$4" > "$case_tmp/$3"
+    mkdir -p "$case_tmp/$( dirname "$2" )"
+    printf '%s\n' "$3" > "$case_tmp/$2"
     # Through report(), not around it: the case asserts the verdict the real run depends on.
-    if report "$1" "$( $2 "$case_tmp" )" >/dev/null 2>&1; then
-        echo "  FAIL: $1 rejection case did not fire on: $4"
+    if report "$1" "$( $1 "$case_tmp" )" >/dev/null 2>&1; then
+        echo "  FAIL: $1 rejection case did not fire on: $3"
         fail=1
     else
         rejected=$(( rejected + 1 ))
@@ -172,51 +203,59 @@ reject( ) { # reject <rule-id> <finder> <relative-path> <content>
 }
 
 rejected=0
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include "pico/stdlib.h"'
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'auto* p = new int;'
-reject R-ERR-03   find_err03   src/core/x.cpp 'try { f( ); } catch ( ... ) { }'
+reject find_arch01  src/core/x.h   '#include "pico/stdlib.h"'
+reject find_arch03  src/core/x.cpp 'auto* p = new int;'
+reject find_err03   src/core/x.cpp 'try { f( ); } catch ( ... ) { }'
 # The combined line above matches try AND catch, so either alternative could be deleted
 # with it still firing. One line each, reaching one alternative only.
-reject R-ERR-03   find_err03   src/core/x.cpp 'try {'
-reject R-ERR-03   find_err03   src/core/x.cpp '} catch ( const E& e ) {'
-reject R-ERR-03   find_err03   src/core/x.cpp 'throw Status::kBad;'
-reject R-ERR-04   find_err04   src/core/x.cpp 'auto v = result.value( );'
-reject R-CLEAN-03 find_clean03 src/core/x.cpp 'bool flag = true;'
-reject R-CLEAN-05 find_clean05 src/core/x.cpp '// TODO: fix this later'
-reject R-CLEAN-09 find_clean09 src/core/x.h   'struct A : public B { };'
-reject R-PROTO-05 find_proto05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
+reject find_err03   src/core/x.cpp 'try {'
+reject find_err03   src/core/x.cpp '} catch ( const E& e ) {'
+reject find_err03   src/core/x.cpp 'throw Status::kBad;'
+# One per extension src_files( ) lists beyond .cpp. `.h` included: no other case of a
+# src_files( )-backed finder plants a header, so `h` could be dropped with the suite green.
+reject find_err03   src/core/x.h   'throw Status::kBad;'
+reject find_err03   src/core/x.hpp 'throw Status::kBad;'
+reject find_err03   src/core/x.cc  'throw Status::kBad;'
+reject find_err03   src/core/x.inl 'throw Status::kBad;'
+# A `//` inside a string literal is not a comment: the throw after it must still be seen.
+reject find_err03   src/core/x.cpp 'const char* u = "http://x"; throw E;'
+reject find_err04   src/core/x.cpp 'auto v = result.value( );'
+reject find_clean03 src/core/x.cpp 'bool flag = true;'
+reject find_clean05 src/core/x.cpp '// TODO: fix this later'
+reject find_clean09 src/core/x.h   'struct A : public B { };'
+reject find_proto05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
 # The scope case, not a duplicate of the one above: a reference inside a COMMENT. Until
 # 2026-09-15 find_proto05 went through hits(), which strips // before grepping, so this exact
 # tree passed while the acceptance criterion failed on it. Deleting this case would let the
 # check silently revert to the narrower scanner.
-reject R-PROTO-05 find_proto05 src/core/x.cpp '// see tests/vectors/digital.h for the bytes'
+reject find_proto05 src/core/x.cpp '// see tests/vectors/digital.h for the bytes'
 # R-ERR-01: one case per alternative of (DecodeStatus|FaultCause). Neither alternative can be
 # reached by the other's case, which is what tests/test_checks_are_live.py requires.
-reject R-ERR-01   find_err01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
-reject R-ERR-01   find_err01   src/core/x.h   'FaultCause cause_of( const Link& link );'
+reject find_err01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
+reject find_err01   src/core/x.h   'FaultCause cause_of( const Link& link );'
 # ...and the two optional prefixes a real violation would carry.
-reject R-ERR-01   find_err01   src/core/x.h   '[[nodiscard]] DecodeStatus decode_it( int n );'
-reject R-ERR-01   find_err01   src/core/x.h   'constexpr FaultCause cause_of( int n );'
+reject find_err01   src/core/x.h   '[[nodiscard]] DecodeStatus decode_it( int n );'
+reject find_err01   src/core/x.h   'constexpr FaultCause cause_of( int n );'
 # R-ERR-02: one case per alternative of (std::expected<|DecodeOutcome …|LinkState …). All three
 # are headers, because that is the only place this check looks.
-reject R-ERR-02   find_err02   src/core/x.h   'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
-reject R-ERR-02   find_err02   src/core/x.h   'DecodeOutcome poll_once( Link& link );'
-reject R-ERR-02   find_err02   src/core/x.h   'LinkState step( Link& link );'
-reject R-ERR-02   find_err02   src/core/x.h   'constexpr LinkState step( Link& link );'
+reject find_err02   src/core/x.h   'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
+reject find_err02   src/core/x.h   'DecodeOutcome poll_once( Link& link );'
+reject find_err02   src/core/x.h   'LinkState step( Link& link );'
+reject find_err02   src/core/x.h   'constexpr LinkState step( Link& link );'
 # The two clauses validation found unchecked: each rule's second syntactic form.
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <iostream>'
-reject R-CLEAN-09 find_clean09 src/core/x.h   'struct A : B { };'
+reject find_arch01  src/core/x.h   '#include <iostream>'
+reject find_clean09 src/core/x.h   'struct A : B { };'
 # Anchoring std::string must not stop it matching the thing it is there for.
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'std::string s;'
+reject find_arch03  src/core/x.cpp 'std::string s;'
 # Cases for alternations that had none when round 7 mutation-tested this file. They are not
 # a claim that every alternation is covered — counting that is tests/test_checks_are_live.py's
 # job, and it is what names the next alternative to add a case for. Adding one here without
 # running that harness proves nothing about the ones still uncovered.
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'void* p = malloc( 4 );'
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'free( p );'
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'std::vector<int> v;'
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'std::function<void( )> cb;'
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'delete p;'
+reject find_arch03  src/core/x.cpp 'void* p = malloc( 4 );'
+reject find_arch03  src/core/x.cpp 'free( p );'
+reject find_arch03  src/core/x.cpp 'std::vector<int> v;'
+reject find_arch03  src/core/x.cpp 'std::function<void( )> cb;'
+reject find_arch03  src/core/x.cpp 'delete p;'
 
 # Every alternative of every pattern above needs a case that fires on it ALONE. This block
 # is not a list somebody remembered to write: tests/test_checks_are_live.py generates one
@@ -224,54 +263,54 @@ reject R-ARCH-03  find_arch03  src/core/x.cpp 'delete p;'
 # deletion nothing here notices. Add an alternative to a pattern and that harness will name
 # it on the next run — which is the whole reason this phase exists.
 
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include "hardware/gpio.h"'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include "tusb.h"'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include "device/usbd.h"'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include "class/hid/hid_device.h"'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include "cmsis_gcc.h"'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include "core_cm0plus.h"'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <fstream>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <sstream>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <iomanip>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <thread>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <mutex>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <condition_variable>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <future>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <filesystem>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <regex>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <locale>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <memory>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <new>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <stdexcept>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <exception>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <vector>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <string>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <map>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <set>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <unordered_map>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <unordered_set>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <deque>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <list>'
-reject R-ARCH-01  find_arch01  src/core/x.h   '#include <random>'
+reject find_arch01  src/core/x.h   '#include "hardware/gpio.h"'
+reject find_arch01  src/core/x.h   '#include "tusb.h"'
+reject find_arch01  src/core/x.h   '#include "device/usbd.h"'
+reject find_arch01  src/core/x.h   '#include "class/hid/hid_device.h"'
+reject find_arch01  src/core/x.h   '#include "cmsis_gcc.h"'
+reject find_arch01  src/core/x.h   '#include "core_cm0plus.h"'
+reject find_arch01  src/core/x.h   '#include <fstream>'
+reject find_arch01  src/core/x.h   '#include <sstream>'
+reject find_arch01  src/core/x.h   '#include <iomanip>'
+reject find_arch01  src/core/x.h   '#include <thread>'
+reject find_arch01  src/core/x.h   '#include <mutex>'
+reject find_arch01  src/core/x.h   '#include <condition_variable>'
+reject find_arch01  src/core/x.h   '#include <future>'
+reject find_arch01  src/core/x.h   '#include <filesystem>'
+reject find_arch01  src/core/x.h   '#include <regex>'
+reject find_arch01  src/core/x.h   '#include <locale>'
+reject find_arch01  src/core/x.h   '#include <memory>'
+reject find_arch01  src/core/x.h   '#include <new>'
+reject find_arch01  src/core/x.h   '#include <stdexcept>'
+reject find_arch01  src/core/x.h   '#include <exception>'
+reject find_arch01  src/core/x.h   '#include <vector>'
+reject find_arch01  src/core/x.h   '#include <string>'
+reject find_arch01  src/core/x.h   '#include <map>'
+reject find_arch01  src/core/x.h   '#include <set>'
+reject find_arch01  src/core/x.h   '#include <unordered_map>'
+reject find_arch01  src/core/x.h   '#include <unordered_set>'
+reject find_arch01  src/core/x.h   '#include <deque>'
+reject find_arch01  src/core/x.h   '#include <list>'
+reject find_arch01  src/core/x.h   '#include <random>'
 
 # The end-of-line halves of two anchored patterns. `std::string s;` reaches std::string
 # through [^_[:alnum:]]; a line that IS the identifier reaches it only through `$`, and
 # without a case for it the anchor could be deleted with the suite still green.
-reject R-ARCH-03  find_arch03  src/core/x.cpp 'std::string'
-reject R-CLEAN-05 find_clean05 src/core/x.cpp '// TODO'
+reject find_arch03  src/core/x.cpp 'std::string'
+reject find_clean05 src/core/x.cpp '// TODO'
 
 # Inheritance on a continuation line: the class name is on the line above, so the
 # `(struct|class) Name :` alternative cannot see it and the access-specifier alternative is
 # the only thing that can. Without these three, that whole alternative deletes clean —
 # which is exactly what round 8's validation found.
-reject R-CLEAN-09 find_clean09 src/core/x.h   '    : public Base'
-reject R-CLEAN-09 find_clean09 src/core/x.h   '    : private Base'
-reject R-CLEAN-09 find_clean09 src/core/x.h   '    : protected Base'
+reject find_clean09 src/core/x.h   '    : public Base'
+reject find_clean09 src/core/x.h   '    : private Base'
+reject find_clean09 src/core/x.h   '    : protected Base'
 
 # `class A : B` reaches the second alternative only through `class`; `struct A : B` above
 # covers `struct`.
-reject R-CLEAN-09 find_clean09 src/core/x.h   'class A : B { };'
-reject R-CLEAN-09 find_clean09 src/core/x.h   'virtual void poll( );'
+reject find_clean09 src/core/x.h   'class A : B { };'
+reject find_clean09 src/core/x.h   'virtual void poll( );'
 # No floor. A count next to "every alternative is covered" is the round-8 defect: the two
 # drift and the number is the one that stops being true. Sufficiency is asserted by
 # tests/test_checks_are_live.py, which derives what is needed from the patterns themselves.
@@ -287,62 +326,90 @@ fi
 
 # A rule that fires on legitimate code is as broken as one that never fires. These must
 # NOT be reported.
-accept( ) { # accept <label> <finder> <relative-path> <content>
+# accept <finder> <relative-path> <content> — what each case proves is the comment above it.
+accept( ) {
     rm -rf "$case_tmp/src"
-    mkdir -p "$case_tmp/$( dirname "$3" )"
-    printf '%s\n' "$4" > "$case_tmp/$3"
-    if report "$1" "$( $2 "$case_tmp" )" >/dev/null 2>&1; then
+    mkdir -p "$case_tmp/$( dirname "$2" )"
+    printf '%s\n' "$3" > "$case_tmp/$2"
+    if report "$1" "$( $1 "$case_tmp" )" >/dev/null 2>&1; then
         accepted=$(( accepted + 1 ))
     else
-        echo "  FAIL: false positive — $1"
+        echo "  FAIL: $1 false-positive case fired on: $3"
         fail=1
     fi
 }
 
 accepted=0
-accept "= delete; is not an allocation" find_arch03 src/core/x.h   'Bus( const Bus& ) = delete;'
-accept "std::string_view allocates nothing" find_arch03 src/core/x.h 'std::string_view sv;'
-accept "is_ prefixed bool"            find_clean03 src/core/x.cpp 'bool is_ready = true;'
-accept "m_has_ prefixed member bool"  find_clean03 src/core/x.cpp 'bool m_has_ack = false;'
-accept "TODO with a phase reference"  find_clean05 src/core/x.cpp '// TODO(09-guitar-observe): confirm'
-accept "freestanding <cstdint>"       find_arch01  src/core/x.h   '#include <cstdint>'
-accept "freestanding <array>"         find_arch01  src/core/x.h   '#include <array>'
-accept "freestanding <span>"          find_arch01  src/core/x.h   '#include <span>'
-accept "freestanding <expected>"      find_arch01  src/core/x.h   '#include <expected>'
-accept "<string_view> is not <string>" find_arch01 src/core/x.h   '#include <string_view>'
-accept "enum with a fixed underlying type" find_clean09 src/core/x.h 'enum class Mode : uint8_t { kDigital };'
+# = delete; is not an allocation
+accept find_arch03  src/core/x.h   'Bus( const Bus& ) = delete;'
+# std::string_view allocates nothing
+accept find_arch03  src/core/x.h   'std::string_view sv;'
+# is_ prefixed bool
+accept find_clean03 src/core/x.cpp 'bool is_ready = true;'
+# m_has_ prefixed member bool
+accept find_clean03 src/core/x.cpp 'bool m_has_ack = false;'
+# TODO with a phase reference
+accept find_clean05 src/core/x.cpp '// TODO(09-guitar-observe): confirm'
+# freestanding <cstdint>
+accept find_arch01  src/core/x.h   '#include <cstdint>'
+# freestanding <array>
+accept find_arch01  src/core/x.h   '#include <array>'
+# freestanding <span>
+accept find_arch01  src/core/x.h   '#include <span>'
+# freestanding <expected>
+accept find_arch01  src/core/x.h   '#include <expected>'
+# <string_view> is not <string>
+accept find_arch01  src/core/x.h   '#include <string_view>'
+# enum with a fixed underlying type
+accept find_clean09 src/core/x.h   'enum class Mode : uint8_t { kDigital };'
 # The other two prefixes R-CLEAN-03 exempts. Demanded by tests/test_checks_are_live.py once
 # it started mutating the EXCLUSION string as well as the pattern: dropping `can|` or
 # `should|` from '(is|has|can|should)_' left this file green, and these are what fail when it
 # happens. An accept case is what covers an exclusion alternative — a rejection case cannot.
-accept "can_ prefixed bool"            find_clean03 src/core/x.cpp 'bool can_fire = true;'
-accept "should_ prefixed bool"         find_clean03 src/core/x.cpp 'bool should_retry = false;'
+# can_ prefixed bool
+accept find_clean03 src/core/x.cpp 'bool can_fire = true;'
+# should_ prefixed bool
+accept find_clean03 src/core/x.cpp 'bool should_retry = false;'
 # R-ERR-01 must not fire on the two shapes the narrowed rule explicitly permits — a status in
 # std::expected's error slot, and a status as a member of Link — nor on the enum's own
 # declaration. Without these the anchor and the trailing `(` could be dropped from the pattern
 # with every rejection case above still firing.
-accept "status in the expected error slot"  find_err01 src/core/x.h 'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
-accept "status as a Link member"            find_err01 src/core/x.h 'FaultCause last_fault = FaultCause::None;'
-accept "the enum declaration itself"        find_err01 src/core/x.h 'enum class DecodeStatus : std::uint8_t { AckTimeout };'
+# status in the expected error slot
+accept find_err01   src/core/x.h   'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
+# status as a Link member
+accept find_err01   src/core/x.h   'FaultCause last_fault = FaultCause::None;'
+# the enum declaration itself
+accept find_err01   src/core/x.h   'enum class DecodeStatus : std::uint8_t { AckTimeout };'
 # R-ERR-02 must not fire on a compliant declaration. One per alternative, because a false
 # positive on any one of the three would be as broken as a missed violation.
-accept "nodiscard std::expected return"     find_err02 src/core/x.h '[[nodiscard]] std::expected<Ps2Frame, DecodeStatus> decode( int n );'
-accept "nodiscard DecodeOutcome return"     find_err02 src/core/x.h '[[nodiscard]] DecodeOutcome poll_once( Link& link );'
-accept "nodiscard LinkState return"         find_err02 src/core/x.h '[[nodiscard]] LinkState step( Link& link );'
-accept "a DecodeOutcome parameter, not a return" find_err02 src/core/x.h 'void trace( const DecodeOutcome& outcome );'
+# nodiscard std::expected return
+accept find_err02   src/core/x.h   '[[nodiscard]] std::expected<Ps2Frame, DecodeStatus> decode( int n );'
+# nodiscard DecodeOutcome return
+accept find_err02   src/core/x.h   '[[nodiscard]] DecodeOutcome poll_once( Link& link );'
+# nodiscard LinkState return
+accept find_err02   src/core/x.h   '[[nodiscard]] LinkState step( Link& link );'
+# a DecodeOutcome parameter, not a return
+accept find_err02   src/core/x.h   'void trace( const DecodeOutcome& outcome );'
 # The three finders that had no accept case at all until 2026-09-17. None of them carries an
 # exclusion pattern, so there is no alternative to cover here and that is not what these are
 # for: each is the legitimate NEIGHBOUR of the violation its reject case plants, and nothing
 # else proves the finder stays silent on it. A pattern loosened by one character — `\bthrow\b`
 # to `throw`, `\.value[[:space:]]*\(` to `\.value`, `tests/vectors` to `tests/vector` — passes
 # every rejection case above and fails exactly these.
-accept "an identifier containing throw"     find_err03   src/core/x.cpp 'int throwaway = 0;'
-accept "values( ) is not value( )"          find_err04   src/core/x.cpp 'const auto n = report.values( );'
-accept "a tests/ path that is not the vectors" find_proto05 src/core/x.cpp '#include "tests/vector_math.h"'
-if [ "$accepted" -ge 23 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 23)"
+# an identifier containing throw
+accept find_err03   src/core/x.cpp 'int throwaway = 0;'
+# a comment after a string literal is still stripped
+accept find_err03   src/core/x.cpp 'const char* u = "http://x"; // throw later'
+# a `"` inside a character literal does not open a string, so the `//` after it is a comment
+accept find_err03   src/core/x.cpp 'char q = '\''"'\''; // throw'
+# values( ) is not value( )
+accept find_err04   src/core/x.cpp 'const auto n = report.values( );'
+# a tests/ path that is not the vectors
+accept find_proto05 src/core/x.cpp '#include "tests/vector_math.h"'
+if [ "$accepted" -ge 25 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 25)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 23)"
+    echo "  FAIL: false-positive cases: $accepted (floor 25)"
     fail=1
 fi
 

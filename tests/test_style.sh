@@ -19,8 +19,10 @@
 #                     which must run with only a C++23 compiler and python3, R-PROC-04)
 #   unset             missing tools are a failure              (used by `make lint`)
 #
-# clang-tidy scope is src/core/ and tests/ only: everything else includes Pico SDK or
-# TinyUSB headers and needs a compile_commands.json that does not exist yet. See the
+# clang-tidy scope is every .cpp and .h under src/ (any layer, any depth) plus tests/*.cpp.
+# A file under src/hal, src/usb, src/app or src/emu that includes a Pico SDK or TinyUSB
+# header fails lint with clang-diagnostic-error until 03-pio-bus supplies its include flags;
+# that failure is loud, which is the point — skipping those layers was a silent hole. See the
 # header of .clang-tidy for the upgrade path.
 #
 # Two flags, for two different failures, both measured 2026-09-11 with Homebrew LLVM 23.1.0
@@ -65,7 +67,7 @@ find_tidy() {
 # `git ls-files` would let a brand-new .cpp slip past the gate until someone `git add`ed it.
 LS="git ls-files --cached --others --exclude-standard"
 sources() { $LS '*.cpp' '*.h' 2>/dev/null; }
-tidy_sources() { $LS 'src/core/*.cpp' 'src/core/*.h' 'tests/*.cpp' 2>/dev/null; }
+tidy_sources() { $LS 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 2>/dev/null; }
 
 # tidy_lang <file> — the -x flag this file needs, empty for a .cpp. A function and not an
 # inline `case`, because bash 3.2 — which is /bin/sh on macOS, and macOS is the only

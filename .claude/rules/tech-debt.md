@@ -20,7 +20,10 @@ does and does not promise). Seven `00-scaffold` rules carry none: R-ARCH-01, R-A
 R-CLEAN-03, R-CLEAN-05, R-CLEAN-09, R-ERR-03, R-ERR-04. R-CLEAN-03 and R-CLEAN-05 also owe a
 **file-scope clause**: their text is unscoped while the check reads `src_files( )` only. None of
 the missed forms has been measured, so no specific form is claimed; one is known — `try` with `{`
-on the next line is not seen by `find_err03`. Nothing breaks today: every check is live and
+on the next line is not seen by `find_err03`. A second is measured for R-ERR-03 and already
+written into its clause (2026-09-23): a `'` outside a character literal (digit separator
+`1'000`) can make `strip_line_comments( )` cut a line inside a string and hide the code after
+it. Nothing breaks today: every check is live and
 green over the current tree; the rules only assert full coverage they do not have.
 
 Deliberately deferred, not dropped: `13-scaffold-check-gaps` changes `hits( )` (string-literal
