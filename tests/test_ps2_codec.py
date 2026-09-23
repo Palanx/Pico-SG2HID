@@ -26,6 +26,7 @@ reports the exit 0 it was handed. That is 00-scaffold's §Owed item, and it is w
 is not optional.
 """
 
+import collections
 import os
 import shutil
 import subprocess
@@ -115,22 +116,27 @@ def real_run():
 # defined behaviour. A mutant that fails to build, or that reads past a buffer, exits non-zero
 # for a reason that has nothing to do with the rule, and `reject` below rejects that too: it
 # requires the rule's own line to say FAIL, not merely a non-zero exit.
+# R-CLEAN-02 caps a function at three parameters and says the rest become a struct; a
+# namedtuple is this language's struct. The cap binds here even though clang-tidy, which
+# checks the rule, reads no Python — see spec.md §Out of scope.
+Mutation = collections.namedtuple("Mutation", "rule label rel anchor replacement")
+
 MUTATIONS = [
-    (
+    Mutation(
         "R-PROTO-03",
         "accept an unknown controller id as a digital one",
         os.path.join("src", "core", "ps2_protocol.h"),
         "        return std::nullopt;",
         "        return ControllerId::Digital;",
     ),
-    (
+    Mutation(
         "R-PROTO-04",
         "read the whammy out of a digital payload",
         os.path.join("src", "core", "guitar_state.cpp"),
         "    if ( frame.id == ControllerId::Analog ) {",
         "    if ( true ) {",
     ),
-    (
+    Mutation(
         "R-PROTO-02",
         "trust the bytes that arrived instead of the length the header announced",
         os.path.join("src", "core", "ps2_frame.cpp"),
@@ -140,8 +146,9 @@ MUTATIONS = [
 ]
 
 
-def reject(rule, label, rel, anchor, replacement):
-    """Mutate one file so the codec stops refusing, and require `rule`'s line to say FAIL."""
+def reject(mutation):
+    """Mutate one file so the codec stops refusing, and require its rule's line to say FAIL."""
+    rule, label, rel, anchor, replacement = mutation
     tree = tempfile.mkdtemp(prefix="ps2codec-")
     try:
         shutil.copytree(ROOT, os.path.join(tree, "t"),
@@ -177,7 +184,7 @@ def reject(rule, label, rel, anchor, replacement):
 
 
 def run_rejection_cases():
-    passed = sum(1 for m in MUTATIONS if reject(*m))
+    passed = sum(1 for m in MUTATIONS if reject(m))
     total = len(MUTATIONS)
     if passed == total and total > 0:
         print("  ok:   rejection cases: %d/%d (each mutation flips its own rule to FAIL)"

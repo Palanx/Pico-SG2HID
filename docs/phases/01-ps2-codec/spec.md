@@ -36,6 +36,15 @@ produces exactly the outcome that table names:
   at rest. Its payload is all `0x00` and digital buttons are active low, so an ungated map would
   call that every control pressed.
 
+**Digital and analog frames carry the buttons in the same two payload bytes, and only the whammy
+distinguishes them.** `map_frame` gates on the id — digital or analog reports controls, config-mode
+reports nothing — and then reads the same two indices for both. Stated here because nothing else
+does: **no case calls `map_frame` on an analog frame and asserts a button**, so a reader who wants
+this fact from the tree finds it in `map_frame`'s own doc comment in `guitar_state.h` and nowhere
+else. It is an unmeasured protocol assumption like every other byte position in §What this phase
+does not prove, which counts it as the fifth and records that no `TODO(09-guitar-observe)` marker
+reaches it.
+
 The ten controls, named here because the rest of this document quantifies over them: five frets
 (green, red, yellow, blue, orange), strum up, strum down, start, select, tilt. The whammy is an
 axis, not a control, and is counted separately throughout.
@@ -74,14 +83,22 @@ fourth (M4) is a by-hand procedure §Acceptance criteria describes and `/validat
 
 ### What this phase does not prove, declared rather than discovered later
 
-That any byte position in the SG's payload is the right one. Four concerns are written from the
+That any byte position in the SG's payload is the right one. **Five** concerns are written from the
 documented protocol and none of them is measured: the three controller id bytes; the button bit
-positions and masks; the whammy's payload index; and the whammy's rest value.
+positions and masks; the whammy's payload index; the whammy's rest value; and — added 2026-09-22,
+having been found unlisted — that a digital and an analog frame carry the buttons at the *same* two
+payload indices, which §Goal states.
 
-**They are covered by three `TODO(09-guitar-observe)` markers, not four.** One in
-`src/core/ps2_protocol.h` covers the id bytes; one in `src/core/guitar_state.h` covers the whole
-block of button positions and masks — a block, not a single constant; and a third, also in
-`guitar_state.h`, covers the whammy's index and its rest value together. Three is the number
+**They are covered by three `TODO(09-guitar-observe)` markers, not five, and the fifth concern has
+no marker at all.** One in `src/core/ps2_protocol.h` covers the id bytes; one in
+`src/core/guitar_state.h` covers the whole block of button positions and masks — a block, not a
+single constant; and a third, also in `guitar_state.h`, covers the whammy's index and its rest
+value together. **The shared-index assumption is outside all three**: the `guitar_state.h` marker
+says "every position and mask *in this section*", the section is headed "Where each control lives
+in a **digital** payload", and the assumption — that an *analog* frame uses those same two indices
+— lives in `map_frame`'s doc comment further down the file. The two byte indices themselves are
+inside the marker; their applicability to analog frames is not. Recorded as debt in `notes.md` rather than closed by moving a marker, because the marker
+count is an acceptance criterion and the three markers are correct as scoped. Three is the number
 §Acceptance criteria pins and the number `verify.md`'s "What this phase does NOT prove" section
 tells the operator to expect. A vector here asserts that the codec does what the codec says, not
 that the guitar agrees.
@@ -175,7 +192,8 @@ therefore `core`'s; the number needs a bus and is therefore not.
 
 Four behaviours above are asserted by cases rather than left as prose: the exclusive bound, the
 reset on entry, `last_fault` surviving a good frame, and the `NotReady` row. The saturation and the
-over-long buffer are the two that are not, and both are declared here and in `notes.md` §Debt.
+over-long buffer are the two that are not. The saturation is declared here, the over-long buffer in
+§Goal, and both are in `notes.md` §Debt.
 
 ## Vectors
 
@@ -272,11 +290,39 @@ pathspecs, not shell globs** — `git ls-files` lets `*` cross `/`, so `src/core
 `tests/*.cpp` read recursively (measured: `git ls-files 'docs/*.md'` returns 38 files in
 subdirectories). The set is wider than it reads, never narrower.
 
-The remaining `test:`-bound rules run no scanner this table covers: R-PROTO-02, R-PROTO-03 and
-R-PROTO-04 (`tests/test_ps2_codec.py`, whose liveness is its three rejection cases and M4),
-R-ARCH-02 (`tests/test_boundaries.sh`), R-SEC-01 (`tests/test_secrets.sh`), R-TOOL-01 and R-TOOL-02
-(`tests/test_tool_versions.sh`), R-PROC-01 (`tests/test_rule_traceability.py`) and R-PROC-02
-(`tests/test_phase_docs.sh`).
+### A check that is not a grep owes a clause too, and this is what it is derived from
+
+The three-part derivation above is a property of **grep checks**, not of checks. It decomposes a
+scanner over a file list, and a check that scans nothing has none of the three parts — which left
+the question of whether such a check owes a clause at all undecided until 2026-09-22, when a review
+asked it of R-PROTO-02..04 and the spec could not answer.
+
+The answer is that it owes one, because the obligation was never about greps. It comes from the
+convention at the top of this section: *a rule whose text states no scope asserts that its check
+covers it entirely.* That assertion is made by every `test:` binding regardless of what the check
+is built from. What changes between kinds of check is only **where the reach comes from**:
+
+| kind of check | what bounds its reach | the clause it owes |
+|---|---|---|
+| a grep | a file list × a scanner × a pattern | the three clauses above, independently |
+| a vector-driven check | its **vector list** — the check sees exactly the inputs its vectors carry, and no file list or regex is involved | one clause naming the inputs the rule's text covers that no vector exercises |
+
+**This phase's three are written, 2026-09-22.** R-PROTO-02, R-PROTO-03 and R-PROTO-04 are bound to
+`tests/test_ps2_codec.py`, whose liveness is its three rejection cases and M4, and each now carries
+a scope clause in `docs/constraints.md` derived from the vectors §Vectors enumerates: R-PROTO-02
+cuts a digital frame two ways and an undeclared-id frame down to its first byte, and reaches no
+analog or config-mode cut and no intermediate length; R-PROTO-03 exercises one of the 253 undeclared
+header bytes; R-PROTO-04 exercises exactly two whammy bytes, `0x80` and `0xFF`, leaving the whole
+lower half of the axis unexercised. The clauses were written from the vector files, not recalled.
+
+**Six other `test:`-bound rules run no scanner this table covers, and the ruling above means they
+now owe clauses too** — R-ARCH-02 (`tests/test_boundaries.sh`), R-SEC-01 (`tests/test_secrets.sh`),
+R-TOOL-01 and R-TOOL-02 (`tests/test_tool_versions.sh`), R-PROC-01
+(`tests/test_rule_traceability.py`) and R-PROC-02 (`tests/test_phase_docs.sh`). All six are
+`00-scaffold` bindings, none appears in the assignment table above, and none carries scope text in
+`docs/constraints.md` today. **§Out of scope releases all six with their owner, by name** — an
+obligation this section created and had to place, since a rule owing a clause that no phase owns is
+the same unbounded debt this section exists to stop.
 
 **One limit is not a scanner's and belongs beside them.** `tests/test_checks_are_live.py` holds
 `NO_MUTATE = {"test_style.sh"}`, so of the six `.sh` checks in `tests/`, five are mutation-tested
@@ -284,6 +330,27 @@ and `tests/test_style.sh` is not. All four rules bound to that file — R-STYLE-
 R-CLEAN-02 and this phase's **R-CLEAN-04** — therefore stand on the accounting property alone:
 their lines are proven to be *printed*, not proven to *fire*. §Out of scope releases the closing of
 that gap, with the reason.
+
+### An unusable SDK is a failure, not a skip
+
+`tests/test_style.sh` needs `-isysroot` on every file, from `xcrun --show-sdk-path`. When `xcrun`
+names no SDK the script prints `note: no macOS SDK from xcrun…` and **runs clang-tidy anyway**,
+which makes any header reaching libc++'s platform layer emit `clang-diagnostic-error` and, through
+`WarningsAsErrors`, fail R-STYLE-02, R-CLEAN-02 and R-CLEAN-04. That is deliberate and it is this
+phase's ruling, written 2026-09-22 because the behaviour was in the tree and the decision was not:
+
+- **It is not a skip.** `OPTIONAL_TOOLS` downgrades a *missing* clang-tidy so `make test` can run
+  without LLVM (R-PROC-04). An SDK that `xcrun` cannot name is a different condition: the tool is
+  present and the invocation is broken. Silently skipping would leave three rules unchecked on a
+  machine that looks fully equipped, which is the "green line over a violated rule" this phase has
+  measured four times.
+- **The cost is stated rather than hidden:** the failure names the rules and not the cause, so the
+  `note:` line above it is what tells the operator the environment is at fault, not the naming.
+  `make lint` is the authority and it refuses to be silent. **`make test` fails too**, and that is
+  not an exception the `OPTIONAL_TOOLS` path covers: `tests/test_style.sh` sets `fail=1`
+  unconditionally on a clang-tidy error, and `skip_or_fail` downgrades only a *missing* tool. What
+  stays intact is R-PROC-04's promise — a machine with a C++23 compiler and `python3` and no LLVM
+  skips this path entirely; a machine with LLVM and no usable SDK is not that machine.
 
 ## clang-tidy's header filter
 
@@ -296,9 +363,14 @@ never diagnoses either way. What it cost was real — it silenced naming and fun
 diagnostics for every header under `tests/`, which are two other phases' bindings, and it made
 lint's reach depend on the checkout path, the regex being unanchored and matched against the
 absolute path. The `tests/vectors/` exception therefore rests on the `constexpr` blindness recorded
-in §Observed conventions, not on the filter. The cost of the revert is runtime: `make test` goes
-from about 1:40 to about 2:30 against a 3m cap, because clang-tidy now analyses the headers under
-`tests/` as includes.
+in §Observed conventions, not on the filter. The cost of the revert is runtime — clang-tidy now
+analyses the headers under `tests/` as includes — but **wall clock is not a usable measure of it,
+and this sentence claimed otherwise until 2026-09-22.** Seven post-revert runs on the same tree
+span **1:41 to 2:29**: 1:41, 2:03, 2:04, 2:05, 2:13, 2:14, 2:29. The fastest and the slowest differ
+by 48s and by CPU utilisation (420% against 339%), so the spread measures what else the machine was
+doing, not what the filter costs. The only figure with a check behind it is the **3m cap** in
+§Acceptance criteria. `verify.md` quotes the same range for the same reason: as evidence that the
+number moves, never as a band outside which something is wrong.
 
 ## Files this phase writes
 
@@ -312,8 +384,8 @@ from about 1:40 to about 2:30 against a 3m cap, because clang-tidy now analyses 
 | `tests/vectors/` | the ten headers in §Vectors plus `README.md`: why the vectors are hand-written, the frame shape, and that digital buttons are active low — so nothing pressed is `0xFF 0xFF`, not `0x00 0x00` |
 | `tests/ps2_codec_cases.cpp` | the assertions. Deliberately **not** named `test_*`: the Makefile glob would build and run it a second time, and the driver is the single entry point |
 | `tests/test_ps2_codec.py` | the driver: compiles and runs the cases against the real `src/core/`, prints one `ok:`/`FAIL:` line per case and per rule, and carries the three rejection cases |
-| `tests/test_repo_shape.sh`, `tests/test_style.sh`, `.clang-tidy` | the checks behind R-ERR-01, R-ERR-02 and R-CLEAN-04, and the clang-tidy invocation they need |
-| `docs/constraints.md` | the seven rules this phase settled, each with its binding and its scope clauses |
+| `tests/test_repo_shape.sh`, `tests/test_style.sh`, `.clang-tidy` | the checks behind R-ERR-01, R-ERR-02 and R-CLEAN-04, and the clang-tidy invocation they need — including the SDK ruling below |
+| `docs/constraints.md` | the rules this phase settled, each with its binding and its scope clauses |
 | `docs/adr/0011-*.md`, `docs/adr/0012-*.md` | the `step` signature and the `DecodeStatus` membership decisions |
 | `docs/adr/0007-error-model.md` | **status line only**: it names the three later ADRs that supersede parts of it. An ADR's body is immutable; its status is the mutable part |
 | `docs/phases/01-ps2-codec/verify.md` | the operator procedure (R-PROC-02) |
@@ -326,11 +398,12 @@ open, so it must match the tree even though the Goal and the Plan must not be de
 
 - `CLAUDE.md` — the architecture paragraph, the hardware-safety rules, the three pre-validation
   checks in §Conventions, and the reading rule that scopes this list.
-- `docs/phases/01-ps2-codec/notes.md` — 2575 lines. `grep -c '^### Round ' ` returns **28** and
-  `grep -c '^## Validation'` **13**; the first implementation round predates the heading style and
-  sits unheaded at the top of §Deviations, so the rounds are 29. §Deviations is where every decision this spec states was argued; §Debt and
-  §For later phases are what this phase hands on, including six taste items from the last review.
-  Read it before changing anything here.
+- `docs/phases/01-ps2-codec/notes.md` — the account of every implementation round and every
+  validation, appended to and never rewritten. §Deviations is where every decision this spec states
+  was argued; §Debt and §For later phases are what this phase hands on, the taste items from the
+  reviews included. Read it before changing anything here. Its rounds carry `### Round ` headings
+  and its validations `## Validation` ones, except the first implementation round, which predates
+  the heading style and sits unheaded at the top of §Deviations.
 - `docs/phases/00-scaffold/notes.md` — the dependency. §Debt, §For later phases and §Owed. Three
   patterns this phase inherits: amending a Goal clause creates reconciliation debt the reviewer
   cannot find; a fix written to close a finding tends to introduce a new unfounded claim; a count
@@ -355,8 +428,10 @@ open, so it must match the tree even though the Goal and the Plan must not be de
 - `src/core/` — the nine files this phase owns: `ps2_protocol.h`, `ps2_frame.h`/`.cpp`,
   `guitar_state.h`/`.cpp`, `link.h`/`.cpp`, `hid_report.h`/`.cpp`. `docs/index/src-core.md`
   locates them.
-- `tests/vectors/` — the ten vector headers and `README.md`. `docs/index/tests.md` lists them.
-- `tests/ps2_codec_cases.cpp` — 33 case functions and 3 rule functions, run by the driver below.
+- `tests/vectors/` — the ten vector headers, which `docs/index/tests.md` lists, plus a `README.md`
+  the index does not carry: the generator indexes code files only.
+- `tests/ps2_codec_cases.cpp` — the `case_*` functions and the three `rule_*` functions, each
+  called once from `main`, run by the driver below.
 - `tests/test_ps2_codec.py` — the driver and its three rejection cases.
 - `tests/test_repo_shape.sh` — the pattern for a grep-backed rule: header `RULE` markers, one
   `find_*` per rule, the `hits`/`raw_hits` scanners, the `src_files`/`core_files`/`core_headers`
@@ -527,12 +602,57 @@ of nothing and a closure test over nothing all report `pass`.
   phase next touches that harness, alongside the `clang-query` + `compile_commands.json` upgrade
   `03-pio-bus` already owes and the "no new untracked paths after `make test`" check `notes.md`
   §For later phases names.
+- **Re-cutting this phase's row in `docs/phases/PHASES.md`** — not done and not needed. The row's
+  acceptance column was narrowed from `R-PROTO-01..04 move to test:` to `R-PROTO-02..04`, and that
+  is **status bookkeeping, not an edit of a cut**, ruled here 2026-09-22 because `CLAUDE.md` says a
+  cut that turns out wrong is superseded by new rows and never edited, and nothing said which of
+  the two this was. The distinction: the row's **goal** defines the cut and is untouched — this
+  phase still delivers the same codec. R-PROTO-01 (LSB-first, SPI mode 3) left the column because
+  it was rebound to `03-pio-bus`, where it always belonged: it is a property of how the bus shifts
+  bits, and nothing in `src/core/` drives a clock. No work moved between phases and no phase's goal
+  changed, so there is no superseded cut to record. Had the *goal* needed narrowing, that would be
+  a re-cut and would go to `/plan-feature`.
+- **Writing the scope clauses for the six non-grep rules `00-scaffold` bound** — R-ARCH-02,
+  R-SEC-01, R-TOOL-01, R-TOOL-02, R-PROC-01 and R-PROC-02. §A check that is not a grep owes a
+  clause too rules that a non-grep binding owes a clause like any other; these six are the rules
+  that ruling reaches and this phase did not bind. Released to `00-scaffold`'s owner with the nine
+  below. None was measured here, so no reach is claimed for any of them.
 - **Writing the clauses the assignment table marks "owed, not written"** — all of them belong to
   rules `00-scaffold` bound: the file-scope clause for R-CLEAN-03, R-CLEAN-05, R-STYLE-02 and
   R-CLEAN-02, and the spelling clause for those two plus R-ARCH-01, R-ARCH-03, R-CLEAN-09, R-ERR-03
   and R-ERR-04. None was measured here, so no form is claimed to escape any of them; the method is
-  in `notes.md` round 28. This phase writes the clauses for R-ERR-01, R-ERR-02, R-PROTO-05 and
-  R-CLEAN-04 only — the bindings it moved or re-scoped itself.
+  in `notes.md` round 28. This phase writes the clauses for R-ERR-01, R-ERR-02, R-PROTO-05,
+  R-CLEAN-04 and — since 2026-09-22, under §A check that is not a grep owes a clause too —
+  R-PROTO-02, R-PROTO-03 and R-PROTO-04: the bindings it moved or re-scoped itself.
+
+  **A released clause releases the writing of the clause, never compliance with the rule.** Asked
+  by a review on 2026-09-22 and undecidable from this document until now. A scope clause records
+  what a check does *not* see; it is documentation, and saying so is its owner's job. The rule's own
+  text is the rule, and it binds every file it reads on, whether or not any check reaches that file
+  — that is the whole premise of the section this bullet points at, which invites a reader to
+  disbelieve a check and measure the rule instead. Two corollaries this phase had to rule on:
+  R-CLEAN-02 and R-CLEAN-03 name no language, so they bind the `.py` and `.sh` files here even
+  though clang-tidy reads neither and `find_clean03` reads only `src/`; and where the remedy a rule
+  suggests has no equivalent in the language at hand ("the arguments become a struct"), the limit
+  still binds and the remedy is translated — a `namedtuple` is Python's struct.
+
+  **What this phase left non-compliant in the region no check reads, and who owns it.**
+  `reject( )` and `accept( )` in `tests/test_repo_shape.sh` each take four positional parameters
+  against R-CLEAN-02's "at most 3". Both are `00-scaffold`'s; this phase modified that file but did
+  not write those functions, and `CLAUDE.md` scopes an order to what it names — so they are owed to
+  whichever phase next owns that file, not fixed here. The two instances this phase wrote and the
+  ruling reached were fixed when it was made: a bool variable renamed in `tests/ps2_codec_cases.cpp`
+  and a five-parameter function collapsed to one in `tests/test_ps2_codec.py`. No claim of
+  completeness is made over that region, and one reason is recorded in `notes.md` §Debt: R-CLEAN-03's
+  text does not say whether it governs bool-*returning function* names or only bool variables, and
+  its check reads only variables.
+
+  The measured enumeration behind that sentence — which rules have checks narrower than their text,
+  which files each check cannot read, and what was found in each — is in `notes.md` round 32 and is
+  deliberately not repeated here. It is a record of one round's work, it recomputes from the tree
+  rather than from this document, and every previous attempt to keep a copy of it in the spec
+  produced a finding when the tree moved under the copy.
+
 - **Widening R-ERR-02's check beyond `src/core/*.h`** — no phase yet; the narrowing is recorded in
   the rule's own text and the residual hole has no caller who could ignore a result.
 - **Re-narrowing `HeaderFilterRegex`** — no phase. Ruled out in §clang-tidy's header filter and not
@@ -546,6 +666,9 @@ of nothing and a closure test over nothing all report `pass`.
   repointed at another undeclared byte rather than the id simply being added.
 - A CMake or firmware build, and `-fno-exceptions -fno-rtti` — `03-pio-bus` owns R-ERR-05.
 - `#embed` for the vectors — no phase; ruled out in §Vectors.
-- The six taste items from the 2026-09-17 review, in `notes.md` §For later phases — including
+- The taste items in `notes.md` §For later phases — six from the 2026-09-17 review and two from
+  the 2026-09-22 one, the second pair being a dangling `docs/adr/0011-pure-link-step.md` pointer at
+  a §Plan step that no longer exists (an ADR body is immutable, so the pointer stays stale) and a
+  §The link sentence corrected in this round instead of deferred. Including
   `case_report_is_wide_enough`, which asserts tautologies of the constants it restates. Recorded as
   debt rather than fixed in a closing round.

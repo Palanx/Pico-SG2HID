@@ -149,9 +149,12 @@ Read this part twice, because it is the one thing that could mislead you later.
 Which bit is the green fret, which of the four analog axes carries the whammy, what value the
 whammy sits at when you are not touching it, whether your SG even reports the controller id
 we expect — all of that is read off the protocol documentation and how these controllers are
-commonly described. It is an educated guess. Every one of those spots in the code is marked
-`TODO(09-guitar-observe)`, and phase `09-guitar-observe` exists for exactly one purpose: to
-plug in the real guitar, watch what it actually says, and correct whatever is wrong.
+commonly described. It is an educated guess. Each of the four spots above is marked
+`TODO(09-guitar-observe)` in the code — three markers, not four, because the whammy's axis and its
+resting value sit together under one of them — there is a fifth guess, that a digital and an analog
+frame put the buttons in the same two bytes, and it carries no marker; the spec records it.
+Phase `09-guitar-observe` exists for exactly one purpose: to plug in the real guitar, watch what
+it actually says, and correct whatever is wrong — all five.
 
 So when the tests below pass, what they prove is: **the code does what the code says it
 does.** They do not prove the guitar agrees. Those are different claims and this phase only
@@ -175,9 +178,11 @@ Expect three of them. If that prints nothing, someone has quietly deleted the ho
 make test
 ```
 
-Expect it to end with `OK`, and to take roughly two minutes — runs on this machine have
-landed between 1:40 and 2:20, and the phase's own limit is three. A run inside that spread is
-normal, not a warning. Most of that time is the machinery from the last phase mutating its own
+Expect it to end with `OK`, and to finish inside three minutes — that limit is the phase's
+own, and it is the only timing that is actually checked. How long it really takes swings with
+whatever else the machine is busy with: runs here have landed anywhere between 1:41 and 2:29 on
+identical code. Any time under three minutes is normal, not a warning, and a slower run is not
+evidence of a problem. Most of that time is the machinery from the last phase mutating its own
 checks to prove they still work.
 
 ```

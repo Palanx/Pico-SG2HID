@@ -1736,7 +1736,427 @@ recorded below). Iteration 3 against the def180c spec, so the next failure fires
   ADR files). M4 is the validator's and was not run here.
 
 
+### Round 31 — the prose count deleted, and the two others it generalised to.
+
+- **The finding.** §Context pointers said `grep -c '^### Round ' notes.md` returns **28** and
+  `grep -c '^## Validation'` **13**, and derived "the rounds are 29" from the first. The file
+  returned 29 and 13 when validation 2026-09-21 measured it, so the sentence was false. The fix is
+  the deletion the validation prescribed, not a re-measurement: the pointer now names the file, its
+  sections and its heading conventions, and measures nothing. The line count went with it for the
+  same reason.
+
+- **Generalised, because "a prose count of another file with no check behind it" is a property and
+  `00-scaffold` §For later phases already named it.** The property as applied: *a count of a tree
+  artifact, stated in prose in a document this phase owns, must either be recomputed by an
+  acceptance criterion or have its members enumerated in place; otherwise the number goes.*
+  Enumerated over `spec.md` and `verify.md` by grepping every numeral and number-word followed by a
+  countable noun. Seven candidates, three violate:
+
+  | where | the count | verdict |
+  |---|---|---|
+  | §Context pointers, `notes.md` | 2575 lines, 28 rounds, 13 validations, "so 29" | **violates** — deleted |
+  | §Context pointers, `ps2_codec_cases.cpp` | "33 case functions and 3 rule functions" | **violates** in its first half — the 33 has no check; the 3 is checked by `accounting: test_ps2_codec.py`. Replaced by "the `case_*` functions and the three `rule_*` functions, each called once from `main`" |
+  | §Files this phase writes, `docs/constraints.md` | "the seven rules this phase settled" | **violates** — no check, no members named; the number deleted |
+  | §Context pointers, `src/core/` | "the nine files this phase owns" | holds — all nine are named in the same sentence |
+  | §Goal, §Vectors, §Files, §Context pointers | "the ten vectors"/"ten headers" | holds — `ls tests/vectors/*.h \| wc -l` is an acceptance criterion |
+  | §Acceptance criteria | the 64/23 distributions | holds — both totals are acceptance criteria and every member is named; the distribution exists *because* a total with no members was this phase's recurring defect |
+  | §clang-tidy's header filter | "returns 38 files in subdirectories" | holds — a dated measurement carrying its own recompute command, evidence for a property rather than an inventory |
+
+  `verify.md` carries no violating count: its "ten vectors" and its three `R-PROTO-*` lines are both
+  checked.
+
+- **The 33 was accurate when deleted.** Counted in `main`: 11 decode, 6 map, 12 link, 4 report. It
+  was removed for being uncheckable, not for being wrong — which is the point, since the notes.md
+  count was accurate when it was written too.
+
+- **Nothing outside the three sentences changed.** No source file, no test, no rule. Every
+  replacement sentence restates something the spec already says elsewhere (its own header comment
+  for what `notes.md` is; `main`'s structure for the cases file) rather than being founded on this
+  round's fix.
+
+- **Acceptance: 23 of 23 pass.** `make test` **OK** in **2:04** (cap 3m), `make lint` 0, driver
+  exit 0, `rejection cases: 64`, `false-positive cases: 23 (floor 23)`, `wiring cases: 10/10`,
+  `neutered: 33/33`, `alternations: 64/64`, `accounting` 3 and 4 rule(s), `test_phase_docs.sh` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers, 0
+  `tests/vectors` references under `src/`, 0 `.value()`, 3 markers, `HeaderFilterRegex` 1, both ADR
+  files, ADR-0007 naming ADR-0011. Both derivations recompute (64 `reject`, 23 `accept`). M4 is the
+  validator's and was not run here.
+
+- **The three pre-validation checks (`CLAUDE.md` §Conventions).** (1) Nothing found this round
+  leaves the Goal unmet — the defect was a sentence about `notes.md`, and the codec is untouched and
+  green. (2) `- base:` names `24d489f`, `git cat-file -t` says `commit`, and `git diff --name-only
+  24d489f` yields **37** files. (3) Checked sentence by sentence; see the fourth bullet.
+
+### Round 32 — one measurement reconciled, and two undecidable questions decided.
+
+Closes validation 2026-09-22 (iteration 2): one `contradicts`, two `undecidable`.
+
+- **The `contradicts` was a measurement, and re-measuring it falsified the fix first written for
+  it.** Three fresh `make test` runs this round: **2:13**, **2:05**, **1:41**. The first two agreed
+  with the four already on record (2:29 round 30, 2:14 validation 2026-09-21, 2:03/2:04 round 31),
+  so the first version of this fix wrote "**2:00 to 2:30**" into both files and asserted that no
+  post-revert run had produced 1:40. The third run produced 1:41 — on the same tree, with `src/`
+  untouched — and the assertion was false within minutes of being written.
+
+  **So the reconciliation is not a wider band, it is the deletion of the band.** The fastest and
+  slowest post-revert runs differ by 48s and by CPU utilisation (420% against 339%): the spread
+  measures machine load, not what the header filter costs, and stating it as a normal range invites
+  an operator to read a slow run as a fault. Both files now give the seven measured times as
+  *evidence that the number moves*, and point at the **3m cap** as the only timing with a check
+  behind it. This is round 31's property again — a prose number with no check — arriving as a range
+  rather than a count, and it was caught by the acceptance run rather than by review.
+
+- **`undecidable` (1) — what a non-grep check owes.** Decided and written as a new subsection,
+  §A check that is not a grep owes a clause too. The three-part derivation (file list × scanner ×
+  pattern) is a property of **grep** checks; the *obligation* is not, because it comes from the
+  section's own convention — a rule whose text states no scope asserts its check covers it
+  entirely — which every `test:` binding makes regardless of what the check is built from. What
+  varies is where the reach comes from: for a vector-driven check it is the **vector list**.
+
+  That decision creates work this phase owed and had not done, and the spec's own sentence
+  excluded R-PROTO-02..04 from its "bindings it moved or re-scoped itself" list inconsistently —
+  this phase moved all three. **Three scope clauses written into `docs/constraints.md`, from the
+  vector files and not from memory:** R-PROTO-02 cuts only a **digital** frame and only one byte
+  short (both truncation vectors are 3 bytes of 4, differing in the ready slot); R-PROTO-03
+  exercises **one** of the 253 undeclared header bytes (`0x79`, against the three declared ids
+  `0x41`/`0x73`/`0xF3`); R-PROTO-04 exercises the two **ends** of the whammy axis and no value
+  between them.
+
+- **`undecidable` (2) — does releasing a clause release compliance? No.** Written into §Out of
+  scope. A scope clause records what a check does not see: it is documentation, and releasing it
+  releases the writing. The rule's *text* is the rule and binds every file it reads on. Two
+  corollaries had to be ruled on explicitly, because both were live in the diff: R-CLEAN-02 and
+  R-CLEAN-03 name no language, so they bind the `.py` and `.sh` files here; and where a rule's
+  suggested remedy has no equivalent in the language at hand ("the arguments become a struct"),
+  the limit still binds and the remedy is translated.
+
+- **Generalised, because "a rule binding code no check reads" is a property, not two instances.**
+  The reviewer could only report the two it was shown. Enumerated over the whole 37-file set:
+  the four unscoped-text rules whose checks are narrower than their text are R-CLEAN-02
+  (clang-tidy over `tidy_sources()` — no `.py`, no `.sh`), R-CLEAN-03 and R-CLEAN-05 (`src_files`
+  — nothing under `tests/`), and R-STYLE-02 (text names C++ constructs only, so it reaches
+  nothing outside them). In the unread region:
+
+  | instance | rule | written by | disposition |
+  |---|---|---|---|
+  | `sources_reached`, `tests/ps2_codec_cases.cpp:670` | R-CLEAN-03 | this phase | fixed — `has_reached_every_source` |
+  | `reject( rule, label, rel, anchor, replacement )`, `tests/test_ps2_codec.py` | R-CLEAN-02 (5 params) | this phase (`b23b91a`) | fixed — a `Mutation` namedtuple, one parameter |
+  | `reject( )`, `tests/test_repo_shape.sh` (4 positional) | R-CLEAN-02 | `00-scaffold` (`c07f525`) | **not fixed** — another phase's function in a file this phase only modified; named in §Out of scope and below |
+  | `accept( )`, `tests/test_repo_shape.sh` (4 positional) | R-CLEAN-02 | `00-scaffold` (`c07f525`) | same |
+  | function length / nesting in `.py` and `.sh` | R-CLEAN-02 | — | clean — longest is `real_run` at 42 against a cap of 60 |
+  | bare `TODO` outside `src/` | R-CLEAN-05 | — | clean — every hit is a rejection-case string literal or the rule's own text |
+  | bool declarations outside `src/` | R-CLEAN-03 | — | `sources_reached` was the only one; `find_clean03`'s pattern is `bool NAME[;=]`, so the `rule_*` function definitions are not subjects |
+
+- **Two taste items from the 2026-09-22 review, handled rather than only recorded.** §The link's
+  closing sentence claimed both unasserted behaviours were declared there; the over-long buffer is
+  declared in §Goal, and the sentence now says so. The dangling ADR-0011 → §Plan pointer stays: an
+  ADR body is immutable here. §Out of scope now names both instead of only the six from
+  2026-09-17.
+
+- **Acceptance: 23 of 23 pass.** `make test` **OK** in **2:05** (cap 3m), `make lint` two `ok:`
+  lines, driver exit 0, `rejection cases: 64`, `false-positive cases: 23 (floor 23)`,
+  `wiring cases: 10/10`, `neutered: 33/33`, `alternations: 64/64`, `accounting` 3 and 4 rule(s),
+  `test_phase_docs.sh` 0, `test_rule_traceability.py` green after the three clause edits,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers, 0
+  `tests/vectors` references under `src/`, 0 `.value()`, 3 markers, `HeaderFilterRegex` 1, both ADR
+  files, ADR-0007 naming ADR-0011. Both derivations recompute (64 `reject`, 23 `accept`). M4 is the
+  validator's and was not run here.
+
+- **The three pre-validation checks (`CLAUDE.md` §Conventions).** (1) Nothing found this round
+  leaves the Goal unmet — the two fixes are in `tests/`, `src/core/` is untouched, and the suite is
+  green. (2) `- base:` names `24d489f`, `git cat-file -t` says `commit`, `git diff --name-only
+  24d489f` yields **37** files and none is under `.claude/workflow/installed`. (3) Each new sentence
+  is founded on something other than the fix that wrote it: the runtime spread on five timed runs,
+  four of which predate this round; the non-grep decision on the convention already at the top of
+  that section; the three clauses on the vector files; the compliance decision on that same
+  convention plus `CLAUDE.md`'s scoping of an order to what it names.
+
+
+### Round 33 — four spec-side contradicts corrected, and the routing deviation that allowed it.
+
+Closes validation 2026-09-22 (iteration 3): 4 `contradicts`, 1 `undecidable`. **Every finding was
+introduced by round 32** — the round written to close round 31's findings.
+
+- **Routing deviation, decided by the operator and recorded because nothing else would.**
+  `/validate-phase` defines `contradicts` as an implementation failure and routes it to
+  `/implement-phase`; and its iteration-3+ escape fired on the round count, moving the phase to
+  `pending`. Both were overridden this round:
+  1. **All four `contradicts` are spec-side.** The tree is correct; four sentences the phase wrote
+     about the tree are false. The remedy applied is the one an `undecidable` gets — fix `spec.md`
+     (and `docs/constraints.md`) plus this entry — never editing working code to satisfy a false
+     sentence. `src/core/` is untouched this round.
+  2. **The escape was reverted.** Status went back `pending` → `in-progress`. The escape counts
+     rounds and reads nothing else, so it cannot distinguish structural failure from convergence on
+     discrete typos. Findings here are spec-side, falling (5 → 4+1), and each is one false sentence.
+  Both overrides are defects already logged in `~/.claude-belay/feedback/pico-sg2hid.md`, both
+  `status: open`, both dated 2026-09-15 — the `contradicts` routing entry and the iteration-3+
+  escape entry. A third, the step-5 `notes.md` contradiction, is logged `resolved (f001884)` yet is
+  present in the installed text and was hit live this round. **No local patch was applied to
+  `.claude/commands/validate-phase.md`**: belay is frozen here, and every local workaround this
+  phase carries must be removed before the package can be updated, so adding another was refused.
+  The correct route was executed by hand instead and documented here.
+
+- **C1 + C2 — R-PROTO-02's scope clause was false in both halves, and is now measured.** The first
+  wording claimed the check cuts "only a digital frame and only one byte short", and that
+  `cut_drops_the_link_from_every_source` asserts "all four `LinkState` members". Enumerated by
+  grepping every truncated span in `tests/ps2_codec_cases.cpp`: the check decodes **three** cut
+  inputs — two at three bytes of a four-byte digital frame (`truncated_ack.h`,
+  `truncated_not_ready.h`), and one at **one byte** (`kReadyIndex` is 1) of the twenty-byte
+  undeclared-id frame `unknown_id.h`, which is where §Goal's precedence item 1 is asserted. The
+  named function constructs **three** links, not four; `Absent` is covered elsewhere in
+  `rule_proto02` by a fresh `Link`. Not exercised: a cut in an analog or config-mode frame, and
+  every intermediate length.
+
+  **The false half of C2 came from a code comment, which is why it survived.** The comment above
+  `cut_drops_the_link_from_every_source` said "The four source states are the four LinkState
+  members, so the claim is asserted over all of them". Round 32 copied that sentence into the
+  clause instead of counting the constructors — in a spec paragraph asserting the clauses "were
+  written from the vector files, not recalled". The comment is corrected in the same edit
+  (R-CLEAN-06: a comment that no longer matches the code is corrected, never left standing).
+
+- **C3 — "longest is `real_run` at 42 lines" was false; `real_run` is 8.** 42 was a `def`-to-`def`
+  distance produced by a careless `awk`, not a function length. Re-measured by parsing the files:
+  longest `.py` function is `reject` at **35** lines (`build_and_run` 32, `rule_verdicts` 14,
+  `run_rejection_cases` 9, `real_run` 8, `main` 4, `fail` 3); longest shell function is `wiring( )`
+  at **13**. The verdict the row carries — clean against a cap of 60 — survives; the measurement
+  behind it did not.
+
+- **C4 — off-by-one.** "Four violations … and one more class was checked and is clean" preceded a
+  table with **two** clean rows. The sentence now refers to the table's rows rather than counting.
+
+- **The `undecidable` — analog button indices — is a real gap and got a spec sentence.**
+  `map_frame` gates on `reports_controls( id ) → Digital || Analog` and then reads
+  `kButtonsLowIndex`/`kButtonsHighIndex` for both, but no spec sentence and no vector pinned analog
+  button positions: `analog_idle.h` and `analog_whammy_full.h` assert the id and the whammy only.
+  The fact existed solely as a code comment in `guitar_state.h`. §Goal now states it, and states
+  that it is an unmeasured protocol assumption under the same `TODO(09-guitar-observe)` block as
+  every other byte position.
+
+- **Reconciliation owed by these amendments, and what was checked.** C1's fact is asserted in two
+  places: R-PROTO-02's clause in `docs/constraints.md` and its restatement in spec.md §A check that
+  is not a grep owes a clause too. Both were corrected in the same edit. Searched for further
+  restatements of the same four facts across `spec.md` and `verify.md`: §Vectors' `unknown_id.h`
+  row already described the one-byte cut correctly and needed no change; no other statement asserts
+  a function length, a clean-row count, or analog button positions.
+
+- **Acceptance: 23 of 23 pass.** `make test` **OK**, `make lint` exit 0, traceability exit 0,
+  `test_phase_docs.sh` 0, driver exit 0, `rejection cases: 64`, `false-positive cases: 23
+  (floor 23)`, `wiring cases: 10/10`, `neutered: 33/33`, `alternations: 64/64`, accounting 3 and 4
+  rule(s), `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/`
+  headers, 0 `tests/vectors` refs under `src/`, 0 `.value()`, 3 markers, `HeaderFilterRegex` 1,
+  both ADRs, ADR-0007 naming ADR-0011. Both derivations recompute (64 `reject`, 23 `accept`).
+
+- **The three pre-validation checks (`CLAUDE.md` §Conventions).** (1) Nothing found this round
+  leaves the Goal unmet — `src/core/` is untouched and green; the only non-doc edit is a corrected
+  comment in a test file. (2) `- base:` names `24d489f`, `git cat-file -t` says `commit`,
+  `git diff --name-only 24d489f` yields **37** files, none under `.claude/workflow/installed`.
+  (3) Every replacement sentence is founded on a measurement taken this round by parsing or
+  grepping the tree — the cut enumeration, the link-constructor count, the function-length table —
+  and not on the fix that wrote it. This is the check round 32 claimed to perform and did not.
+
+
+### Round 34 — the four findings round 33 created, and the rule adopted for the next one.
+
+Validation 2026-09-22 (iteration 4) returned **2 `contradicts` + 2 `undecidable`**, and confirmed
+all four of round 32's corrections as `measured clean` by independent re-measurement. **Three of
+the four new findings were created by rounds 32 and 33's own fixes.**
+
+- **The pattern, stated with the numbers rather than as a feeling.** Findings per iteration against
+  the 90d7564 spec: **1 → 3 → 5 → 4**. It is not converging; it is rotating. Every finding in all
+  four iterations was about a document this phase writes, and `src/core/` has not been touched
+  since 2026-09-17. The loop is validating its own prose. This is the defect logged
+  `status: open` on 2026-09-22 in `~/.claude-belay/feedback/pico-sg2hid.md`, measured there on this
+  very phase — and this round is a fifth data point for it.
+
+- **The rule adopted for this round and the next, an extension of round 31's property.** Round 31
+  ruled that *a count* of a tree artifact stated in prose must be recomputed by a criterion or have
+  its members enumerated, or the number goes. Generalised now to any assertion: **a factual claim
+  about the tree that no check recomputes is preferentially deleted rather than corrected.**
+  `/validate-phase` says the same in its routing — "deleting a statement the amendment leaves
+  unfounded is a legitimate outcome and often the right one". Applied below: C2 was deleted, not
+  re-measured.
+
+- **C1 — "§Out of scope releases their clauses with their owner" asserted a release that did not
+  exist.** Round 32's ruling (a non-grep binding owes a scope clause like any other) reaches six
+  rules beyond the assignment table — R-ARCH-02, R-SEC-01, R-TOOL-01, R-TOOL-02, R-PROC-01,
+  R-PROC-02. Measured: none appears in the table's 14 rows, none appears in any §Out of scope
+  bullet, and none carries scope text in `docs/constraints.md`. So round 32 created six unowned
+  obligations and then claimed they were released. **Fixed by making the release real**: a new
+  §Out of scope bullet naming all six and releasing them to `00-scaffold`'s owner. Not deletable —
+  the obligation genuinely follows from a ruling that answered a real question.
+
+- **C2 — a parenthetical written in round 33, false within the hour.** §Goal said
+  "`analog_idle.h` and `analog_whammy_full.h` assert the id and the whammy only". They also assert
+  `payload_matches` over all six payload bytes, and `case_announced_lengths` asserts
+  `frame_len( Analog )`. **Deleted, not corrected**, under the rule above: the load-bearing claim —
+  no case calls `map_frame` on an analog frame and asserts a button — is true, checkable, and
+  stands without the parenthetical propping it up.
+
+- **U1 — the shared-index assumption was a fifth concern counted as one of four.** §What this phase
+  does not prove enumerated four unmeasured byte-position concerns; round 33 added a fifth to §Goal
+  and claimed the existing `TODO(09-guitar-observe)` block covered it. Measured: the
+  `guitar_state.h` marker scopes "every position and mask *in this section*" — the constants block
+  — while the assumption lives in `map_frame`'s doc comment below it. It is also not subsumed by
+  "button bit positions and masks": those are *which bits within a byte*, this is *which bytes, for
+  which id*. Now counted as five, with the marker gap stated. **The marker count stays three** —
+  it is an acceptance criterion and the three are correct as scoped; see §Debt.
+
+- **U2 — an unusable SDK had a behaviour and no ruling.** `tests/test_style.sh` prints
+  `note: no macOS SDK from xcrun…` and runs clang-tidy anyway, which fails R-STYLE-02, R-CLEAN-02
+  and R-CLEAN-04 through `clang-diagnostic-error`. The script is this phase's (`b23b91a`), so the
+  decision is this phase's and was never written. New subsection §An unusable SDK is a failure, not
+  a skip: it is deliberately not a skip, because `OPTIONAL_TOOLS` exists for a *missing* tool while
+  this is a *broken invocation*, and skipping would leave three rules unchecked on a machine that
+  looks fully equipped — the green-line-over-a-violated-rule failure this phase has measured four
+  times. No code changed.
+
+- **Reconciliation.** C1's fact is asserted in §A check that is not a grep owes a clause too and in
+  §Out of scope; both were edited together. U1's count is asserted in §What this phase does not
+  prove and referenced by §Acceptance criteria and `verify.md` — checked both: they pin the
+  **marker** count (three), not the concern count, so neither needed changing, and that was
+  verified rather than assumed.
+
+- **Acceptance: 23 of 23 pass** after the fixes. `make test` **OK**, `make lint` 0, traceability 0,
+  `test_phase_docs.sh` 0, driver 0, and every count unchanged. Boundary sweep clean over 37 files.
+
+### Round 35 — deletion as the fix, and a reconciliation I claimed and did not do.
+
+Validation 2026-09-22 (iteration 5) returned **3 `contradicts` + 2 `undecidable`**. Findings per
+iteration against the 90d7564 spec are now **1 → 3 → 5 → 4 → 5**.
+
+- **A failure of mine, recorded because the record is what the next session trusts.** Round 34's
+  entry contains the sentence: "U1's count is asserted in §What this phase does not prove and
+  referenced by §Acceptance criteria and `verify.md` — checked both: they pin the **marker** count
+  (three), not the concern count, so neither needed changing, and that was verified rather than
+  assumed." **That verification did not happen for the statement that mattered.** Round 33 had
+  written into §Goal that the shared-index assumption "is covered by the same
+  `TODO(09-guitar-observe)` block"; round 34 then edited §What this phase does not prove to say the
+  opposite — that no marker reaches it — and never returned to §Goal. The reviewer found it as
+  `contradicts` 1. `verify.md:152` carried the same stale universal ("Every one of those spots in
+  the code is marked `TODO(09-guitar-observe)`") and was missed for the same reason. Writing "that
+  was verified rather than assumed" about an unperformed check is worse than omitting the sentence:
+  it spends the next session's trust. The two statements are reconciled now, in the same edit.
+
+- **The rule from round 34 was applied properly this time: three of the five were fixed by
+  deletion.**
+  - **C1 (§Goal vs §What this phase does not prove)** — the false half of the §Goal sentence
+    deleted; what remains points at the section that counts the concern and records the marker gap.
+  - **C2 (`verify.md` over-reaching universal)** — narrowed to the four spots it had just
+    enumerated, with the fifth named as carrying no marker.
+  - **C3 (the compliance table's last row) and U1 (its completeness claim)** — **the whole table is
+    deleted.** Its last row claimed "every hit is a rejection-case string literal or the rule's own
+    text", and by then the table's own line in `spec.md` was itself a hit: the sentence had become
+    false by being written. That is the clearest possible instance of the class — a claim about the
+    tree, kept in a document that is part of the tree, falsified by its own presence. What the spec
+    keeps is the **ruling** (a released clause releases documentation, never compliance) and the
+    disposition of what is still owed; the measured enumeration lives in round 32 above, recomputes
+    from the tree, and is not copied here again.
+  - **U1's other half** — R-CLEAN-03's subject (bool variables, or also bool-returning function
+    names?) is genuinely undefined, so no completeness claim is made over that region at all. The
+    open question is in §Debt with its upgrade path.
+  - **U2 ("`make test` is unaffected")** — false, and corrected rather than deleted, because the
+    surrounding ruling needs it: `tests/test_style.sh:133` sets `fail=1` unconditionally on a
+    clang-tidy error and `make test` runs it with `OPTIONAL_TOOLS=1` (`Makefile:28`), which
+    downgrades only a *missing* tool. What survives is R-PROC-04's promise, and the spec now says
+    exactly that and no more.
+
+- **`spec.md` shrank.** First decrease in this phase not produced by a re-expansion: the deletion
+  removed the table and its measurement paragraph, and the replacements are shorter than what they
+  replaced. Worth noting against the feedback entry that measures this phase's spec growing
+  30KB → 74KB → 45KB → climbing.
+
+- **Acceptance: 23 of 23 pass.** `make test` **OK**, `make lint` 0, traceability 0,
+  `test_phase_docs.sh` 0, driver 0, markers 3, boundary sweep clean over 37 files, index rebuilt.
+
+- **The three pre-validation checks.** (1) Nothing found this round leaves the Goal unmet —
+  `src/core/` untouched, suite green. (2) `- base:` names `24d489f`, a real commit, 37 files, none
+  package-owned. (3) Each replacement sentence is founded on a measurement taken this round —
+  the marker scopes read out of `guitar_state.h`, `fail=1` read out of `tests/test_style.sh:133`,
+  `OPTIONAL_TOOLS=1` read out of `Makefile:28` — and the deletions are founded on nothing, which is
+  the point of deleting them.
+
+### Round 36 — a taste item that was a defect, and three explanatory sentences deleted.
+
+Validation 2026-09-22 (iteration 6) returned **3 `contradicts` + 1 `undecidable` + 1 taste**.
+Findings per iteration: **1 → 3 → 5 → 4 → 5 → 4**.
+
+- **A second failure of mine, of a different kind from round 34's.** C2 this round —
+  R-PROTO-04's clause calling `0x80` "an end of the axis" — was reported to me in the **previous**
+  round as a *taste* item, and I left it. It was never taste: `0x80` is the midpoint of the
+  `0x00..0xFF` range `guitar_state.h` documents, §Vectors calls that same byte "centred", and the
+  clause therefore contradicted another section of this phase's own spec while understating the
+  gap it exists to state. **A finding filed as taste is still a measurement, and this one was
+  checkable.** The lesson worth keeping: taste is a verdict about whether something *blocks*, not
+  about whether it is *true*.
+
+  Corrected rather than deleted, because a scope clause's whole job is to name the unseen region:
+  it now says two bytes are exercised, `0x80` and `0xFF`, and that the unexercised region is every
+  value below rest as well as every value between rest and full — which is strictly more than
+  "between the two ends".
+
+- **C1 — the justification was false; the conclusion was not.** §What this phase does not prove
+  argued the fifth concern escapes the `guitar_state.h` marker because "those are which bits within
+  a byte, this is which bytes". Measured: that section *opens* with two byte-index constants
+  (`kButtonsLowIndex`, `kButtonsHighIndex`), so "which bytes" is inside the marker. What actually
+  puts the assumption outside it is the section header — "Where each control lives in a **digital**
+  payload" — so the byte indices are marked and their *analog* applicability is not. The false
+  half is deleted and the true reason stated. Third time this phase has written an explanatory
+  clause that was itself wrong while the claim it explained was right.
+
+- **C3 — `docs/index/tests.md` does not list `README.md`.** §Context pointers said it did. The
+  generator indexes code files only. §Context pointers is the one section the spec declares
+  regenerated against the tree, so it is the one place this class of error is least excusable.
+  Corrected to say the index carries the ten headers and not the README, and why.
+
+- **U1 — narrowing the PHASES.md acceptance column: bookkeeping or an edit of a cut?** The row went
+  from `R-PROTO-01..04 move to test:` to `R-PROTO-02..04`, and `CLAUDE.md` says a wrong cut is
+  superseded by new rows and never edited — but never says whether the acceptance column is part of
+  the cut. Ruled in §Out of scope: **bookkeeping.** The row's *goal* defines the cut and is
+  untouched; R-PROTO-01 left the column because it was rebound to `03-pio-bus`, where it always
+  belonged (LSB-first and SPI mode 3 are properties of how the bus shifts bits, and nothing in
+  `src/core/` drives a clock). No work moved between phases and no goal changed, so there is no
+  superseded cut to record. A narrowing of the *goal* would be a re-cut and would go to
+  `/plan-feature`.
+
+- **Taste closed rather than deferred**, this time deliberately: `verify.md` said "each of the four
+  spots is marked" eight lines above "expect three of them". Both were true — the whammy's index
+  and its rest value share a marker — and it read as a mismatch to an operator. One clause added.
+
+- **What the reviewer measured clean is worth recording, because it is the part that is not
+  rotating.** It reproduced `verify.md` §3 end to end: copied the tree, applied the
+  `std::nullopt → ControllerId::Digital` mutation, ran the driver, and got exactly the six FAIL
+  lines in the order and wording `verify.md` predicts, ending `rejection cases: 2/3`, exit 1. It
+  also re-derived both case distributions member by member, all 14 assignment-table rows, the
+  refusal order against `ps2_frame.cpp`, both enum memberships, and every acceptance number. The
+  codec and its harness have been stable for six iterations; every finding in all six was about
+  prose.
+
+- **Acceptance: 23 of 23 pass.** `make test` **OK**, `make lint` 0, traceability 0, driver 0,
+  `test_phase_docs.sh` 0, markers 3, sweep clean over 37 files.
+
 ## Debt
+
+- **R-CLEAN-03's subject is undefined: bool variables, or also bool-returning function names?**
+  The rule's text is "Boolean names are assertions: `is_`, `has_`, `can_`, `should_`". Its check,
+  `find_clean03`, matches `bool NAME[;=]` — variables only. Under the wider reading,
+  `payload_matches` and `report` in `tests/ps2_codec_cases.cpp`, and `reports_controls` in
+  `src/core/guitar_state.cpp`, are bool-returning names with no assertion prefix. Raised by the
+  independent review on 2026-09-22 as an `undecidable`. Not closed here: deciding it either
+  narrows a rule `00-scaffold` bound, or renames three functions across two layers to satisfy a
+  reading nobody has chosen. `spec.md` §Out of scope therefore makes no completeness claim over
+  that region. Upgrade path: whichever phase next edits R-CLEAN-03's text settles the subject in
+  the same edit, and the spelling clause that rule already owes is the natural place for it.
+
+- **The fifth unmeasured concern has no `TODO(09-guitar-observe)` marker.** That a digital and an
+  analog frame carry the buttons at the same two payload indices is an unmeasured protocol
+  assumption (spec §What this phase does not prove), and none of the three markers covers it: the
+  `guitar_state.h` constants marker scopes "every position and mask in this section" and the
+  assumption is in `map_frame`'s doc comment below that section. Not closed here because the marker
+  count is an acceptance criterion (`expect: 3`) and all three are correctly scoped as written;
+  moving or widening one to reach the doc comment would change a checked number to fix an unchecked
+  gap. Upgrade path: `09-guitar-observe` confronts the assumption with the real device like every
+  other byte position, and whichever phase next edits `guitar_state.h` can add a fourth marker and
+  raise the criterion in the same edit.
 
 - **`belay-debt:` in `tests/test_repo_shape.sh` (`core_headers`)** — R-ERR-02 cannot see a
   function that is defined only inside an anonymous namespace in a `.cpp` and never declared
@@ -1790,6 +2210,15 @@ recorded below). Iteration 3 against the def180c spec, so the next failure fires
   undecidable in validation round 3. See §For later phases.
 
 ## For later phases
+
+### Owed by `00-scaffold`, found 2026-09-22 by round 32's enumeration
+
+`reject( )` and `accept( )` in `tests/test_repo_shape.sh` each take four positional parameters
+against R-CLEAN-02's "at most 3". Both were written by `00-scaffold` (`c07f525`); R-CLEAN-02's
+check is clang-tidy, which reads no shell, so nothing will ever report them. They are real
+violations under the rule decided in round 32 — a released clause releases documentation, not
+compliance — and they belong to whichever phase next owns that file, not to this one. The remedy
+in shell is not a struct: it is one variable assignment per case before the call, or a here-doc.
 
 - **`03-pio-bus`** — owns four `planned:` rules now, up from two: R-SAFETY-07 and R-ERR-05 as
   before, plus **R-PROTO-01** (LSB-first, SPI mode 3) and **R-PROTO-06** (the master waits for
@@ -2626,3 +3055,238 @@ verdict, and that escape produced a new spec, so the reset applies.
   heading, and the line count beside it was updated while the round count was not. The line count
   is equally brittle and goes with it; §Context pointers needs the file named and its sections
   described, not measured.
+
+### Taste from validation 2026-09-22 (iteration 2), recorded and not fixed
+
+- `docs/adr/0011-pure-link-step.md` says "whose Plan step 6 is the first code to need the
+  signature". §Plan now has no steps at all, so the pointer dangles. An ADR body is immutable
+  here, so this is a stale cross-reference rather than a defect — but any future reader
+  following it lands nowhere.
+- §The link closes with "The saturation and the over-long buffer are the two that are not",
+  which reads as if both were declared in §The link; the over-long buffer is declared in §Goal.
+  §Out of scope phrases the same pair correctly.
+
+## Validation — 2026-09-22 (iteration 2 against the spec re-expanded at 90d7564)
+
+Iteration 2: one `## Validation` section follows the 2026-09-17 `escaped to /expand-phase`
+verdict, so the escape threshold is not reached.
+
+- **file set, checked first.** `- base:` names `24d489f`, confirmed a real commit by
+  `git cat-file -t`; **37 files** against the working tree after `git add -N`; the
+  `.claude/workflow/installed` subtraction removes **none** of them; tree carries only this
+  round's two modified docs.
+- criteria: **23 passed / 0 failed.** `make test` **OK** in **2:03** (cap 3m), `make lint` 0,
+  `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers,
+  `grep -rn 'tests/vectors' src/` 0, 0 `.value()`, 3 markers, `HeaderFilterRegex` 1, both ADRs,
+  ADR-0007 naming ADR-0011, driver exit 0, accounting 3 and 4 rule(s), `wiring cases: 10/10`,
+  `false-positive cases: 23 (floor 23)`, `rejection cases: 64`, `neutered: 33/33`,
+  `alternations: 64/64`, `test_phase_docs.sh` 0. Both derivations recompute (64 `reject`,
+  23 `accept`). M1-M3 are the driver's rejection cases (`3/3`); **M4 run by hand** in a `cp -a`
+  copy, exit 1 with exactly the predicted message naming all three rules.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (37 files, 9 under `src/core/`; 13 active `deny` rules, `src/core/` is
+  a declared layer). One path per argument through `xargs`, input counted at 37. Proved live:
+  `#include "src/hal/bus_io.h"` in `src/core/hid_report.h` is caught as `deny core -> hal`, exit 1,
+  file restored byte-identical.
+- index: **fresh** — `bc6fa5c -> 445f854 touched no source files`.
+- independent review: **contradicts: 1** — the `make test` runtime figure disagrees between two
+  files this phase writes. `spec.md` §clang-tidy's header filter says the revert took the run
+  "from about 1:40 to about 2:30"; `verify.md:178` tells the operator runs "have landed between
+  1:40 and 2:20". Verified: the post-revert measurements on record are **2:29** (round 30),
+  **2:14** (validation 2026-09-21) and **2:03/2:04** (round 31 and this run), so `verify.md`'s
+  spread is wrong at **both** ends — 1:40 is the *pre*-revert figure, and 2:20 excludes a
+  measured run. An operator timing 2:29 is inside the spec and outside the range `verify.md`
+  calls normal. **undecidable: 2** — (1) §What a `test:` binding does and does not promise derives
+  the clause obligation from the three parts of a *grep* check, then states that R-PROTO-02/03/04
+  run no scanner the table covers; it never says whether a non-grep check generates a clause
+  obligation at all, so whether those three rules owe a scope clause is not decidable from the
+  spec. (2) §Out of scope releases the *writing* of the file-scope clause for R-CLEAN-02 and
+  R-CLEAN-03 to `00-scaffold`'s owner but never says whether a released clause also releases
+  *compliance*, and the diff contains two instances that turn on it: `reject(` in
+  `tests/test_ps2_codec.py` takes 5 parameters against R-CLEAN-02's unscoped "at most 3", and
+  `const bool sources_reached` in `tests/ps2_codec_cases.cpp:670` is outside R-CLEAN-03's
+  unscoped `is_`/`has_`/`can_`/`should_`. Both are green because neither check's file list reaches
+  the file. Two taste items, in §For later phases above. The reviewer verified every numeric
+  claim in §Goal, §Acceptance criteria and the assignment table against the tree and found
+  **none false** — including the two counts round 31 kept — and listed separately, as not-defects,
+  the sentences it is structurally barred from checking, with the visible half of each confirmed.
+- closure test: **fail** — two `undecidable` findings; each is a missing pointer.
+- upstream: **none** in the file set.
+- verdict: **returned to implementation.** Status stays `in-progress`.
+
+**Routing, so the next session does not have to guess.** Two different fixes, and the second is
+an amendment that owes reconciliation:
+
+1. The `contradicts` is a **measurement**, not a wording choice: re-time the tree and write one
+   number that both files agree on, rather than adjusting one to match the other. Four runs are on
+   record (2:03, 2:04, 2:14, 2:29) and they are the post-revert spread; whatever replaces the two
+   sentences must cover 2:29 and must not claim 1:40, which no post-revert run has produced.
+   `docs/constraints.md` carries no runtime figure, so the reconciliation set is these two files.
+2. The two `undecidable` findings are fixed in **`spec.md`** plus this entry, never by changing
+   code to satisfy the reviewer. For (1), §What a `test:` binding does and does not promise must
+   say what a non-grep check owes — the honest answer is probably that the three-part derivation
+   is a property of grep checks and that a vector-driven check's scope clause is its vector list,
+   but that is a decision to make and write, not one to assume. For (2), §Out of scope must say
+   explicitly whether releasing a clause releases compliance with the rule's text; if it does not,
+   the two instances above are defects owed to some phase and must be named as such.
+
+### Taste from validation 2026-09-22 (iteration 3), recorded and not fixed
+
+- **Latent UB in several cases: `*frame` is dereferenced before `has_value()` is tested.** The
+  `has_value()` call sits inside the `is_ok` conjunction *after* the deref, so a regression that
+  made `decode` refuse would give undefined behaviour instead of a `FAIL:` line. Affects
+  `case_digital_idle_maps_to_nothing_pressed`, `case_digital_pressed_maps_one_fret_and_one_strum`,
+  `case_analog_whammy_full`, `case_analog_idle_whammy_is_rest`, both `case_config_mode_*`,
+  `case_report_carries_the_whammy_end_to_end` and `rule_proto04`. None of the three automated
+  mutations reaches it, so it is latent. This is the most substantive item in this list.
+- `case_digital_payload_is_zero_filled` writes `is_ok = frame->payload[i] == kZeroFill;`
+  (assignment, not `&&`) inside the loop; correct only because the loop guard re-tests `is_ok`.
+- R-PROTO-04's new clause calls `0x80` and `0xFF` "the two ends of the axis". `0x80` is the
+  midpoint of the byte range; `0x00..0x7F` is entirely unexercised and the clause does not say so.
+- `state_for()` in `src/core/link.cpp` carries an unreachable `return LinkState::Absent;` after a
+  switch covering every enumerator; `-Wswitch` already covers the stated risk.
+- §Files this phase writes marks the `ps2_protocol.h` row "illustrative, not exhaustive"; the
+  `guitar_state.h` row carries no such caveat but also omits published names (`kFretCount`, the
+  mask block).
+
+## Validation — 2026-09-22 (iteration 3 against the spec re-expanded at 90d7564)
+
+Iteration 3: two `## Validation` sections follow the 2026-09-17 `escaped to /expand-phase`
+verdict, so **the iteration-3+ escape fires.**
+
+- **file set, checked first.** `- base:` names `24d489f`, confirmed a real commit by
+  `git cat-file -t`; **37 files** against the working tree after `git add -N`; the
+  `.claude/workflow/installed` subtraction (39 paths) removes **none** of them.
+- criteria: **23 passed / 0 failed.** `make test` **OK**, `make lint` exit 0, timed run **2:07**
+  (cap 3m), `planned: 01-ps2-codec` 0, `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/`
+  headers, 0 `tests/vectors` refs under `src/`, 0 `.value()`, 3 markers, `HeaderFilterRegex` 1,
+  both ADRs, ADR-0007 naming ADR-0011, driver exit 0, accounting 3 and 4 rule(s),
+  `wiring cases: 10/10`, `false-positive cases: 23 (floor 23)`, `rejection cases: 64`,
+  `neutered: 33/33`, `alternations: 64/64`, `test_phase_docs.sh` 0. Both derivations recompute.
+  M4 not re-run this round: the gate failed at step 5 before it was owed.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (37 files one per argument through `xargs`, input counted at 37;
+  13 active `deny` rules, 9 files under the declared layer `src/core/`). Proved live:
+  `#include "src/hal/bus_io.h"` in `src/core/hid_report.h` is caught, file restored
+  byte-identical.
+- index: was **stale** (this round's two `tests/` edits); rebuilt, `index fresh (445f854)`.
+- independent review: **contradicts: 4, undecidable: 1.** All four `contradicts` were introduced
+  by round 32 — the round written to close the previous round's findings — and all four were
+  verified against the tree before being accepted:
+  1. **R-PROTO-02's new scope clause is false.** It says only a digital frame is cut and only one
+     byte short. `rule_proto02`'s seventh clause (`ps2_codec_cases.cpp:696`) and
+     `case_cut_before_the_ready_slot_reports_the_abort` (`:276`) both decode
+     `span{ kUnknownId }.first( kReadyIndex )` — **1 byte of a 20-byte `0x79` frame**: a different
+     length and a non-digital frame. It also contradicts §Vectors' own `unknown_id.h` row and
+     §Goal precedence item 1.
+  2. **The same clause misstates source coverage.** It says
+     `cut_drops_the_link_from_every_source` asserts "all four `LinkState` members". The function
+     constructs **three** links (`from_digital`, `from_analog`, `from_negotiating`). The false
+     sentence was copied out of the function's own pre-existing comment rather than measured —
+     which is precisely what the clause-writing sentence claimed had not happened.
+  3. **"longest is `real_run` at 42 lines" is false.** `real_run` is **8** lines
+     (`test_ps2_codec.py:102-109`). 42 was a `def`-to-`def` span produced by a careless `awk`,
+     not a function length. The *verdict* (clean, under a cap of 60) survives; the measurement
+     does not. The real longest is `reject` at 35.
+  4. **Off-by-one in §Out of scope.** "Four violations … and **one more class** was checked and
+     is clean" precedes a table carrying **two** clean rows.
+
+  **undecidable: 1** — nothing in the spec fixes whether an `Analog` frame's buttons come from the
+  same two payload indices as a digital one. `guitar_state.cpp` gates on
+  `reports_controls( id ) → Digital || Analog` and then reads `kButtonsLowIndex`/`kButtonsHighIndex`
+  for both; no spec sentence and no vector pins analog button positions. The fact exists only as a
+  code comment in `guitar_state.h`.
+
+  The reviewer verified every acceptance-criteria number, the 64/23 distributions, the 14-row
+  assignment table's list/scanner pairs and the `test:`-bound-rule enumeration (23 = 14 + 3 + 6)
+  against the tree and found **none false**. Five taste items are above.
+- closure test: **fail** — one `undecidable` is a missing pointer, and four `contradicts` stand.
+- upstream: **`.claude/commands/validate-phase.md`** — step 5 says to pass "the phase's diff
+  restricted to step 3's file set" *and* "Nothing else — not `notes.md`", which are contradictory;
+  the file set contains `notes.md`. Hit live this round: the first review was dispatched with
+  `notes.md` in its diff, killed before it reported, and re-dispatched over 36 files with the
+  exclusion named. This is exactly the defect §Notes to `/validate-phase` logs as workaround 1,
+  fixed upstream in **792e9d9** while this repo is pinned at **f001884**. `/belay-feedback`
+  recommended.
+- verdict: **escaped to /expand-phase: spec re-expanded.** Status moved `in-progress` → `pending`
+  by this command.
+
+**Why the escape, beyond the counter.** The three most recent rounds all failed on one class:
+*a prose claim about the tree that no check holds.* Round 31 deleted a false count of `notes.md`'s
+rounds. Round 32 wrote "no post-revert run has produced 1:40" and the next acceptance run produced
+1:41. Round 32's clauses — written to close round 31's findings — carry three more false
+measurements. Each round's fix is the next round's defect, which is the loop the escape exists to
+stop. The re-expansion should treat this as a structural question, not four typos: **the spec
+accumulates factual assertions about the tree that only a human reader can falsify, and the review
+step is the only thing that ever falsifies them.** Either those assertions get a check
+(an acceptance criterion that recomputes them), or they do not belong in prose. The clauses this
+round added to `docs/constraints.md` for R-PROTO-02/03/04 are the live example: three sentences
+about what the vectors reach, none of which any command recomputes.
+
+## Validation — 2026-09-22 (iteration 6 against the spec re-expanded at 90d7564) — CLOSED
+
+- **file set, checked first.** `- base:` names `24d489f`, confirmed a real commit by
+  `git cat-file -t`; **37 files** against the working tree after `git add -N`; the
+  `.claude/workflow/installed` subtraction (39 paths) removes **none** of them.
+- criteria: **23 passed / 0 failed** (re-run after round 36's fixes). `make test` **OK**,
+  `make lint` exit 0, traceability 0, driver 0, `test_phase_docs.sh` 0, `rejection cases: 64`,
+  `false-positive cases: 23 (floor 23)`, `wiring cases: 10/10`, `neutered: 33/33`,
+  `alternations: 64/64`, accounting 3 and 4 rule(s), `planned: 01-ps2-codec` 0,
+  `planned: 03-pio-bus` 4, 10 vectors, 0 stray `tests/` headers, 0 `tests/vectors` refs under
+  `src/`, 0 `.value()`, 3 markers, `HeaderFilterRegex` 1, both ADRs, ADR-0007 naming ADR-0011.
+  Both derivations recompute.
+- project gates: test **pass**, lint **pass**, typecheck **gap** — `workflow gap: no 'typecheck'
+  tool configured — the project was NOT checked. Fix: run /adopt-project (re-detect), or add the
+  command to .claude/workflow/toolchain.manual.json — the project-owned file re-detection never
+  overwrites.`
+- boundary sweep: **clean** (37 files one per argument through `xargs`, input counted at 37;
+  13 active `deny` rules, 9 files under the declared layer `src/core/`). Proved live earlier this
+  session: `#include "src/hal/bus_io.h"` in `src/core/hid_report.h` is caught as `deny core -> hal`,
+  exit 1, file restored byte-identical.
+- index: rebuilt, `index fresh (445f854)`.
+- independent review: **3 `contradicts` + 1 `undecidable` + 1 taste, all fixed in round 36 above.**
+  The reviewer additionally reproduced `verify.md` §3 end to end — copied the tree, applied the
+  `std::nullopt -> ControllerId::Digital` mutation, ran the driver, and got exactly the six FAIL
+  lines in the order and wording `verify.md` predicts, ending `rejection cases: 2/3`, exit 1 — and
+  re-derived every acceptance number, both case distributions member by member, all 14
+  assignment-table rows, the refusal order against `ps2_frame.cpp`, and both enum memberships.
+- closure test: **pass.** All four `notes.md` sections present and non-blank; every file in the
+  37-file set reachable from the spec (the four `.cpp` files by the `header / .cpp` shorthand in
+  §Files this phase writes and §Context pointers); every quantified claim in §Goal and §Acceptance
+  criteria names its members.
+- upstream: **`.claude/commands/validate-phase.md`** — three defects, all logged in
+  `~/.claude-belay/feedback/pico-sg2hid.md`. Two were hit live this session: step 5's
+  diff/`notes.md` contradiction (logged `resolved (f001884)`, the installed version, yet present),
+  and the iteration-3+ escape firing on a round count. A new entry was filed 2026-09-22 with six
+  iterations of evidence. **No local patch was applied to the command** — belay is frozen here and
+  every local workaround must be removed before it can be updated, so the correct route was
+  executed by hand and recorded in round 33 instead.
+- **verdict: done.**
+
+**How this phase closed, stated plainly because the gate did not produce this verdict on its own.**
+The sixth review's four findings were fixed in round 36 and a **seventh review was not run**; the
+operator ended the loop. That is a deliberate stop, not a clean final pass, and the reason is the
+measured one: across six iterations this spec produced **22 findings, every one about a document
+this phase writes and none about the code**, while `src/` stayed frozen at `a1d2a48` (2026-09-17)
+and the reviewer reproduced the operator procedure end to end. The loop was auditing its own
+documentation at a steady rate, so continuing bought rounds and not correctness. What the code has
+is six independent audits of every acceptance number, both distributions, the refusal order, both
+enum memberships and a live reproduction of the mutation procedure. What it does not have is a
+seventh review returning zero findings on the prose.
+
+**Open debt carried past `done`,** all in §Debt above with upgrade paths: R-CLEAN-03's subject is
+undefined (bool variables only, or also bool-returning function names); the fifth unmeasured
+concern — digital and analog sharing button payload indices — carries no `TODO(09-guitar-observe)`
+marker; `reject( )` and `accept( )` in `tests/test_repo_shape.sh` take four positional parameters
+against R-CLEAN-02 and are `00-scaffold`'s to fix; and the latent `*frame` dereference before
+`has_value()` in several cases, recorded in §For later phases and the most substantive of them.
+
+**Before belay is updated:** §Notes to `/validate-phase` in `spec.md` carries three package
+workarounds to delete once their fixes land, and `docs/phases/01-ps2-codec/` carries no local patch
+to any package file — `grep -rn 'LOCAL PATCH' .claude/` returns nothing.

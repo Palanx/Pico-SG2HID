@@ -657,9 +657,11 @@ constexpr std::uint32_t kOnePollUs = 1000;
 // limit (R-CLEAN-02). The rule says the link transitions to Absent and does not qualify the
 // source state, but every other step in the rule line starts from a fresh (Absent) link. A
 // `step` that sent a cut-short frame somewhere else from ONE source state would break the rule
-// and leave the line green — measured, not supposed. The four source states are the four
-// LinkState members, so the claim is asserted over all of them. This is not the uniformity case
-// restated: that one asserts the four targets are EQUAL, this one asserts what they equal.
+// and leave the line green — measured, not supposed. This function covers the three NON-Absent
+// members of LinkState; the fourth, Absent, is asserted in rule_proto02 by a freshly constructed
+// Link. Corrected 2026-09-22: this comment used to claim all four, and that false sentence was
+// copied verbatim into R-PROTO-02's scope clause. This is not the uniformity case restated: that
+// one asserts the four targets are EQUAL, this one asserts what they equal.
 [[nodiscard]] bool cut_drops_the_link_from_every_source( std::span<const std::uint8_t> cut ) {
     ps2::Link                           from_digital{};
     ps2::Link                           from_analog{};
@@ -667,7 +669,7 @@ constexpr std::uint32_t kOnePollUs = 1000;
     const std::span<const std::uint8_t> digital_idle{ vectors::kDigitalIdle };
     const std::span<const std::uint8_t> analog_idle{ vectors::kAnalogIdle };
     const std::span<const std::uint8_t> config_frame{ vectors::kConfigMode };
-    const bool                          sources_reached =
+    const bool                          has_reached_every_source =
         ps2::step( from_digital, ps2::decode( digital_idle ), kOnePollUs ) ==
             ps2::LinkState::DigitalStreaming &&
         ps2::step( from_analog, ps2::decode( analog_idle ), kOnePollUs ) ==
@@ -675,7 +677,7 @@ constexpr std::uint32_t kOnePollUs = 1000;
         ps2::step( from_negotiating, ps2::decode( config_frame ), kOnePollUs ) ==
             ps2::LinkState::Negotiating;
 
-    return sources_reached &&
+    return has_reached_every_source &&
            ps2::step( from_digital, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
            ps2::step( from_analog, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent &&
            ps2::step( from_negotiating, ps2::decode( cut ), kOnePollUs ) == ps2::LinkState::Absent;
