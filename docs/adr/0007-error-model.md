@@ -1,8 +1,11 @@
 # ADR-0007: Errors are result structs when decoding, and state transitions when linking
 
-- Status: accepted — the pure-decoding mechanism is superseded by ADR-0009
-  (`std::expected`). The link-lifecycle state machine below is unchanged and remains
-  the decision of record.
+- Status: accepted — three parts are superseded, each by one later ADR and each only in
+  part: the pure-decoding mechanism by ADR-0009 (`std::expected`), the `step` signature
+  sketch by ADR-0011 (a pure transition over a decode outcome and elapsed microseconds),
+  and the `DecodeStatus` membership sketched below by ADR-0012. The link-lifecycle state
+  machine itself is unchanged and remains the decision of record — above all that a missing
+  `ACK` is a transition to `Absent` and not a failed call.
 - Date: 2026-08-31
 
 ## Context

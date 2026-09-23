@@ -65,11 +65,12 @@ Set by ADR-0006 and by the hard constraints in `docs/product/requirements.md`.
 
 ### PS2 protocol
 
-- **R-PROTO-01** — All bytes on the PS2 bus are transferred LSB-first, SPI mode 3. — planned: 01-ps2-codec
-- **R-PROTO-02** — After every byte of a frame except the last, the master waits for the controller's `ACK`. A missing `ACK` within the timeout aborts the frame and marks the controller absent; it never yields a partially decoded report. — planned: 01-ps2-codec
-- **R-PROTO-03** — A frame whose header byte is not a known controller id is reported as unknown, never guessed at or decoded on a best-effort basis. — planned: 01-ps2-codec
-- **R-PROTO-04** — The whammy axis is read only from a frame that reported analog mode. A digital-mode frame yields the axis at rest, never a byte reinterpreted from a digital report. — planned: 01-ps2-codec
-- **R-PROTO-05** — Every expected byte sequence in the tests is a literal, stored under `tests/vectors/` and written by hand from the protocol documentation. No expected value is produced by `core` or captured from the emulator, and no file under `src/` may reference `tests/vectors/`. — test: `tests/test_repo_shape.sh`
+- **R-PROTO-01** — All bytes on the PS2 bus are transferred LSB-first, SPI mode 3. Rebound from `01-ps2-codec` to `03-pio-bus` on 2026-09-11: bit order is a property of the PIO shift program, so no host-only test over decoded bytes can observe it — a codec handed already-assembled bytes behaves identically either way. The loopback round-trip in `03-pio-bus` is the first thing that can. — planned: 03-pio-bus
+- **R-PROTO-02** — A frame the bus cut short never yields a partially decoded report: the decode reports the abort and the link transitions to `Absent`, and no field of a refused frame is readable as if it had been decoded. Split on 2026-09-11: this clause is decidable from the bytes alone, so it is testable on the host, while the timing clause it used to carry is not. The timing clause is now R-PROTO-06 — a binding covering both was a binding for neither, the same shape as R-ERR-05's split out of R-ERR-03. **Scope, recorded 2026-09-22, corrected 2026-09-22 after the first wording was measured false — this check is vector-driven, so its reach is its vector list, not a file list and a regex:** the check decodes **three** cut inputs, enumerated by grepping every truncated span in `tests/ps2_codec_cases.cpp`. Two are three bytes of a four-byte **digital** frame — `tests/vectors/truncated_ack.h` and `tests/vectors/truncated_not_ready.h`, differing only in the ready slot. The third is **one byte** (`kReadyIndex` is 1) of the twenty-byte undeclared-id frame `tests/vectors/unknown_id.h`, which is where §Goal's precedence item 1 is asserted: the abort outranks `UnknownId`. **Not exercised:** a cut in an **analog** (`0x73`) or **config-mode** (`0xF3`) frame, and every intermediate length — nothing between 1 and 3 bytes, and nothing between 3 and a whole frame. On the link side, `cut_drops_the_link_from_every_source` constructs **three** links (`DigitalStreaming`, `AnalogStreaming`, `Negotiating`); the fourth `LinkState` member, `Absent`, is covered elsewhere in `rule_proto02` by a freshly constructed `Link`, but not by that function. The over-long buffer is a separate unasserted behaviour, declared in `docs/phases/01-ps2-codec/spec.md` §Goal. — test: `tests/test_ps2_codec.py`
+- **R-PROTO-03** — A frame whose header byte is not a known controller id is reported as unknown, never guessed at or decoded on a best-effort basis. **Scope, recorded 2026-09-22 — vector-driven, so the reach is the vector list:** this project declares three ids (`0x41`, `0x73`, `0xF3`), leaving 253 undeclared header bytes, and the check exercises exactly one of them — `0x79`, in `tests/vectors/unknown_id.h`, chosen as a real DualShock 2 id rather than an impossible byte so that the refusal is not an accident of the value. That one byte stands for the other 252; nothing measures them. — test: `tests/test_ps2_codec.py`
+- **R-PROTO-04** — The whammy axis is read only from a frame that reported analog mode. A digital-mode frame yields the axis at rest, never a byte reinterpreted from a digital report. **Scope, recorded 2026-09-22 — vector-driven, so the reach is the vector list:** exercised are analog at rest and at full deflection (`analog_idle.h`, `analog_whammy_full.h`), a digital frame (`digital_whammy_absent.h`) and a config-mode frame (`config_mode.h`). Exactly **two** whammy bytes are exercised: `0x80`, which `kWhammyRest` names and `analog_idle.h` carries as a centred axis, and `0xFF` at full deflection. `0x80` is the **midpoint** of the `0x00..0xFF` range `src/core/guitar_state.h` documents, not an end of it — so the unexercised region is not merely the gap between the two values, it is every value below rest as well as every value between rest and full. No vector came off a real controller, which is `09-guitar-observe`'s work. — test: `tests/test_ps2_codec.py`
+- **R-PROTO-05** — Every expected sequence of bytes **the protocol fixes** — what the controller puts on the wire — is a literal, stored under `tests/vectors/` and written by hand from the protocol documentation. No expected value is produced by `core` or captured from the emulator, and no file under `src/` may reference `tests/vectors/`. **"Reference" means any occurrence of the path, comments included**, and the check reads raw lines rather than comment-stripped ones to match: scope decided 2026-09-15 after the acceptance criterion (a plain `grep`) and the check (which stripped `//`) returned opposite verdicts on the same tree. The literal reading is chosen over "no code reference" because it leaves nothing to interpret — no one has to rule on whether a string literal or a macro counts. What is given up is stated rather than implied: a comment cannot create a dependency, so this check refuses some references that are harmless, and that over-strictness is the price of having no judgement in the rule. **It is also under-strict, recorded 2026-09-16, and the paragraph above stated only the first half:** an occurrence means the literal text `tests/vectors`. Measured one form each: `#include "vectors/a.h"` resolved through an `-Itests` include path, a path split across adjacent string literals (`"tests/" "vectors/a.h"`), a doubled separator (`tests//vectors`) and a backslash separator are not occurrences and are not reported; a relative `../../tests/vectors/a.h` is. The first is the one that matters, because it is a real dependency on test data containing no occurrence of the path. Nothing in the build passes `-Itests` today — `make test` and `tests/test_ps2_codec.py` both compile with `-Isrc` only. **What this rule does not reach, ruled 2026-09-17:** a value this project decides rather than the protocol. `decode`'s zero fill is the case — `tests/ps2_codec_cases.cpp` asserts the unannounced payload bytes against its own `kZeroFill`, and no vector could hold that byte, because the controller never sent it. Expected bytes that came off the wire stay under `tests/vectors/`. — test: `tests/test_repo_shape.sh`
+- **R-PROTO-06** — After every byte of a frame except the last, the master waits for the controller's `ACK` within the timeout before shifting the next byte. Split out of R-PROTO-02 on 2026-09-11: this is a property of what the bus does between bytes, observable only by something that drives a real clock, and nothing in `src/core/` produces or consumes a microsecond. — planned: 03-pio-bus
 
 ### Style
 
@@ -91,11 +92,11 @@ compile each file, and everything else pulls in Pico SDK or TinyUSB headers with
 `.clang-tidy`.
 
 That scope is necessary but **not sufficient, and this paragraph used to imply it was**:
-inside `src/core/` the invocation still resolves no standard header, so the first file
-using the standard library fails R-STYLE-02 too. Measured by `tests/test_style.sh`, whose
-clang-tidy invocation is the one that fails, while running phase `00-scaffold`'s adversarial
-block against a scratch `src/core/x.h` containing `std::string_view sv;`. See §Observed
-conventions, 2026-09-02.
+the invocation also needs `-xc++` on a header and `-isysroot` on every file, or a file using
+the standard library fails R-STYLE-02 with a diagnostic that is not about naming at all. Both
+flags are in `tests/test_style.sh`, which is the file that fails when either is missing;
+what each one fixes, and what the two earlier readings of this got wrong, is in §Observed
+conventions, 2026-09-11 (superseding the 2026-09-02 entry).
 
 ### Architecture
 
@@ -107,8 +108,8 @@ conventions, 2026-09-02.
 
 Set by ADR-0007.
 
-- **R-ERR-01** — Every fallible function in `src/core/` reports through a result struct or through the link state machine. No function returns a status alongside a separate out-parameter carrying the value. — planned: 01-ps2-codec
-- **R-ERR-02** — Every function returning a result struct or a `LinkState` is marked `[[nodiscard]]`. — planned: 01-ps2-codec
+- **R-ERR-01** — No function in `src/core/` returns a bare status enum: `DecodeStatus` and `FaultCause` appear only in `std::expected`'s error slot or as a member of `Link`, never as a return type of their own. Narrowed on 2026-09-11 from "reports through a result struct or through the link state machine, never a status alongside a separate out-parameter": the original text names a hazard whose subject is the *pairing* of a return with an out-parameter, and deciding that from source needs to know which parameter carries the value — which a grep cannot. The narrowed clause is the half that makes the hazard unwritable, because a status that is never returned alone cannot be returned beside anything. What is given up is recorded rather than implied: a `core` function taking a non-const reference and returning `void` is outside this binding, and R-CLEAN-07 (`manual:`) is what covers it. **A spelling narrowing, recorded 2026-09-16:** the check is a line-anchored grep, so it sees a status-enum return only when the line starts with the enum's unqualified name — optionally after `[[nodiscard]]` and `constexpr` — with the function name and `(` on the same line. Measured by feeding it one declaration per form: `static`, `inline`, `extern`, `friend` or `const` before the type, a qualified `ps2::FaultCause`, a trailing `-> FaultCause` return, and a return type on a line of its own are all outside this binding, and none is reported. None of those forms returns a status enum anywhere in `src/core/` today. Closing it needs the type information a grep does not have, which is the `clang-query` + `compile_commands.json` upgrade `03-pio-bus` already owes. — test: `tests/test_repo_shape.sh`
+- **R-ERR-02** — Every function returning a result struct or a `LinkState` is marked `[[nodiscard]]`. The check behind this rule scans `src/core/*.h` only, and the narrowing is recorded here rather than left in the check, the way R-ERR-01's is: `[[nodiscard]]` belongs on the declaration and C++ does not repeat it on the out-of-line definition, so scanning `.cpp` reports correct code — `LinkState step( … ) {` in `src/core/link.cpp` — as a violation. What is given up is stated rather than implied: a function defined only inside an anonymous namespace in a `.cpp`, declared in no header, is outside this binding. Such a function has no caller who could ignore its result, which is why the exposure is small and not zero; closing it needs the `clang-query` + `compile_commands.json` upgrade `03-pio-bus` already owes. Measured 2026-09-11 against the real tree, not reasoned. **A second narrowing, recorded 2026-09-15:** the check recognises three spellings of a return type — `std::expected<…>`, `DecodeOutcome` and `LinkState` — while this rule says "result struct", which is wider. A fallible return spelled any other way is outside the binding, and one exists: `id_from_byte` in `src/core/ps2_protocol.h` returns `std::optional<ControllerId>` and matches none of the three. It carries `[[nodiscard]]` today, so nothing is in violation — but the check would not notice if it stopped, which is precisely what a scope clause is for. Widening the pattern to cover every fallible return needs the type information a grep does not have, which is the same `clang-query` upgrade `03-pio-bus` already owes. **A third narrowing, recorded 2026-09-16, on the same axis as the second:** the three spellings are recognised only at the start of a line — optionally after `constexpr` — with the function name and `(` on the same line. Measured one declaration per form: `static`, `inline` or `const` before the type, a qualified `ps2::LinkState`, a trailing `-> LinkState` return, a return type on a line of its own, and a `std::expected<…>` split across lines are all outside the binding and none is reported. None of those forms returns one of the three types anywhere in `src/core/` today. The anchor also errs in the other direction: `[[nodiscard]]` on the line *before* a compliant declaration is reported as a violation. That one fails loudly rather than passing quietly, so it constrains how a declaration may be laid out rather than hiding one. Same upgrade path. — test: `tests/test_repo_shape.sh`
 - **R-ERR-03** — No `throw`, `try` or `catch` anywhere under `src/`. — test: `tests/test_repo_shape.sh`
 - **R-ERR-05** — Firmware builds pass `-fno-exceptions -fno-rtti`. Split out of R-ERR-03 on 2026-08-31: the source clause is a grep and the flags clause is a property of a build that does not exist yet, so one binding could not honestly cover both. — planned: 03-pio-bus
 - **R-ERR-04** — No call to `.value()` on a `std::expected` anywhere under `src/`. Under `-fno-exceptions` it does not throw, it calls `abort` — the one outcome §Error handling rules out. Access goes through `has_value()` and `operator*`. — test: `tests/test_repo_shape.sh`
@@ -133,7 +134,7 @@ above are **mapped**, not duplicated; guidelines that do not apply to this proje
 - **R-CLEAN-01** — Names reveal intent and use domain language: what the thing is on the bus, not what it is in the abstract. Abbreviations only where universally known (`id`, `url`, `api`, `usb`, `pio`, `gpio`, `hid`, `ack`). A name that needs a comment to explain it is renamed instead. — manual: intent is a judgement about meaning; no checker can tell a good name from a bad one.
 - **R-CLEAN-02** — A function is at most 60 lines, takes at most 3 parameters, and nests at most 4 deep. Past three parameters the arguments become a struct. — test: `tests/test_style.sh`
 - **R-CLEAN-03** — Boolean names are assertions: `is_`, `has_`, `can_`, `should_`. Never `flag`, `status`, `check`. — test: `tests/test_repo_shape.sh`
-- **R-CLEAN-04** — No magic numbers or strings in logic. Every protocol byte, timeout and threshold is a named `constexpr` in one place per concern. The literals under `tests/vectors/` are the sole exception, and being literal is their purpose (R-PROTO-05). — planned: 01-ps2-codec
+- **R-CLEAN-04** — No magic numbers or strings in logic. Every protocol byte, timeout and threshold is a named `constexpr` in one place per concern. The literals under `tests/vectors/` are the sole exception, and being literal is their purpose (R-PROTO-05). Enforced by `readability-magic-numbers`, which does not see a literal inside a `const` or `constexpr` initializer — the gap is measured and recorded in §Observed conventions, 2026-09-11, rather than left for a reader to assume away. **Scope, recorded 2026-09-15 because the check reads less than this text says:** the rule is written for the whole repository, and the check runs `clang-tidy` over `tidy_sources()` only — `src/core/*.cpp`, `src/core/*.h` and `tests/*.cpp` (`tests/test_style.sh:68`). Anything outside those three patterns is unchecked, including every future layer under `src/`. **They are git pathspecs, not shell globs** (recorded 2026-09-17): `git ls-files` lets `*` cross `/`, so each is read recursively — `tests/*.cpp` would pick up `tests/fixtures/x.cpp`. The set is therefore slightly wider than it reads, never narrower; measured with `git ls-files 'docs/*.md'`, which returns 38 files in subdirectories. There is no second narrowing from `.clang-tidy`: `HeaderFilterRegex` is `(src|tests)/.*`, so a header under `tests/` reached as an include is diagnosed. `01-ps2-codec` briefly narrowed it to `src/.*` and reverted that on 2026-09-17 — measured, the narrowing did not protect the vectors (their literals are `constexpr` initializers this check never sees, above) and it silenced two other phases' bindings and made lint's reach depend on the checkout path, the regex being unanchored and matched against the absolute path. **What this rule's `tests/vectors/` exception rests on is therefore the `constexpr` blindness measured above, not the header filter** — a non-`constexpr` magic number written into a vector would be diagnosed, and that is the correct outcome rather than a hole. — test: `tests/test_style.sh`
 - **R-CLEAN-05** — Every `TODO` names the phase or issue that will close it: `// TODO(09-guitar-observe): confirm against the real controller`. A bare `TODO` is not allowed. — test: `tests/test_repo_shape.sh`
 - **R-CLEAN-06** — Comments explain *why*, never *what*; a comment that no longer matches the code is deleted or corrected, never left standing. — manual: whether a comment is still true is exactly the judgement a checker cannot make.
 - **R-CLEAN-07** — Command-Query Separation: a function returns a value or changes state, never both. — manual: distinguishing a query from a command requires knowing intent, not signature.
@@ -193,18 +194,56 @@ each entry gets one when it does.
 - Names say what the thing is on the bus, not what it is in the abstract:
   `Ps2Frame`, `ControllerId`, `AckTimeout`, `WhammyAxis`.
 - Files, directories and identifiers are English, always, including comments.
-- **clang-tidy resolves no standard header without a compile database (measured
-  2026-09-02).** `clang-tidy --quiet <file> -- -std=c++23 -Isrc` fails on a file as small
-  as `#include <cstdint>` + `using Byte = std::uint8_t;`, with `clang-diagnostic-error`,
-  not a naming complaint — so the failure does not look like the rule it comes from.
-  `-isysroot $(xcrun --show-sdk-path)` alone does not fix it; adding
-  `-I/opt/homebrew/opt/llvm/include/c++/v1` does. That third flag is Homebrew-on-Apple-
-  Silicon specific. That is a documented assumption rather than a portability violation:
-  ADR-0010 fixes development to macOS with Homebrew LLVM and settles the choice as the three
-  flags, so the first phase writing `src/core/` inherits an answer instead of a question.
+- **clang-tidy needs exactly two extra flags, and the reason is two separate failures
+  (measured 2026-09-11, Homebrew LLVM 23.1.0, reference file `tests/test_style.sh`).** The
+  working invocation is `clang-tidy --quiet <file> -- [-xc++ if <file> is a .h] -std=c++23
+  -Isrc -isysroot "$(xcrun --show-sdk-path)"`. Both failures it fixes arrive as
+  `clang-diagnostic-error`, which `WarningsAsErrors: '*'` turns into a `FAIL: R-STYLE-02`
+  line — so a broken invocation is indistinguishable from a naming violation until someone
+  reads the diagnostic text. That is the expensive part, and it is why this entry exists.
+  - `-xc++`, headers only: a `.h` with no compile database is compiled as **C**. The first
+    diagnostic is `invalid argument '-std=c++23' not allowed with 'C'`, and `'cstdint' file
+    not found` is its *consequence*, not a missing include path.
+  - `-isysroot`, every file: without it Homebrew's libc++ finds no platform C library and
+    dies inside its own headers on `"We don't know how to get the definition of mbstate_t on
+    your platform"`. Measured per header — `<array>`, `<optional>`, `<string_view>`,
+    `<algorithm>`, `<functional>` and `<variant>` fail; `<cstdint>`, `<cstddef>`, `<span>`,
+    `<bit>`, `<limits>`, `<type_traits>`, `<concepts>`, `<utility>`, `<tuple>` and
+    `<expected>` do not, because they never reach that platform layer.
+  **This supersedes two earlier readings, and naming what each got wrong is the point.** The
+  2026-09-02 entry this replaces prescribed three flags — `-isysroot` plus
+  `-I/opt/homebrew/opt/llvm/include/c++/v1` — and attributed the `'cstdint' file not found`
+  error to a missing libc++ include path. The include path is **not** needed; the error came
+  from the file being compiled as C, which that measurement never tested for because it never
+  passed `-xc++`. `01-ps2-codec`'s own spec then measured the opposite error and concluded
+  **no** sysroot flag was needed; that probe included only `<cstdint>` and `<expected>`, the
+  two headers above that happen not to need one, so the conclusion did not survive the first
+  `<optional>`. ADR-0010's decision (macOS-only, Homebrew LLVM, explicit flags rather than a
+  generated compile database) is untouched — only its count of the flags, which is a
+  measurement and so lives here rather than in an ADR.
+  A consequence worth stating: Apple's `c++`, which `make test` uses, compiles all of these
+  with no flags at all. So `make test` cannot catch a broken clang-tidy invocation, and
+  `make lint` is the only thing that can.
 - Magic bytes from the PS2 protocol are named `constexpr` values in one place per
   concern, never inline literals in logic — except inside `tests/vectors/`, where being
   a literal is the point (R-PROTO-05).
+- **`readability-magic-numbers` ignores every literal inside a `const` or `constexpr`
+  variable's initializer (measured 2026-09-11, reference file `tests/test_style.sh`).** This
+  is what R-CLEAN-04's binding does and does not reach, and it matters here more than it would
+  in most codebases, because `const bool is_ok = <expression>;` is this repo's dominant idiom
+  in both `src/core/` and the test cases — so a magic number written inside one is not
+  diagnosed. Measured by feeding the check one literal per context: flagged in arithmetic
+  (`n * 4096`), comparisons (`n > k`, `n == k`), subscripts, call arguments, `return`
+  statements, shifts, and non-`const` local initializers; **not** flagged in a `const` local's
+  initializer or a `constexpr` initializer. The last of those is correct and is the rule's
+  own escape hatch — a named `constexpr` is exactly what R-CLEAN-04 asks for. The `const
+  bool` case is the gap. It was found by mutating `kNegotiationTimeoutUs` to `100000` inside
+  `const bool is_stuck = …` in `src/core/link.cpp` and watching `make lint` stay green; the
+  mutation that does fail is a literal in `src/core/hid_report.cpp`'s compound assignment.
+  Upgrade path: none cheap. `cppcoreguidelines-avoid-magic-numbers` is an alias of the same
+  check and behaves identically. Closing it means either a second checker or writing fewer
+  `const` initializers, and neither is worth it for a gap this shape — so it is declared here
+  rather than papered over.
 - Tables meant to be read as tables — the pin table above all — are plain C arrays,
   not `std::array`. `AlignArrayOfStructures` aligns the columns of a plain array and
   gives up on `std::array`'s doubled braces, and for `src/core/pins.h` a scannable
