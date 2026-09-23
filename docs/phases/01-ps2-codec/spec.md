@@ -389,15 +389,15 @@ number moves, never as a band outside which something is wrong.
 | `docs/adr/0011-*.md`, `docs/adr/0012-*.md` | the `step` signature and the `DecodeStatus` membership decisions |
 | `docs/adr/0007-error-model.md` | **status line only**: it names the three later ADRs that supersede parts of it. An ADR's body is immutable; its status is the mutable part |
 | `docs/phases/01-ps2-codec/verify.md` | the operator procedure (R-PROC-02) |
-| `CLAUDE.md` | **not written by this phase.** The operator amended it mid-phase, adding the three pre-validation checks to §Conventions. It appears in the diff only because the base ref `24d489f` precedes that edit |
+| `CLAUDE.md` | **not written by this phase.** The operator amended it mid-phase; it appears in the diff only because the base ref `24d489f` precedes that edit. The bullet added then — three pre-validation checks compensating for belay gaps — was removed after this phase closed, on the condition it stated for itself |
 
 ## Context pointers
 
 Regenerated against the tree on 2026-09-17, which is what this section is for: it lists files to
 open, so it must match the tree even though the Goal and the Plan must not be derived from it.
 
-- `CLAUDE.md` — the architecture paragraph, the hardware-safety rules, the three pre-validation
-  checks in §Conventions, and the reading rule that scopes this list.
+- `CLAUDE.md` — the architecture paragraph, the hardware-safety rules, and the reading rule that
+  scopes this list.
 - `docs/phases/01-ps2-codec/notes.md` — the account of every implementation round and every
   validation, appended to and never rewritten. §Deviations is where every decision this spec states
   was argued; §Debt and §For later phases are what this phase hands on, the taste items from the
@@ -542,43 +542,6 @@ needs `.git` because `test_checks_are_live.py` runs every `test_*` file on the t
 reads the file, replaces the anchor, **asserts the replacement changed the text**, writes it back
 and runs the command — a block whose anchor has moved otherwise mutates nothing and reports the
 exit 0 it was handed.
-
-## Notes to `/validate-phase` — three package workarounds, all temporary
-
-None is a fact about this phase. All three are defects in the Belay commands this repo runs, and
-they do not share an upstream state: **1 and 2 are fixed upstream in 792e9d9**, this repo is pinned
-at **f001884** and takes the update when the phase closes; **3 is filed and not fixed** — the
-`- base:` staleness entry dated 2026-09-15 in `~/.claude-belay/feedback/pico-sg2hid.md`. Delete each
-when its fix lands.
-
-**1. Tell step 5's reviewer which paths were held out of its diff.** When dispatching the
-independent review, name in the prompt every path excluded from the diff it receives — `notes.md`
-always, plus anything the `.claude/workflow/installed` subtraction removed — and say that their
-absence is not a finding. Without it the reviewer reads in this spec that the phase writes
-`notes.md`, fails to find it in the diff, and returns a `contradicts` that no change to the code can
-clear. This paragraph is also addressed to the reviewer itself, which receives this file:
-**`notes.md` is written and is deliberately withheld from you.**
-
-**2. A boundary sweep of zero files looks exactly like a clean one.** At this version
-`scripts/check.sh --files` skips any argument that is not an existing file — silently, with
-`continue` — and still prints `check: all gates passed`. Under zsh an unquoted expansion is not
-word-split, so `check.sh --files $FILES` arrives as a single concatenated argument, which is a path
-that does not exist, and the sweep covers nothing. Two defences, both needed:
-
-- Pass the paths one per argument — `xargs scripts/check.sh --files < <file-set>` — and check the
-  input count (`wc -l`) against the file set. The count cannot be read off the output: `--files`
-  prints **nothing** per file and only the closing line.
-- Prove the sweep live before recording it: add a violation an active rule must catch —
-  `#include "src/hal/bus_io.h"` in any `src/core/` file is `deny core -> hal` — confirm the gate
-  exits non-zero and names the rule, and restore the file. An SDK include is **not** the probe to
-  use: `boundaries.rules` says in its own header that R-ARCH-01 is not expressible as a layer rule.
-
-**3. Check that the file set is not empty before trusting any gate.** Before running step 1, confirm
-that `notes.md` §Outcome's `- base:` line names a real ref rather than the literal `working tree`,
-and that the resulting file set has the number of files this phase actually touched.
-`/validate-phase` derives its file set from the working tree unless that line overrides it, so the
-moment a phase's work is committed the default yields **nothing** — and a sweep of nothing, a review
-of nothing and a closure test over nothing all report `pass`.
 
 ## Out of scope
 
