@@ -27,8 +27,8 @@ Properties 2 and 3 catch a gutted shared helper for free: break report()'s failu
 and EVERY generated mutant survives, so this file fails on all of them at once.
 
 belay-debt: the .py check under tests/ is covered by property 1 only — its internals are not
-mutated, and its nine failure modes rest on nine hand-written rejection cases, which is the
-weaker form. Upgrade when a rule arrives whose check is not a grep; owner 01-ps2-codec.
+mutated, and its thirteen failure modes rest on thirteen hand-written rejection cases, which
+is the weaker form. Upgrade when a rule arrives whose check is not a grep; owner 01-ps2-codec.
 """
 
 import concurrent.futures
