@@ -19,7 +19,8 @@
 #                     which must run with only a C++23 compiler and python3, R-PROC-04)
 #   unset             missing tools are a failure              (used by `make lint`)
 #
-# clang-tidy scope is every .cpp and .h under src/ (any layer, any depth) plus tests/*.cpp.
+# clang-tidy scope is every .cpp, .h, .hpp, .cc and .inl under src/ (any layer, any depth)
+# plus tests/*.cpp. clang-format's scope is the same five extensions anywhere in the repo.
 # A file under src/hal, src/usb, src/app or src/emu that includes a Pico SDK or TinyUSB
 # header fails lint with clang-diagnostic-error until 03-pio-bus supplies its include flags;
 # that failure is loud, which is the point — skipping those layers was a silent hole. See the
@@ -29,8 +30,9 @@
 # and both recorded in docs/constraints.md §Observed conventions:
 #
 #   -xc++     A .h with no compile database is compiled as C: `invalid argument '-std=c++23'
-#             not allowed with 'C'`, then `'cstdint' file not found`. Headers only — a .cpp
-#             is already C++.
+#             not allowed with 'C'`, then `'cstdint' file not found`. A .inl with no -x
+#             fails with `unable to handle compilation, expected exactly one compiler job`
+#             (measured 2026-09-23). .h and .inl only — .cpp, .hpp and .cc are already C++.
 #   -isysroot Homebrew's libc++ finds no platform C library without it, so any header that
 #             reaches its platform layer dies on "We don't know how to get the definition of
 #             mbstate_t on your platform" — <array>, <optional>, <string_view>, <algorithm>,
@@ -66,16 +68,16 @@ find_tidy() {
 # --cached --others --exclude-standard: tracked AND new-but-not-ignored files. Plain
 # `git ls-files` would let a brand-new .cpp slip past the gate until someone `git add`ed it.
 LS="git ls-files --cached --others --exclude-standard"
-sources() { $LS '*.cpp' '*.h' 2>/dev/null; }
-tidy_sources() { $LS 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 2>/dev/null; }
+sources() { $LS '*.cpp' '*.h' '*.hpp' '*.cc' '*.inl' 2>/dev/null; }
+tidy_sources() { $LS 'src/*.cpp' 'src/*.h' 'src/*.hpp' 'src/*.cc' 'src/*.inl' 'tests/*.cpp' 2>/dev/null; }
 
-# tidy_lang <file> — the -x flag this file needs, empty for a .cpp. A function and not an
+# tidy_lang <file> — the -x flag this file needs, empty for a .cpp, .hpp or .cc. A function and not an
 # inline `case`, because bash 3.2 — which is /bin/sh on macOS, and macOS is the only
 # development platform (ADR-0010) — reads the `)` closing a case pattern inside $( ) as the
 # end of the substitution and dies with `syntax error near unexpected token ';;'`.
 tidy_lang() {
   case "$1" in
-    *.h) echo "-xc++" ;;
+    *.h|*.inl) echo "-xc++" ;;
     *)   echo "" ;;
   esac
 }
@@ -100,7 +102,7 @@ else
   if [ -z "$files" ]; then
     echo "  ok:   R-STYLE-01 (no C++ sources yet)"
   elif echo "$files" | xargs clang-format --style=file --dry-run --Werror 2>&1 | grep -q .; then
-    echo "  FAIL: R-STYLE-01: formatting differs. Fix: clang-format -i \$(git ls-files '*.cpp' '*.h')"
+    echo "  FAIL: R-STYLE-01: formatting differs. Fix: clang-format -i \$(git ls-files '*.cpp' '*.h' '*.hpp' '*.cc' '*.inl')"
     echo "$files" | xargs clang-format --style=file --dry-run --Werror 2>&1 | sed 's/^/        /'
     fail=1
   else
@@ -118,7 +120,7 @@ else
   else
     # One invocation per file, never xargs: xargs appends the file list AFTER the
     # `--`, where clang-tidy reads it as compiler flags and silently checks nothing.
-    # -xc++ on headers only, per the note at the top of this file, and not as a single
+    # -xc++ on .h and .inl only, per the note at the top of this file, and not as a single
     # unconditional flag: -xc++ on a .cpp is accepted but then the language comes from this
     # line rather than from the file, which is the kind of flag that outlives a rename.
     SYSROOT=$( tidy_sysroot_flag )

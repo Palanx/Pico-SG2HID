@@ -39,17 +39,19 @@ fail=0
 
 # One alternation, not -name clauses, so tests/test_checks_are_live.py mutates each extension.
 src_files( )  { find "$1/src" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl)$'; }
-core_files( ) { find "$1/src/core" -type f \( -name '*.cpp' -o -name '*.h' \) 2>/dev/null; }
+core_files( ) { find "$1/src/core" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl)$'; }
 # R-ERR-02 scans HEADERS only, and that is a property of the rule rather than a shortcut: a
 # [[nodiscard]] belongs on the declaration, where it governs every call, and C++ does not
 # repeat it on the definition. Scanning .cpp too would report every correct out-of-line
-# definition — `LinkState step( … ) {` in src/core/link.cpp is exactly that shape.
+# definition — `LinkState step( … ) {` in src/core/link.cpp is exactly that shape. `.cc` and
+# `.inl` are left out for the same reason: both hold out-of-line definitions, so a declaration
+# placed in a `.inl` is outside this check.
 #
 # belay-debt: a function with no declaration at all — one defined only inside an anonymous
 # namespace in a .cpp — is therefore outside this check. Those are internal to one translation
 # unit and cannot be called by a caller who could ignore the result, but the gap is real. The
 # clang-query upgrade in 03-pio-bus is what closes it.
-core_headers( ) { find "$1/src/core" -type f -name '*.h' 2>/dev/null; }
+core_headers( ) { find "$1/src/core" -type f 2>/dev/null | grep -E '\.(h|hpp)$'; }
 
 # strip_line_comments <file> — each line cut at the first `//` that sits outside a "…" string
 # (honouring \" escapes) and outside a '…' character literal; every other character is kept,
@@ -217,6 +219,13 @@ reject find_err03   src/core/x.h   'throw Status::kBad;'
 reject find_err03   src/core/x.hpp 'throw Status::kBad;'
 reject find_err03   src/core/x.cc  'throw Status::kBad;'
 reject find_err03   src/core/x.inl 'throw Status::kBad;'
+# Same for core_files( ) and core_headers( ). `.cpp` included: every other core_files( )-backed
+# case plants a `.h`.
+reject find_clean09 src/core/x.cpp 'virtual void poll( );'
+reject find_clean09 src/core/x.hpp 'virtual void poll( );'
+reject find_clean09 src/core/x.cc  'virtual void poll( );'
+reject find_clean09 src/core/x.inl 'virtual void poll( );'
+reject find_err02   src/core/x.hpp 'LinkState step( Link& link );'
 # A `//` inside a string literal is not a comment: the throw after it must still be seen.
 reject find_err03   src/core/x.cpp 'const char* u = "http://x"; throw E;'
 reject find_err04   src/core/x.cpp 'auto v = result.value( );'
