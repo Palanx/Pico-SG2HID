@@ -5,8 +5,8 @@
 #                  verify.md written for a non-specialist
 #
 # The phase table is the parameter, not a constant, so the cases can hand this a table with
-# a closed phase and no verify.md. Today no phase is done, so the real run passes without
-# examining anything — which is exactly the state where a broken check is invisible.
+# a closed phase and no verify.md. The real run examines every `done` phase; the rejection
+# cases are what prove the check would fire, since a real tree that passes proves nothing.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )
