@@ -22,14 +22,19 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 fail=0
 
-# ver_num <text> — the first version in a banner as a comparable integer, major*100+minor.
+# ver_num <text> — a banner's version as a comparable integer, major*100+minor: the first
+# N or N.N after the first word "version" when the text has that word, else the first N or
+# N.N in the text. The first number alone read "x86_64-apple clang-format version 14.0.6"
+# as 86 and "clang-format 99 version 14.0.6" as 99, both clearing a floor of 23.
 # Handles all four shapes, and a floor written the same way ("23" -> 2300, "3.8" -> 308):
 #   "Homebrew clang-format version 23.1.0"   "Homebrew LLVM version 23.1.0"
 #   "Python 3.14.6"                          "15.3.1" (gcc -dumpversion, may be bare "15")
 # Major alone is not enough: R-TOOL-01's python3 floor is 3.8, and every Python this
 # project will ever meet is major 3.
 ver_num( ) {
-    vn_v=$( printf '%s' "$1" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 )
+    vn_t="$1"
+    case "$vn_t" in *version*) vn_t="${vn_t#*version}" ;; esac
+    vn_v=$( printf '%s' "$vn_t" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 )
     [ -n "$vn_v" ] || return 1
     vn_maj=$( printf '%s' "$vn_v" | cut -d. -f1 )
     vn_min=$( printf '%s' "$vn_v" | cut -s -d. -f2 )
@@ -193,13 +198,37 @@ else
     rejected=$(( rejected + 1 ))
 fi
 
-# A floor, not an equality (§How counts are stated): the four names are clang-format below
-# its floor, a cross-compiler with no target libc, an unparsable banner, and a python3 below
-# a floor that needs its minor number.
-if [ "$rejected" -ge 4 ]; then
-    echo "  ok:   rejection cases: $rejected/4"
+# A banner whose first number is not the version. Both were read as that first number
+# (86, 99) and cleared the floor before ver_num( ) looked after the word "version". Their
+# own stub name: the wiring case below needs the clang-format stub above to stay at 14.
+for vb in "x86_64-apple clang-format version 14.0.6" "clang-format 99 version 14.0.6"; do
+    printf '#!/bin/sh\necho "%s"\n' "$vb" > "$stub_dir/banner-format"
+    chmod +x "$stub_dir/banner-format"
+    if PATH="$stub_dir:$PATH" check_version banner-format 23 --version >/dev/null 2>&1; then
+        echo "  FAIL: R-TOOL-01 rejection case did not fire — '$vb' passed a floor of 23"
+        fail=1
+    else
+        rejected=$(( rejected + 1 ))
+    fi
+done
+
+# The same shape at a passing version must still pass, or the two cases above could be
+# satisfied by a ver_num( ) that rejects every banner with a leading number.
+printf '#!/bin/sh\necho "x86_64-apple clang-format version 23.1.0"\n' > "$stub_dir/banner-format"
+if PATH="$stub_dir:$PATH" check_version banner-format 23 --version >/dev/null 2>&1; then
+    echo "  ok:   R-TOOL-01 accept case (a leading number before \"version\" is not the version)"
 else
-    echo "  FAIL: rejection cases: $rejected/4"
+    echo "  FAIL: R-TOOL-01 accept case — 'x86_64-apple clang-format version 23.1.0' failed a floor of 23"
+    fail=1
+fi
+
+# A floor, not an equality (§How counts are stated): the six names are clang-format below
+# its floor, a cross-compiler with no target libc, an unparsable banner, a python3 below a
+# floor that needs its minor number, and two banners whose first number is not the version.
+if [ "$rejected" -ge 6 ]; then
+    echo "  ok:   rejection cases: $rejected/6"
+else
+    echo "  FAIL: rejection cases: $rejected/6"
     fail=1
 fi
 

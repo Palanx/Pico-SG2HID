@@ -27,9 +27,13 @@ import tempfile
 RULE_LINE = re.compile(
     r"^- \*\*(R-[A-Z]+-\d{2})\*\* — (.+?) — (test|manual|planned): (.+)$", re.M
 )
-ANY_RULE_LINE = re.compile(r"^- \*\*R-.*$", re.M)
+# Wider than RULE_LINE on purpose: a `*` bullet or an indented rule is outside ADR-0005's
+# grammar, and reading it here is what gets it reported as unparsable instead of skipped.
+# `[ \t]*`, never `\s*`, which would cross lines.
+ANY_RULE_LINE = re.compile(r"^[ \t]*[-*] \*\*R-.*$", re.M)
 RULE_ID = re.compile(r"R-[A-Z]+-\d{2}")
-MARKER = re.compile(r"RULE (R-[A-Z]+-\d{2})")
+# The whole digit run, so `R-X-011` is its own id and never counts as `R-X-01`.
+MARKER = re.compile(r"RULE (R-[A-Z]+-\d+)")
 PHASE_ROW = re.compile(r"^\| ([0-9]{2}-[a-z0-9-]+) \|(.*)\|\s*$", re.M)
 
 # The rejection fixtures below need marker-shaped text. Writing it literally would plant
@@ -109,7 +113,9 @@ def check(root, constraints, phases, claude):
             target = os.path.join(root, value)
             if not os.path.exists(target):
                 problems.append(f"{rule_id}: bound to '{value}', which does not exist")
-            elif f"RULE {rule_id}" not in read(target):
+            elif not os.path.isfile(target):
+                problems.append(f"{rule_id}: bound to '{value}', which is not a file")
+            elif not re.search(rf"RULE {re.escape(rule_id)}(?!\d)", read(target)):
                 problems.append(
                     f"{rule_id}: '{value}' carries no 'RULE {rule_id}' marker — "
                     "the test cannot be traced back to the rule"
@@ -235,6 +241,30 @@ CASES = [
         {},
         "R-Y-02: mentioned in",
     ),
+    (
+        "test: file whose only marker names a longer id",
+        "- **R-X-01** — text — test: `tests/t.sh`\n",
+        {"tests/t.sh": f"# {_M} R-X-011\n"},
+        f"carries no '{_M} R-X-01' marker",
+    ),
+    (
+        "rule line with a * bullet",
+        "* **R-X-01** — text — test: `tests/missing.sh`\n",
+        {},
+        "unparsable rule line",
+    ),
+    (
+        "rule line indented under another bullet",
+        "- intro\n  - **R-X-01** — text — test: `tests/missing.sh`\n",
+        {},
+        "unparsable rule line",
+    ),
+    (
+        "test: path that is a directory",
+        "- **R-X-01** — text — test: `tests/sub`\n",
+        {"tests/sub/x.sh": f"# {_M} R-X-01\n"},
+        "is not a file",
+    ),
 ]
 
 
@@ -261,7 +291,7 @@ def run_all(root, constraints, phases, claude):
     """The aggregate: check, then the verdict, then the flag. Returns True when it failed.
 
     One function for the real repository and for the wiring case below, so that case can
-    prove what the nine rejection cases cannot: that a reported problem reaches the exit
+    prove what the rejection cases cannot: that a reported problem reaches the exit
     code. Before it existed, replacing this function's `return True` with `return False`
     left `make test` at exit 0 while R-PROC-01 still printed its FAIL line.
     """
@@ -303,14 +333,14 @@ def main():
     )
 
     passed = run_rejection_cases()
-    # Two conditions, not one. "every case passed" is the gate; "there are at least the nine
-    # enumerated in the spec" is the floor (§How counts are stated) — an equality against
-    # len(CASES) is a count that breaks when a tenth case is added, which is a floor written
+    # Two conditions, not one. "every case passed" is the gate; "there are at least the
+    # thirteen enumerated in the specs" is the floor (§How counts are stated) — an equality against
+    # len(CASES) is a count that breaks when another case is added, which is a floor written
     # backwards.
-    if passed == len(CASES) and len(CASES) >= 9:
+    if passed == len(CASES) and len(CASES) >= 13:
         print(f"  ok:   R-PROC-01 rejection cases: {passed}/{len(CASES)}")
     else:
-        print(f"  FAIL: R-PROC-01 rejection cases: {passed}/{len(CASES)} (floor 9)")
+        print(f"  FAIL: R-PROC-01 rejection cases: {passed}/{len(CASES)} (floor 13)")
         failed = True
 
     if wiring_case():

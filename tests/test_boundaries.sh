@@ -30,20 +30,27 @@ rejected=0
 # bad interpreter, a bug). Reporting the second as "forbidden dependency direction" would
 # send the reader hunting for an import that does not exist.
 #   0 — every file clean          1 — at least one real violation          2 — hook error
+# One path per line, read with no word splitting and no globbing: `for f in $( find … )`
+# split `src/core/a b.cpp` into two paths that do not exist, and the hook passed both. The
+# loop runs in a pipeline subshell, so the verdict leaves it as that subshell's exit status.
+# The hook's stdin is /dev/null so it can never eat the path list. A name containing a
+# newline is still split — R-ARCH-02's clause records it.
 sweep( ) {
     sweep_root="$1"
-    sweep_bad=0
     [ -d "$sweep_root/src" ] || return 0
-    for f in $( find "$sweep_root/src" -type f 2>/dev/null ); do
-        CLAUDE_PROJECT_DIR="$sweep_root" "$HOOK" "$f" 2>&1
-        sweep_rc=$?
-        case "$sweep_rc" in
-            0 ) ;;
-            2 ) [ "$sweep_bad" -eq 2 ] || sweep_bad=1 ;;
-            * ) echo "boundary hook exited $sweep_rc on $f"; sweep_bad=2 ;;
-        esac
-    done
-    return $sweep_bad
+    find "$sweep_root/src" -type f 2>/dev/null | {
+        sweep_bad=0
+        while IFS= read -r f; do
+            CLAUDE_PROJECT_DIR="$sweep_root" "$HOOK" "$f" </dev/null 2>&1
+            sweep_rc=$?
+            case "$sweep_rc" in
+                0 ) ;;
+                2 ) [ "$sweep_bad" -eq 2 ] || sweep_bad=1 ;;
+                * ) echo "boundary hook exited $sweep_rc on $f"; sweep_bad=2 ;;
+            esac
+        done
+        exit "$sweep_bad"
+    }
 }
 
 if [ ! -x "$HOOK" ]; then
@@ -121,6 +128,23 @@ else
 fi
 rm -rf "$tmp"
 
+# A path with a space must reach the hook whole. Before sweep( ) read one path per line,
+# this tree returned 0: the name was split in two and the hook passed both halves.
+tmp=$( mktemp -d ) || exit 1
+mkdir -p "$tmp/.claude/workflow" "$tmp/src/core"
+cp "$ROOT/.claude/workflow/boundaries.rules" "$tmp/.claude/workflow/boundaries.rules"
+printf '#include "hal/bus.h"\n' > "$tmp/src/core/a b.cpp"
+sweep "$tmp" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then
+    echo "  ok:   R-ARCH-02 rejection case (a file whose name has a space is swept)"
+    rejected=$(( rejected + 1 ))
+else
+    echo "  FAIL: R-ARCH-02 rejection case did not fire — core including hal in 'a b.cpp' returned $rc, expected 1"
+    fail=1
+fi
+rm -rf "$tmp"
+
 # --- wiring case -------------------------------------------------------------------------
 # The rejection cases above assert sweep's verdict. This asserts that the verdict reaches
 # run_all's RETURN CODE and names the rule, which is a different claim: without it, deleting
@@ -142,10 +166,10 @@ rm -rf "$tmp"
 
 # A floor, not an equality: an equality breaks when a third case is added, which is a floor
 # written backwards (§How counts are stated). Prefixed so the liveness harness can see it.
-if [ "$rejected" -ge 2 ]; then
-    echo "  ok:   rejection cases: $rejected/2"
+if [ "$rejected" -ge 3 ]; then
+    echo "  ok:   rejection cases: $rejected/3"
 else
-    echo "  FAIL: rejection cases: $rejected/2"
+    echo "  FAIL: rejection cases: $rejected/3"
     fail=1
 fi
 
