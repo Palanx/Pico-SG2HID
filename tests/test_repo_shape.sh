@@ -76,28 +76,30 @@ strip_line_comments( ) {
     }' "$1"
 }
 
-# hits <pattern> <exclude-pattern-or-empty> <file...>  — prints "path:line: text" per match
+# hits <pattern> <exclude-pattern-or-empty> <file-list>  — prints "path:line: text" per match.
+# <file-list> is ONE argument, one path per line, read line by line: every finder passes its
+# list quoted ("$( src_files "$1" )"), so a path with a space reaches [ -f ] whole. Passed
+# unquoted, `src/core/a b.cpp` split into two paths that do not exist and the file was never
+# read. A newline in a file name still splits (POSIX sh has no NUL read; see R-ARCH-02).
 hits( ) {
-    hits_pat="$1"; hits_not="$2"; shift 2
-    for hits_f in "$@"; do
+    printf '%s\n' "$3" | while IFS= read -r hits_f; do
         [ -f "$hits_f" ] || continue
-        hits_out=$( strip_line_comments "$hits_f" | grep -nE "$hits_pat" 2>/dev/null )
-        if [ -n "$hits_not" ] && [ -n "$hits_out" ]; then
-            hits_out=$( printf '%s\n' "$hits_out" | grep -vE "$hits_not" 2>/dev/null )
+        hits_out=$( strip_line_comments "$hits_f" | grep -nE "$1" 2>/dev/null )
+        if [ -n "$2" ] && [ -n "$hits_out" ]; then
+            hits_out=$( printf '%s\n' "$hits_out" | grep -vE "$2" 2>/dev/null )
         fi
         [ -n "$hits_out" ] && printf '%s\n' "$hits_out" | sed "s|^|${hits_f}:|"
     done
     return 0
 }
 
-# raw_hits <pattern> <file...> — same, but WITHOUT stripping comments. R-CLEAN-05 is a rule
+# raw_hits <pattern> <file-list> — same, but WITHOUT stripping comments. R-CLEAN-05 is a rule
 # about comments, so the comment-stripping in hits() would delete the very text it looks
 # for. Found by its own rejection case, which is why every check has one.
 raw_hits( ) {
-    raw_pat="$1"; shift
-    for raw_f in "$@"; do
+    printf '%s\n' "$2" | while IFS= read -r raw_f; do
         [ -f "$raw_f" ] || continue
-        raw_out=$( grep -nE "$raw_pat" "$raw_f" 2>/dev/null )
+        raw_out=$( grep -nE "$1" "$raw_f" 2>/dev/null )
         [ -n "$raw_out" ] && printf '%s\n' "$raw_out" | sed "s|^|${raw_f}:|"
     done
     return 0
@@ -126,33 +128,33 @@ report( ) {
 # R-ARCH-01 has two clauses and needs both: no hardware header, and no hosted-only standard
 # header. The second list is anchored on the closing '>' so <string_view> is not read as
 # <string>; freestanding headers (<cstdint>, <array>, <span>, <expected>) are untouched.
-find_arch01( ) { hits '^[[:space:]]*(#include[[:space:]]*[<"](pico/|hardware/|tusb|device/|class/|cmsis|core_cm)|#include[[:space:]]*<(iostream|fstream|sstream|iomanip|thread|mutex|condition_variable|future|filesystem|regex|locale|memory|new|stdexcept|exception|vector|string|map|set|unordered_map|unordered_set|deque|list|random)>)' '' $( core_files "$1" ); }
+find_arch01( ) { hits '^[[:space:]]*(#include[[:space:]]*[<"](pico/|hardware/|tusb|device/|class/|cmsis|core_cm)|#include[[:space:]]*<(iostream|fstream|sstream|iomanip|thread|mutex|condition_variable|future|filesystem|regex|locale|memory|new|stdexcept|exception|vector|string|map|set|unordered_map|unordered_set|deque|list|random)>)' '' "$( core_files "$1" )"; }
 # std::string is anchored so that std::string_view — which owns nothing and allocates
 # nothing — stays legal; the same header is accepted by R-ARCH-01 one line above, and the
 # two halves must not disagree. No exclusion pattern: `= delete;` never matches the base
 # alternation, which requires `delete` followed by whitespace and an identifier.
-find_arch03( ) { hits '(\bnew[[:space:]]+[A-Za-z_]|\bmalloc[[:space:]]*\(|\bfree[[:space:]]*\(|std::vector|std::string([^_[:alnum:]]|$)|std::function|\bdelete[[:space:]]+[A-Za-z_])' '' $( src_files "$1" ); }
-find_err03( )  { hits '(\bthrow\b|\btry[[:space:]]*\{|\bcatch[[:space:]]*\()' '' $( src_files "$1" ); }
-find_err04( )  { hits '\.value[[:space:]]*\(' '' $( src_files "$1" ); }
-find_clean03( ){ hits '\bbool[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[;=]' 'bool[[:space:]]+(m_)?(is|has|can|should)_' $( src_files "$1" ); }
-find_clean05( ){ raw_hits 'TODO([^(]|$)' $( src_files "$1" ); }
+find_arch03( ) { hits '(\bnew[[:space:]]+[A-Za-z_]|\bmalloc[[:space:]]*\(|\bfree[[:space:]]*\(|std::vector|std::string([^_[:alnum:]]|$)|std::function|\bdelete[[:space:]]+[A-Za-z_])' '' "$( src_files "$1" )"; }
+find_err03( )  { hits '(\bthrow\b|\btry[[:space:]]*\{|\bcatch[[:space:]]*\()' '' "$( src_files "$1" )"; }
+find_err04( )  { hits '\.value[[:space:]]*\(' '' "$( src_files "$1" )"; }
+find_clean03( ){ hits '\bbool[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[;=]' 'bool[[:space:]]+(m_)?(is|has|can|should)_' "$( src_files "$1" )"; }
+find_clean05( ){ raw_hits 'TODO([^(]|$)' "$( src_files "$1" )"; }
 # The default-specifier forms (`struct A : B`) are inheritance too — the rule says "at all".
 # `enum class Mode : uint8_t` is a fixed underlying type, not a base, so it is excluded.
-find_clean09( ){ hits '(:[[:space:]]*(public|private|protected)[[:space:]]|(struct|class)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:|\bvirtual\b)' 'enum[[:space:]]+class' $( core_files "$1" ); }
+find_clean09( ){ hits '(:[[:space:]]*(public|private|protected)[[:space:]]|(struct|class)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:|\bvirtual\b)' 'enum[[:space:]]+class' "$( core_files "$1" )"; }
 # R-PROTO-05 uses raw_hits, NOT hits, and that is the rule's meaning rather than a detail of
 # the scanner. The rule says no file under src/ may REFERENCE tests/vectors/, and a comment
 # naming a vector is a reference. Decided 2026-09-15 after validation #3, where the acceptance
 # criterion (a plain grep, which counts comments) and this check (which stripped them) gave
 # opposite verdicts on the same tree. The literal reading is what both now use, so there is no
 # judgement left to interpret about what counts as a reference.
-find_proto05( ){ raw_hits 'tests/vectors' $( src_files "$1" ); }
+find_proto05( ){ raw_hits 'tests/vectors' "$( src_files "$1" )"; }
 # R-ERR-01, narrowed on 2026-09-11 to its greppable core: a status enum is never a return type
 # of its own. It lives in std::expected's error slot (where it follows a `,` or a `<`, never the
 # start of a line) or as a member of Link (where the identifier is followed by `=` or `;`, never
 # `(` ). So "line starts with the enum name, then an identifier, then `(`" is exactly the
 # forbidden shape and nothing else. `enum class DecodeStatus : …` does not match because a `:`
 # follows the name, not an identifier.
-find_err01( ){ hits '^[[:space:]]*(\[\[nodiscard\]\][[:space:]]*)?(constexpr[[:space:]]+)?(DecodeStatus|FaultCause)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' '' $( core_files "$1" ); }
+find_err01( ){ hits '^[[:space:]]*(\[\[nodiscard\]\][[:space:]]*)?(constexpr[[:space:]]+)?(DecodeStatus|FaultCause)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' '' "$( core_files "$1" )"; }
 # R-ERR-02: a declaration whose return type is a result or a LinkState and which does not open
 # with [[nodiscard]]. The attribute must precede the return type, so a compliant declaration
 # starts with `[` and cannot match the anchor at all — which is why this needs no exclusion
@@ -162,7 +164,7 @@ find_err01( ){ hits '^[[:space:]]*(\[\[nodiscard\]\][[:space:]]*)?(constexpr[[:s
 # Every alternative ends in an identifier followed by `(`, which is what makes this a check on
 # RETURN types. Without it the pattern reported `LinkState state = LinkState::Absent;` — the
 # member of Link, which is not a function at all. Found by running it against src/core/link.h.
-find_err02( ){ hits '^[[:space:]]*(constexpr[[:space:]]+)?(std::expected<[^;]*>[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|DecodeOutcome[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|LinkState[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\()' '' $( core_headers "$1" ); }
+find_err02( ){ hits '^[[:space:]]*(constexpr[[:space:]]+)?(std::expected<[^;]*>[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|DecodeOutcome[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|LinkState[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\()' '' "$( core_headers "$1" )"; }
 
 run_all( ) {
     report R-ARCH-01  "$( find_arch01  "$1" )" || fail=1
@@ -226,6 +228,12 @@ reject find_clean09 src/core/x.hpp 'virtual void poll( );'
 reject find_clean09 src/core/x.cc  'virtual void poll( );'
 reject find_clean09 src/core/x.inl 'virtual void poll( );'
 reject find_err02   src/core/x.hpp 'LinkState step( Link& link );'
+# One per file list, in a path with a space: each list reaches hits( ) as one quoted argument
+# read one line per path. Passed unquoted, `a b.cpp` split into `a` and `b.cpp`, neither of
+# which exists, and all three of these passed.
+reject find_err03   'src/core/a b.cpp' 'throw Status::kBad;'
+reject find_clean09 'src/core/a b.hpp' 'virtual void poll( );'
+reject find_err02   'src/core/a b.h'   'LinkState step( Link& link );'
 # A `//` inside a string literal is not a comment: the throw after it must still be seen.
 reject find_err03   src/core/x.cpp 'const char* u = "http://x"; throw E;'
 reject find_err04   src/core/x.cpp 'auto v = result.value( );'

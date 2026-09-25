@@ -44,6 +44,13 @@
 # Every diagnostic above is a clang-diagnostic-error, which WarningsAsErrors reports as a
 # FAIL: R-STYLE-02 line — so a broken invocation looks exactly like a naming violation. That
 # is the reason the flags are explained here rather than just set.
+#
+# File lists reach both tools one whole line per path, through format_files( ) and
+# tidy_files( ). Split on spaces (`xargs`, `for f in $files`), `src/core/a b.cpp` became two
+# paths that do not exist, and the FAIL line carried `No such file` instead of the file's real
+# diagnostic. Each block therefore has one rejection case: a violation in a scratch
+# `a b.cpp`, run through the same function as the real run, which must report that file's
+# diagnostic and no missing file. A newline in a file name still splits (no NUL read in sh).
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -91,6 +98,34 @@ tidy_sysroot_flag() {
   return 0
 }
 
+# The scratch dir for the rejection cases. Both tools find their config by walking up from the
+# file, so it holds copies of .clang-format and .clang-tidy.
+case_tmp=$( mktemp -d ) || exit 1
+trap 'rm -rf "$case_tmp"' EXIT
+cp .clang-format .clang-tidy "$case_tmp/"
+
+# style_case <label> <output> <diagnostic> <missing-file-text> — ok when <output> carries
+# <diagnostic> on a line naming `a b.cpp:` and never <missing-file-text>.
+style_case() {
+  if printf '%s\n' "$2" | grep -q "a b\.cpp:.*$3" && ! printf '%s\n' "$2" | grep -q "$4"; then
+    echo "  ok:   $1 rejection case: file name with a space"
+  else
+    echo "  FAIL: $1 rejection case: file name with a space not diagnosed as $3"
+    printf '%s\n' "$2" | head -8 | sed 's/^/        /'
+    fail=1
+  fi
+}
+
+# format_files <file-list> — one clang-format run per line of <file-list>. Returns 0: the
+# verdict is its output. The loop's status is only the LAST file's, so `&&` on it passed a
+# tree whose last file was misformatted.
+format_files() {
+  printf '%s\n' "$1" | while IFS= read -r f; do
+    clang-format --style=file --dry-run --Werror "$f" 2>&1
+  done
+  return 0
+}
+
 # --- R-STYLE-01: layout -----------------------------------------------------------
 if ! command -v clang-format >/dev/null 2>&1; then
   skip_or_fail "R-STYLE-01: clang-format not found (brew install clang-format)"
@@ -101,13 +136,15 @@ else
   files=$(sources)
   if [ -z "$files" ]; then
     echo "  ok:   R-STYLE-01 (no C++ sources yet)"
-  elif echo "$files" | xargs clang-format --style=file --dry-run --Werror 2>&1 | grep -q .; then
+  elif out=$( format_files "$files" ); [ -n "$out" ]; then
     echo "  FAIL: R-STYLE-01: formatting differs. Fix: clang-format -i \$(git ls-files '*.cpp' '*.h' '*.hpp' '*.cc' '*.inl')"
-    echo "$files" | xargs clang-format --style=file --dry-run --Werror 2>&1 | sed 's/^/        /'
+    echo "$out" | sed 's/^/        /'
     fail=1
   else
     echo "  ok:   R-STYLE-01"
   fi
+  printf 'int  x=1;\n' > "$case_tmp/a b.cpp"
+  style_case R-STYLE-01 "$( format_files "$case_tmp/a b.cpp" )" clang-format-violations "No such file"
 fi
 
 # --- R-STYLE-02: naming -----------------------------------------------------------
@@ -115,22 +152,27 @@ if ! TIDY=$(find_tidy); then
   skip_or_fail "R-STYLE-02 / R-CLEAN-02 / R-CLEAN-04: clang-tidy not found (brew install llvm)"
 else
   files=$(tidy_sources)
+  # One invocation per file, never xargs: xargs appends the file list AFTER the
+  # `--`, where clang-tidy reads it as compiler flags and silently checks nothing.
+  # -xc++ on .h and .inl only, per the note at the top of this file, and not as a single
+  # unconditional flag: -xc++ on a .cpp is accepted but then the language comes from this
+  # line rather than from the file, which is the kind of flag that outlives a rename.
+  SYSROOT=$( tidy_sysroot_flag )
+  if [ -z "$SYSROOT" ]; then
+    echo "  note: no macOS SDK from xcrun; any header reaching libc++'s platform layer"
+    echo "        will report clang-diagnostic-error (see the flag note at the top)"
+  fi
+  # tidy_files <file-list> — one clang-tidy run per line of <file-list>, diagnostics only.
+  # $( tidy_lang ) and $SYSROOT stay unquoted: empty is no argument, the sysroot is two.
+  tidy_files() {
+    printf '%s\n' "$1" | while IFS= read -r f; do
+      "$TIDY" --quiet "$f" -- $( tidy_lang "$f" ) -std=c++23 -Isrc $SYSROOT 2>&1
+    done | grep -E '(: (warning|error): |^error: )'
+  }
   if [ -z "$files" ]; then
     echo "  ok:   R-STYLE-02, R-CLEAN-02, R-CLEAN-04 (no checkable sources yet)"
   else
-    # One invocation per file, never xargs: xargs appends the file list AFTER the
-    # `--`, where clang-tidy reads it as compiler flags and silently checks nothing.
-    # -xc++ on .h and .inl only, per the note at the top of this file, and not as a single
-    # unconditional flag: -xc++ on a .cpp is accepted but then the language comes from this
-    # line rather than from the file, which is the kind of flag that outlives a rename.
-    SYSROOT=$( tidy_sysroot_flag )
-    if [ -z "$SYSROOT" ]; then
-      echo "  note: no macOS SDK from xcrun; any header reaching libc++'s platform layer"
-      echo "        will report clang-diagnostic-error (see the flag note at the top)"
-    fi
-    out=$(for f in $files; do
-            "$TIDY" --quiet "$f" -- $( tidy_lang "$f" ) -std=c++23 -Isrc $SYSROOT 2>&1
-          done | grep -E '(: (warning|error): |^error: )')
+    out=$( tidy_files "$files" )
     if [ -n "$out" ]; then
       echo "  FAIL: R-STYLE-02 / R-CLEAN-02 / R-CLEAN-04: naming, function-size or magic-number violations"
       echo "$out" | sed 's/^/        /'
@@ -139,6 +181,8 @@ else
       echo "  ok:   R-STYLE-02, R-CLEAN-02, R-CLEAN-04"
     fi
   fi
+  printf 'void BadName( ) {}\n' > "$case_tmp/a b.cpp"
+  style_case R-STYLE-02 "$( tidy_files "$case_tmp/a b.cpp" )" readability-identifier-naming "no such file or directory"
 fi
 
 exit $fail
