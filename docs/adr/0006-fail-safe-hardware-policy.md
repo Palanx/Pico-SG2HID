@@ -1,6 +1,8 @@
 # ADR-0006: Make hardware damage structurally hard — one pin table, verified before power
 
-- Status: accepted
+- Status: accepted — amended by ADR-0013: the "nothing is powered before it is measured"
+  ordering sentence is superseded for the power pins only, so the guitar's current draw
+  can be measured in phase `02-wiring` with 3V3 and GND alone. Everything else stands.
 - Date: 2026-08-31
 
 ## Context
