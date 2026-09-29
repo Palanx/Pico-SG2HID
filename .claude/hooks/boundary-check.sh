@@ -17,6 +17,17 @@
 # and they look nothing alike in a diff: an aliased import (`@/infra/x`), a
 # dynamic one, and a barrel re-export — importing from `src/shared/index.ts`,
 # which re-exports infra, names infra on no line of the importing file.
+# Python has two of its own: `from . import infra` (whether `infra` is the layer or a
+# subpackage of the importing one is not decidable from the line) and an import by
+# string, `importlib.import_module("infra.db")`. Upgrade path: import-linter, below.
+#
+# C-family files are read through cpp_lines (hooks/lib/common.sh): continuations are
+# joined, `#if 0` regions dropped, same-file `#define`d include names expanded, and
+# a C++20 `import infra.x;` counts. An include that reaches a denied layer through a
+# header in no layer is not visible from one file; include-check.sh follows it, and
+# only scripts/check.sh runs that, since it has to read files other than the one edited.
+# Python module paths are dotted, so `.py`/`.pyi` files match the layer's directory
+# name as a module's first component, or its full prefix in dotted form (layer_hits).
 #
 # Do not "upgrade" this script in place. dependency-cruiser (js) and
 # import-linter (py) resolve a whole module graph; this gate is handed ONE file
@@ -64,18 +75,12 @@ done < <(grep -E '^layer[[:space:]]' "$RULES")
 
 layer_prefix() { awk -v n="$1" '$1=="layer" && $2==n {print $3; exit}' "$RULES"; }
 
-IMPORT_RE='^[[:space:]]*(import|export|from|require|include|use|using|#include)[[:space:](]|require\(|import\('
-
 violations=""
 while read -r _ from arrow to; do
   [ "$arrow" = "->" ] && [ "$from" = "$FROM" ] || continue
   tprefix="$(layer_prefix "$to")"
   [ -n "$tprefix" ] || continue
-  tdir="$(basename "$tprefix")"
-  # Import line mentioning the denied layer: its full prefix, or its directory
-  # name bounded by a path separator or quote (matches ../infra/x, src/infra/x).
-  hits="$(grep -nE "$IMPORT_RE" "$FILE" 2>/dev/null \
-    | grep -E "$tprefix|[/\"'[:space:]]$tdir/" || true)"
+  hits="$(layer_hits "$FILE" "$tprefix")"
   if [ -n "$hits" ]; then
     violations="$violations
 Rule violated: deny $from -> $to   ($REL is in layer '$from')

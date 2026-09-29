@@ -15,6 +15,7 @@
 .claude/hooks/boundary-check.sh
 .claude/hooks/cursor-adapter.sh
 .claude/hooks/edit-gate-adapter.sh
+.claude/hooks/include-check.sh
 .claude/hooks/lib/common.sh
 .claude/hooks/lib/detect-toolchain.sh
 .claude/hooks/post-edit-gate.sh
