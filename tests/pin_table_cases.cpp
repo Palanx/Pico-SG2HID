@@ -306,7 +306,7 @@ struct Rejection {
     int passed = 0;
     for ( const Rejection& rejection : cases ) {
         const Capture capture = capture_report( rejection.fixture.table() );
-        if ( !capture.is_ok && std::strstr( capture.text, rejection.rule ) != nullptr ) {
+        if ( !capture.is_ok && says_fail( capture, rejection.rule ) ) {
             ++passed;
         } else {
             std::printf( "  FAIL: wiring case %s: the aggregate did not fail naming %s\n",

@@ -6,6 +6,9 @@ Plan steps 1–7 landed. Step 7, the operator gate, closed on 2026-09-28: all 18
 pass (readings below), and `requirements.md` §Open questions is rewritten.
 
 - base: main — the phase's work is committed on `feat/02-wiring` (operator, 2026-09-28).
+- not-ours: .claude/rules/tech-debt.md — the operator's debt log entry "No typecheck gate
+  configured", found in validation round 1 and deferred to a `/plan-feature` after 02-wiring
+  (operator confirmed, 2026-09-29).
 
 - `docs/adr/0013-power-only-current-draw-measurement.md`: accepted. It allows the power-only
   current-draw measurement in this phase (3V3 and GND only, signal resistors out, Pico in
@@ -46,6 +49,9 @@ Acceptance status on 2026-09-25:
 - Every grep criterion matches its expected count, except the three over
   `docs/product/requirements.md`, which wait on step 7. Those three matched on 2026-09-28
   (2, 1, 1).
+
+Acceptance status on 2026-09-28, after the round-3 fix: all 19 criteria pass. `make test` and
+`make lint` exit 0.
 
 ## Bench readings (step 7, items 1–18)
 
@@ -165,6 +171,17 @@ the operator's approval (item 12a is the new check; no item was renumbered):
   - Spec-side: step 1 named only the 09/10 update to `CLAUDE.md`. The R-SAFETY-08 line naming
     the ADR-0013 exception is recorded in Outcome above. Step 1 now names it. Reconciliation
     checked: the Context pointer on `CLAUDE.md` §Hardware safety (consistent, no change).
+  - Fixed 2026-09-28 by `/implement-phase`: `wiring_cases( )` now tests
+    `!capture.is_ok && says_fail( capture, rejection.rule )`. Mutation check: relabelling the
+    "DATA push-pull" wiring case to R-SAFETY-03 in a scratch copy now reports `wiring cases:
+    2/3`. Before the fix it passed.
+  - Generalised. The property: every "a named rule failed" assertion reads that rule's own
+    line for `FAIL:`, not only its presence in the output. Checked:
+    - `rejection_cases( )`: `says_fail`, holds.
+    - `wiring_cases( )`: was the instance, fixed.
+    - `tests/test_pin_table.py` `reject( )`: `is_ok` plus `line_says_fail`, holds.
+    - `tests/test_repo_shape.sh` R-SAFETY-09 `reject` / `accept`: these call the finder
+      directly, with no aggregate output to misread. The property does not apply.
 
 ## Debt
 
@@ -203,6 +220,13 @@ the operator's approval (item 12a is the new check; no item was renumbered):
 - Taste from the round-1 review, non-blocking: the ANSWERED current line leads with the 0.85 mA
   peak, and the idle band may be the better headline for a power budget; the 02-wiring row
   in PHASES.md was edited in place by the expand step rather than superseded.
+- Taste from the round-4 review, non-blocking:
+  - `tests/test_pin_table.py` hardcodes a copy of the Makefile's `CXXFLAGS`, which can drift
+    silently.
+  - The R-SAFETY-09 false-positive floor was raised to 28. The diff alone does not show that
+    this equals the accepted count.
+  - `verify.md` item 17's expected column carries the measured "under 1 mA".
+  - `find_safety09( )` adds a leading `\b` that the spec's matching description omits.
 
 ## Validation — 2026-09-28
 - criteria: 19 passed / 0 failed
@@ -239,3 +263,15 @@ the operator's approval (item 12a is the new check; no item was renumbered):
 - upstream: none
 - not-ours: none
 - verdict: returned to implementation (escape not taken: converging 5 → 3 → 2)
+
+## Validation — 2026-09-29
+- criteria: 19 passed / 0 failed
+- project gates: test pass, lint pass, typecheck gap (`workflow gap: no 'typecheck' tool configured — the project was NOT checked.`; logged debt, deferred by the operator)
+- boundary sweep: clean
+- independent review: undecidable: the `00-scaffold/notes.md` Context pointer (spec line 95) claims to explain "why scratch copies use `cp -a`"; the spec never states what property a scratch copy must preserve, so the reviewer cannot judge `shutil.copytree` in `tests/test_pin_table.py` `reject( )`. The Deviations entry "A Context pointer is wrong" already records that the claim is false; it was never removed from the spec.
+- closure test: fail: the undecidable `cp -a` pointer
+- findings: 1
+- spec size: 18849 (+62 since the previous validation)
+- upstream: none
+- not-ours: .claude/rules/tech-debt.md subtracted
+- verdict: returned to spec (escape not taken: converging 5 → 3 → 2 → 1)
