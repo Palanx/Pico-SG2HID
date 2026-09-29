@@ -90,9 +90,8 @@ whitespace and `(`. A trailing `*` means any `[a-z0-9_]` suffix:
 - `docs/product/requirements.md` §Hard constraints and §Open questions. Step 7 rewrites the two
   OPEN items there.
 - `docs/phases/00-scaffold/notes.md` §For later phases (the first section, lines 280–361). It
-  covers the plain-array constraint on `pins.h`, the three requirements for any new check (RULE
-  header, `LIVE` labels, cases routed through the reporting function plus a wiring case), and
-  why scratch copies use `cp -a`.
+  covers the plain-array constraint on `pins.h` and the three requirements for any new check
+  (RULE header, `LIVE` labels, cases routed through the reporting function plus a wiring case).
 - `docs/phases/01-ps2-codec/notes.md` §For later phases. It explains why `.py` checks are held
   to the accounting property only.
 - `tests/test_ps2_codec.py` + `tests/ps2_codec_cases.cpp` are the pattern `test_pin_table.py` +

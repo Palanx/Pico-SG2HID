@@ -183,6 +183,13 @@ the operator's approval (item 12a is the new check; no item was renumbered):
     - `tests/test_repo_shape.sh` R-SAFETY-09 `reject` / `accept`: these call the finder
       directly, with no aggregate output to misread. The property does not apply.
 
+- **Validation round 4 (2026-09-29) returned the phase to the spec.** One `undecidable`
+  finding: the `00-scaffold/notes.md` Context pointer's "why scratch copies use `cp -a`"
+  clause, already recorded above as false. The clause is deleted; nothing is added.
+  Reconciliation checked: the `test_ps2_codec.py` Context pointer and step 4's copied-tree
+  bullets say nothing about how the copy is made, and no other spec statement mentions
+  `cp -a`.
+
 ## Debt
 
 - **R-SAFETY-09 is a grep, not a parse.** The ceiling is measured and recorded in its
@@ -275,3 +282,15 @@ the operator's approval (item 12a is the new check; no item was renumbered):
 - upstream: none
 - not-ours: .claude/rules/tech-debt.md subtracted
 - verdict: returned to spec (escape not taken: converging 5 → 3 → 2 → 1)
+
+## Validation — 2026-09-29
+- criteria: 19 passed / 0 failed
+- project gates: test pass, lint pass, typecheck gap (`workflow gap: no 'typecheck' tool configured — the project was NOT checked.`; logged debt, deferred by the operator)
+- boundary sweep: clean
+- independent review: clean (taste only: `\b` in `find_safety09( )` is not POSIX ERE; `verify.md` item 17 carries the measured value as its expectation; the wiring cases reuse the `Rejection` struct name; item 11 wording "no beep" vs the spec's "no continuity")
+- closure test: pass
+- findings: 0
+- spec size: 18814 (-35 since the previous validation)
+- upstream: none
+- not-ours: .claude/rules/tech-debt.md subtracted
+- verdict: done
