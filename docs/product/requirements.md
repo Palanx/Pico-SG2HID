@@ -106,14 +106,13 @@ promise; they are not negotiable by a later ADR without new hardware.
 
 ## Open questions
 
-- OPEN: Does the SG operate correctly from the Pico's 3V3 rail alone, and what is
-  its actual current draw? Answered by the operator with a multimeter in phase
-  `02-wiring`. If the draw exceeds the onboard regulator's headroom, phases `03`
-  onward need an external 3.3 V supply and the wiring document changes shape.
-- OPEN: Is the physical connector on hand a PS2 female socket with all pins broken
-  out, or a cut controller extension cable? This changes phase `02-wiring` from
-  "identify pins by datasheet" to "identify pins by continuity test", which is a
-  different set of instructions for the operator. Answered by the operator.
+- ANSWERED (02-wiring, 2026-09-28): the connector is a PS2 female socket with all nine
+  pins broken out. Pins are identified by the socket's numbering and confirmed by
+  continuity (`docs/phases/02-wiring/verify.md` items 1–7).
+- ANSWERED (02-wiring, 2026-09-28): the SG draws 0.85 mA from 3V3 at power-up, settling
+  to 0.36–0.50 mA, measured with the Pico in BOOTSEL and no bus traffic. That is far
+  inside the onboard regulator's budget; no external 3.3 V supply is needed.
+- OPEN (09-guitar-observe): does the SG answer the bus correctly on 3V3 alone?
 
 <!-- Byte-level unknowns (exact config-mode sequence, whammy byte position, rest and
      full-deflection values, the controller id this specific SG reports) are NOT

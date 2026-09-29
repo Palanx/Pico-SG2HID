@@ -120,16 +120,24 @@ Meter on resistance/continuity, red probe in `VΩ`.
 | 5 | Pico 9 (GP6) ↔ socket 9 (ACK) | ≈ 330 Ω | |
 | 6 | Pico 36 (3V3) ↔ socket 5 | beeps (≈ 0 Ω) | |
 | 7 | Pico 38 (GND) ↔ socket 4 | beeps (≈ 0 Ω) | |
-| 8 | Pico 36 (3V3) ↔ Pico 38 (GND) | **not** near 0 Ω; climbs (see primer point 3) | |
+| 8 | Pico 36 (3V3) ↔ Pico 38 (GND) | **not** near 0 Ω; climbs (see primer point 3), or settles at a stable few kΩ | |
 | 9 | Socket 3 (7.6 V) ↔ Pico 36, then Pico 39, then Pico 40 | no beep, `OL` each time | |
 | 10 | Socket 3 ↔ socket 1, 2, 6, 7, 9 (each signal) | no beep, `OL` each time | |
-| 11 | Socket 5 ↔ Pico 39 (VSYS), then Pico 40 (VBUS) | no beep, `OL` each time | |
+| 11 | Socket 5 ↔ Pico 39 (VSYS), then Pico 40 (VBUS) | no beep each time; tens of kΩ is normal | |
 | 12 | Every pair of socket 1, 2, 6, 7, 9 (ten pairs) | none reads ≈ 0 Ω | |
+| 12a | Socket 1, 2, 6, 7, 9 (each signal) ↔ Pico 38 (GND) | every reading far above 330 Ω | |
 
 Why these matter: items 1–7 prove each wire goes where `wiring.md` says. Item 8 proves the
-rails are not shorted before you apply power. Items 9–10 prove the 7.6 V pin touches nothing
-(R-SAFETY-04). Item 11 proves the guitar's power pin is not on a 5 V pin (R-SAFETY-05).
-Item 12 proves no two signal wires touch each other.
+rails are not shorted before you apply power. On a real board it can also settle at a
+stable few kΩ instead of climbing to `OL`: the board's own circuitry sits across the rails.
+Only a reading near 0 Ω is a fail. Items 9–10 prove the 7.6 V pin touches nothing
+(R-SAFETY-04). Item 11 proves the guitar's power pin is not on a 5 V pin (R-SAFETY-05). A real Pico reads
+tens of kΩ between 3V3 and VSYS or VBUS through its own regulator circuitry, so the pass
+criterion is "no beep", not `OL`.
+Item 12 proves no two signal wires touch each other. Item 12a proves no signal wire landed
+on a GND pin: a jumper one row off onto a Pico GND pin passes items 1–12 and reads ≈ 330 Ω
+here (the series resistor and nothing else). DATA and ACK start near 10 kΩ and climb (their
+pull-up, then the capacitors of primer point 3); CMD, ATT and CLK read higher still.
 
 About item 12: DATA and ACK are each joined to 3V3 by a 10 kΩ pull-up, so DATA ↔ ACK reads
 about 330 + 10 000 + 10 000 + 330 ≈ 20.7 kΩ. That is expected, and it is not a bridge.
@@ -148,11 +156,16 @@ Meter on DC volts (`V⎓`), red probe in `VΩ`. Black probe on socket 4 (GND) fo
 |---|---|---|---|
 | 13 | Socket 5 (3V3) | 3.2–3.4 V | |
 | 14 | Socket 3 (7.6 V pin) | ≈ 0 V | |
-| 15 | Socket 1 (DATA) | ≈ 3.3 V (the pull-up) | |
-| 16 | Socket 9 (ACK) | ≈ 3.3 V (the pull-up) | |
+| 15 | Socket 1 (DATA) | ≈ 2.7 V (the pull-up against the chip's pull-down) | |
+| 16 | Socket 9 (ACK) | ≈ 2.7 V (the pull-up against the chip's pull-down) | |
 
 Item 14 is the one that matters most. Any voltage there means something is feeding the
 7.6 V pin. Unplug the USB and stop.
+
+Items 15–16 read ≈ 2.7 V, not 3.3 V. The RP2040 leaves every pin with its internal
+pull-down on after reset, and BOOTSEL does not change that. The internal pull-down and the
+external 10 kΩ pull-up form a divider. A reading near 0 V means the wire goes to GND, not to
+its Pico pin: stop.
 
 Unplug the USB when done.
 
@@ -167,22 +180,27 @@ live. Read all the steps before starting.
 2. Remove the jumper between the **3V3 rail and socket 5**. That gap is where the meter
    goes.
 3. Move the red probe to the **`mA` jack** and set the dial to **DC mA** (the 200 mA or
-   400 mA range if your meter has ranges; `A` if it has no mA range). Clip or hold the
+   400 mA range if your meter has ranges; `A` if it has no mA range). Start there, not on
+   the smallest range: it survives the brief surge when the guitar's capacitors charge. Clip or hold the
    **red probe on the 3V3 rail** and the **black probe on socket 5**. The meter is now the
    missing wire: the guitar's current has to flow through it. **Never** touch these probes
    to socket 4 or any GND point while in this mode (primer point 2).
 4. Plug the guitar into the socket.
 5. Hold BOOTSEL and plug in the USB, as in C2.
-6. Read the meter and wait a few seconds for it to settle. Write down the value, and note
-   whether it moves (for example if the guitar has LEDs that blink).
-7. **Unplug the USB first**, then the guitar.
-8. Move the red probe back to `VΩ` and the dial back to V or Ω. Put the 3V3 → socket 5
+6. Read the meter. **If it shows `0.0`, the draw is below what that range can show, which is
+   expected.** Unplug the USB, turn the dial to the smallest range that uses the same jack
+   (`2000µ`, `µA` or `2m`), and repeat step 5. Watch it for half a minute and write down the
+   first value and the band it settles into.
+7. **Unplug the USB first**, then the guitar. Unplugging the USB is what stops the current;
+   the meter's own power button may not break the circuit.
+8. Move the red probe back to `VΩ` and the dial back to V or Ω, and only then turn the meter
+   off. Put the 3V3 → socket 5
    jumper and the five 330 Ω resistors back.
 
 | # | Measurement | Expected | Your reading |
 |---|---|---|---|
-| 17 | Guitar current on 3V3 | well under 250 mA, likely tens of mA | |
-| 18 | Does it move? | steady, or small flicker | |
+| 17 | Guitar current on 3V3 | well under 250 mA; this SG: under 1 mA | |
+| 18 | Does it move? | a peak at power-up, then it drifts down with small up-and-down steps into a band | |
 
 **Stop condition:** a reading **≥ 250 mA** means the Pico's onboard regulator is not enough
 for the guitar. The datasheet asks for under 300 mA on 3V3, and the Pico itself needs some

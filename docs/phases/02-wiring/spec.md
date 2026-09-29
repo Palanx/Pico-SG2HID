@@ -25,7 +25,9 @@ GND only.
 The operator runs the checklist. Their answers close requirements.md's OPEN item about the
 connector and the current-draw half of the OPEN item about power. The other half of that item,
 whether the SG *works* on 3V3 alone, cannot be observed without bus traffic, so it stays OPEN
-and moves to `09-guitar-observe`.
+and moves to `09-guitar-observe` through the OPEN line step 7 writes. This phase's exit
+criterion in `docs/phases/PHASES.md` was narrowed to match in the expand commit (`545fe21`). The
+`09-guitar-observe` row is not edited: the OPEN line names its owner.
 
 Decided by the operator on 2026-09-24, and not to be re-litigated during implementation:
 
@@ -94,7 +96,7 @@ whitespace and `(`. A trailing `*` means any `[a-z0-9_]` suffix:
 - `docs/phases/01-ps2-codec/notes.md` §For later phases. It explains why `.py` checks are held
   to the accounting property only.
 - `tests/test_ps2_codec.py` + `tests/ps2_codec_cases.cpp` are the pattern `test_pin_table.py` +
-  `pin_table_cases.cpp` copy: the driver compiles the cases file with `make test`'s flags, lines
+  `pin_table_cases.cpp` copy: the driver compiles the cases file, lines
   are forwarded verbatim, rejection cases mutate a copied tree and must flip their own rule's
   line, and every mutation asserts that its anchor matched.
 - `tests/test_repo_shape.sh`. `src_files( )`, `hits( )`, `report( )`, `run_all( )`, `reject`,
@@ -105,12 +107,12 @@ whitespace and `(`. A trailing `*` means any `[a-z0-9_]` suffix:
 - `tests/test_rule_traceability.py`, `check( )`, is what fails if a binding and its marker
   disagree.
 - `Makefile` shows `CXXFLAGS` and that only `tests/test_*.cpp` are built directly, which is why
-  the cases file is not named `test_*`.
+  the cases file is not named `test_*`. `tests/test_*.py` drivers run by wildcard (`PY_TESTS`),
+  so the Makefile needs no change.
 - `docs/phases/01-ps2-codec/verify.md` is the house register for a non-specialist `verify.md`.
 - The Raspberry Pi Pico datasheet (pinout figure; §"Powering Pico", 3V3 load recommendation of
   under 300 mA). `docs/wiring.md` cites it by URL.
-- A PS2 controller pinout reference, cited by URL in `docs/wiring.md` together with the side
-  it is drawn from. The implementer finds and cites it; this spec does not supply one.
+- A PS2 controller pinout reference, cited by URL in `docs/wiring.md`. The implementer finds and cites it; this spec does not supply one.
 
 ## Plan
 
@@ -128,7 +130,8 @@ whitespace and `(`. A trailing `*` means any `[a-z0-9_]` suffix:
      `planned: 03-pio-bus`.
    - Append to R-SAFETY-08 one sentence stating that its ordering governs the signal lines,
      and that the phase-02 current draw is taken power-only per ADR-0013.
-   - Update the R-SAFETY lines in `CLAUDE.md` to name 09 and 10.
+   - Update the R-SAFETY lines in `CLAUDE.md` to name 09 and 10, and the R-SAFETY-08 line to name
+     the ADR-0013 exception.
    - Check: `make test` shows traceability green, and
      `grep -c 'planned: 03-pio-bus' docs/constraints.md` is 5.
 2. **`src/core/pins.h`.**
@@ -148,10 +151,10 @@ whitespace and `(`. A trailing `*` means any `[a-z0-9_]` suffix:
      (the signal name in upper case, then `GP<n>`). The check in step 4 parses this shape.
    - A parts list: the socket, 5 × 330 Ω, 2 × 10 kΩ, jumper wires.
    - A breadboard layout in words.
-   - One paragraph per resistor on why it is there.
+   - One paragraph per resistor role on why it is there: the five series resistors, the DATA
+     pull-up, the ACK pull-up.
    - The 7.6 V pin 3 left unconnected, and how to insulate it.
-   - The Pico datasheet and the PS2 pinout source by URL, with the viewing side of the socket
-     stated.
+   - The Pico datasheet and the PS2 pinout source by URL.
    - Check: `grep -cE '^\| (DATA|CMD|ATT|CLK|ACK) \| GP[0-9]+ \|' docs/wiring.md` is 5.
 4. **Pin-table check.**
    - `tests/pin_table_cases.cpp` defines one check function per rule, each taking
@@ -169,7 +172,7 @@ whitespace and `(`. A trailing `*` means any `[a-z0-9_]` suffix:
    - `tests/test_pin_table.py` has a docstring header with `RULE R-SAFETY-01`,
      `RULE R-SAFETY-02`, `RULE R-SAFETY-03`, `LIVE R-SAFETY-02 (table)` and
      `LIVE R-SAFETY-02 (wiring doc)`.
-   - The driver compiles only the cases file with `make test`'s flags, forwards its lines, and
+   - The driver compiles only the cases file, forwards its lines, and
      compares its `pin:` lines to `docs/wiring.md`'s rows as the `R-SAFETY-02 (wiring doc)`
      line.
    - It runs four copied-tree mutations, reported as one `copied-tree rejection cases: n/4`
@@ -217,13 +220,14 @@ whitespace and `(`. A trailing `*` means any `[a-z0-9_]` suffix:
        - 3V3 to GND is not near 0 Ω;
        - socket 3 has no continuity to Pico 36, 39 or 40, or to any signal line;
        - socket 5 has no continuity to Pico 39 or 40;
-       - no two signal lines are bridged.
+       - no two signal lines are bridged;
+       - no signal line reads ≈ 330 Ω or less to GND.
      - **Powered**, Pico on USB held in BOOTSEL, guitar unplugged:
        - socket 5 to socket 4 reads 3.2–3.4 V;
        - socket 3 to 4 reads ≈ 0 V;
-       - DATA and ACK socket pins to 4 read ≈ 3.3 V.
+       - DATA and ACK socket pins to 4 read ≈ 2.7 V.
      - **Current draw**: the five signal resistors removed from the breadboard, the meter in
-       series in the 3V3 line on its mA range, the Pico in BOOTSEL, the guitar plugged in.
+       series in the 3V3 line, the Pico in BOOTSEL, the guitar plugged in.
        Record the reading, then unplug and restore.
        - **Stop condition:** a reading ≥ 250 mA means the onboard regulator is not enough. Stop
          and report; that is a re-plan.
