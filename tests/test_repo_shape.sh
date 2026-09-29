@@ -12,6 +12,8 @@
 # RULE R-ERR-01   — docs/constraints.md §Invariants — core returns no bare status enum
 # RULE R-ERR-02   — docs/constraints.md §Invariants — a result or LinkState return is
 #                   marked [[nodiscard]]
+# RULE R-SAFETY-09 — docs/constraints.md §Invariants — no pin-configuring SDK call under src/
+#                   outside src/hal/
 #
 # Every check takes the tree root as an argument. That is not decoration: when this file was
 # written the repo had no product code, so every check passed vacuously and one that was
@@ -166,6 +168,13 @@ find_err01( ){ hits '^[[:space:]]*(\[\[nodiscard\]\][[:space:]]*)?(constexpr[[:s
 # member of Link, which is not a function at all. Found by running it against src/core/link.h.
 find_err02( ){ hits '^[[:space:]]*(constexpr[[:space:]]+)?(std::expected<[^;]*>[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|DecodeOutcome[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|LinkState[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\()' '' "$( core_headers "$1" )"; }
 
+# R-SAFETY-09: a Pico SDK call that configures a pin, anywhere under src/ but src/hal/. The
+# name must be followed by optional whitespace and `(`, so a mention in prose or a pointer to
+# the function is not a call. `\b` keeps `pio_gpio_init` from matching the `gpio_init`
+# alternative; each has its own. The trailing `[a-z0-9_]*` is the rule's `*`: gpio_init_mask,
+# the gpio_set_dir_*masked forms and pio_sm_set_pindirs_with_mask64.
+find_safety09( ){ hits '\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(' '' "$( src_files "$1" | grep -vF "$1/src/hal/" )"; }
+
 run_all( ) {
     report R-ARCH-01  "$( find_arch01  "$1" )" || fail=1
     report R-ARCH-03  "$( find_arch03  "$1" )" || fail=1
@@ -177,6 +186,7 @@ run_all( ) {
     report R-PROTO-05 "$( find_proto05 "$1" )" || fail=1
     report R-ERR-01   "$( find_err01   "$1" )" || fail=1
     report R-ERR-02   "$( find_err02   "$1" )" || fail=1
+    report R-SAFETY-09 "$( find_safety09 "$1" )" || fail=1
 }
 
 run_all "$ROOT"
@@ -328,6 +338,27 @@ reject find_clean09 src/core/x.h   '    : protected Base'
 # covers `struct`.
 reject find_clean09 src/core/x.h   'class A : B { };'
 reject find_clean09 src/core/x.h   'virtual void poll( );'
+
+# R-SAFETY-09: one case per alternative, each reaching that alternative alone, then the
+# starred forms, then one per layer outside src/hal/ so the path filter cannot widen.
+reject find_safety09 src/app/x.cpp  'gpio_init( 2 );'
+reject find_safety09 src/app/x.cpp  'gpio_set_dir( 2, false );'
+reject find_safety09 src/app/x.cpp  'gpio_set_function( 5, GPIO_FUNC_PIO0 );'
+reject find_safety09 src/app/x.cpp  'gpio_set_pulls( 2, true, false );'
+reject find_safety09 src/app/x.cpp  'gpio_pull_up( 2 );'
+reject find_safety09 src/app/x.cpp  'gpio_pull_down( 2 );'
+reject find_safety09 src/app/x.cpp  'gpio_disable_pulls( 2 );'
+reject find_safety09 src/app/x.cpp  'gpio_set_oeover( 2, GPIO_OVERRIDE_HIGH );'
+reject find_safety09 src/app/x.cpp  'pio_gpio_init( pio0, 2 );'
+reject find_safety09 src/app/x.cpp  'pio_sm_set_pindirs_with_mask( pio0, 0, 0, 0 );'
+reject find_safety09 src/app/x.cpp  'pio_sm_set_consecutive_pindirs( pio0, 0, 2, 5, true );'
+reject find_safety09 src/app/x.cpp  'gpio_init_mask( 0x7c );'
+reject find_safety09 src/app/x.cpp  'gpio_set_dir_out_masked( 0x38 );'
+reject find_safety09 src/app/x.cpp  'pio_sm_set_pindirs_with_mask64( pio0, 0, 0, 0 );'
+reject find_safety09 src/app/x.cpp  'gpio_init ( 2 );'
+reject find_safety09 src/emu/x.cpp  'gpio_set_dir( 2, true );'
+reject find_safety09 src/usb/x.cpp  'gpio_pull_up( 6 );'
+reject find_safety09 src/core/x.h   'gpio_init( 2 );'
 # No floor. A count next to "every alternative is covered" is the round-8 defect: the two
 # drift and the number is the one that stops being true. Sufficiency is asserted by
 # tests/test_checks_are_live.py, which derives what is needed from the patterns themselves.
@@ -423,10 +454,16 @@ accept find_err03   src/core/x.cpp 'char q = '\''"'\''; // throw'
 accept find_err04   src/core/x.cpp 'const auto n = report.values( );'
 # a tests/ path that is not the vectors
 accept find_proto05 src/core/x.cpp '#include "tests/vector_math.h"'
-if [ "$accepted" -ge 25 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 25)"
+# R-SAFETY-09: src/hal/ is the one place allowed to configure pins
+accept find_safety09 src/hal/x.cpp 'gpio_init( 2 );'
+# reading or writing a pin's level is not configuring it
+accept find_safety09 src/app/x.cpp 'gpio_put( 2, true );'
+# gpio_get outside hal
+accept find_safety09 src/app/x.cpp 'gpio_get( 6 );'
+if [ "$accepted" -ge 28 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 28)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 25)"
+    echo "  FAIL: false-positive cases: $accepted (floor 28)"
     fail=1
 fi
 
@@ -463,10 +500,11 @@ wiring R-CLEAN-09 src/core/x.h   'struct A : public B { };'
 wiring R-PROTO-05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
 wiring R-ERR-01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
 wiring R-ERR-02   src/core/x.h   'LinkState step( Link& link );'
-if [ "$wired" -eq 10 ]; then
-    echo "  ok:   wiring cases: $wired/10 (each rule's verdict reaches the exit code)"
+wiring R-SAFETY-09 src/app/x.cpp 'gpio_init( 2 );'
+if [ "$wired" -eq 11 ]; then
+    echo "  ok:   wiring cases: $wired/11 (each rule's verdict reaches the exit code)"
 else
-    echo "  FAIL: wiring cases: $wired/10"
+    echo "  FAIL: wiring cases: $wired/11"
     fail=1
 fi
 

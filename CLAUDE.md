@@ -32,13 +32,15 @@ ADR-0006):
 
 - **R-SAFETY-01** — never configure `DATA` or `ACK` as a push-pull output. Both are
   open-drain, driven by the controller. Driving one is a short between output stages.
-- **R-SAFETY-02** — every GPIO is declared once in `src/core/pins.h`. Only `src/hal/`
-  calls `gpio_init` / `gpio_set_dir` / `gpio_pull_up`, and only by iterating that table.
+- **R-SAFETY-02 / R-SAFETY-09 / R-SAFETY-10** — every GPIO is declared once in
+  `src/core/pins.h`. Only `src/hal/` calls a pin-configuring SDK function (`gpio_init`,
+  `gpio_set_dir`, `gpio_pull_up`, …), and only by iterating that table.
 - **R-SAFETY-04 / R-SAFETY-05** — the 7.6 V PS2 rail is never connected; the guitar is
   powered from 3V3 only, never VBUS or VSYS. The RP2040 is not 5 V tolerant.
 - **R-SAFETY-08** — the order of first contact is fixed: host tests → loopback on one
   Pico → Pico against the emulator → the real guitar read-only through trace mode → the
-  real guitar in full. Untested bus code never meets the guitar.
+  real guitar in full. Untested bus code never meets the guitar. The one exception is
+  phase 02's current-draw measurement: 3V3 and GND only, Pico in BOOTSEL (ADR-0013).
 
 ## Rules are bound to tests, in both directions
 
