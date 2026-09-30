@@ -286,7 +286,7 @@ sh tests/test_firmware_flags.sh                                          # expec
 sed 's/-fno-rtti//' build/pico/compile_commands.json > build/mut_db.json; COMPILE_DB=build/mut_db.json sh tests/test_firmware_flags.sh; echo $?; rm build/mut_db.json   # expect: a FAIL line naming R-ERR-05, then 1
 grep -cE '^- \*\*R-ERR-05\*\* .* — test: `tests/test_firmware_flags\.sh`$' docs/constraints.md   # expect: 1
 make lint                                                                # expect: exit 0
-mkdir -p src/hal && printf '#include "hardware/gpio.h"\nint BadName;\n' > src/hal/lint_probe.cpp && make firmware >/dev/null 2>&1; make lint > build/lint.log 2>&1; echo $?; grep -c "invalid case style for variable 'BadName'" build/lint.log; grep -c 'file not found' build/lint.log; rm src/hal/lint_probe.cpp; rmdir src/hal 2>/dev/null; make firmware >/dev/null 2>&1; rm build/lint.log   # expect: 1, then 1, then 0
+mkdir -p src/hal && printf '#include "hardware/gpio.h"\nint BadName;\n' > src/hal/lint_probe.cpp && make firmware >/dev/null 2>&1; make lint > build/lint.log 2>&1; echo $?; grep -c "invalid case style for variable 'BadName'" build/lint.log; grep -c 'file not found' build/lint.log; rm src/hal/lint_probe.cpp; rmdir src/hal 2>/dev/null; make firmware >/dev/null 2>&1; rm build/lint.log   # expect: 2 (make's status for a failed recipe; amended, see notes.md §Deviations), then 1, then 0
 mv build/pico build/pico.off; make lint 2>&1 | grep -c 'no compile database'; OPTIONAL_TOOLS=1 sh tests/test_style.sh >/dev/null; echo $?; mv build/pico.off build/pico   # expect: >= 1, then 0
 for n in gpio_init gpio_set_dir gpio_set_function gpio_set_pulls gpio_pull_up gpio_pull_down gpio_disable_pulls gpio_set_oeover pio_gpio_init pio_sm_set_pindirs_with_mask pio_sm_set_consecutive_pindirs; do grep -rqE "\b${n}[a-z0-9_]*[[:space:]]*\(" "$PICO_SDK_PATH/src" --include='*.h' || echo "missing: $n"; done   # expect: no output
 grep -c 'not yet checked against installed SDK headers' docs/constraints.md   # expect: 0
@@ -299,7 +299,7 @@ scripts/check.sh typecheck                                               # expec
 python3 tests/test_rule_traceability.py                                  # expect: exit 0
 python3 tests/test_checks_are_live.py                                    # expect: exit 0
 sh tests/test_boundaries.sh                                              # expect: exit 0
-mv build/pico build/pico.off; env -u PICO_SDK_PATH PATH=/usr/bin:/bin make test | tail -1; mv build/pico.off build/pico   # expect: OK — no SDK, no ARM compiler, no LLVM
+mv build/pico build/pico.off; env -u PICO_SDK_PATH PATH=/opt/homebrew/opt/bash/bin:/usr/bin:/bin make test | tail -1; mv build/pico.off build/pico   # expect: OK — no SDK, no ARM compiler, no LLVM (bash >= 4 added to PATH; amended, see notes.md §Deviations)
 make test                                                                # expect: last line OK
 sh tests/test_phase_docs.sh                                              # expect: exit 0
 ```

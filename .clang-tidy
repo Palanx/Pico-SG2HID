@@ -7,9 +7,11 @@
 #
 # Scope: every .cpp, .h, .hpp, .cc and .inl under src/ plus tests/*.cpp (tidy_sources() in
 # tests/test_style.sh).
-# clang-tidy needs to know how to compile the file, so a file under src/hal/, src/usb/,
-# src/app/ or src/emu/ that includes a Pico SDK or TinyUSB header fails lint with
-# clang-diagnostic-error until 03-pio-bus supplies its include flags.
+# clang-tidy needs to know how to compile the file. src/core/ and tests/ use the explicit
+# flags below. src/hal/, src/usb/, src/app/ and src/emu/ include Pico SDK or TinyUSB headers,
+# so they are linted through the compile database `make firmware` writes (build/pico), with
+# the ARM compiler's standard-library directories added as -isystem; lint on those layers
+# needs a configured build, and says so on its own line when there is none.
 #
 # The flags are NOT trivial, and this comment used to say they were. Two are required and
 # neither is guessable from a naming-rule failure, because both arrive as
@@ -20,10 +22,10 @@
 # invocation lives in tests/test_style.sh and the measurement in docs/constraints.md
 # §Observed conventions.
 #
-# Upgrade path: NOT a generated compile_commands.json — ADR-0010 fixes development to macOS
-# with Homebrew LLVM and settles this as explicit flags, so the two above are the answer
-# rather than a stopgap. A compile database is still what src/hal/ and the SDK-facing layers
-# would need, and 03-pio-bus owns that when it lands the CMake build.
+# Not a compile database for src/core/ and tests/: ADR-0010 fixes development to macOS with
+# Homebrew LLVM and settles those as explicit flags, and they must lint without the SDK. The
+# SDK-facing layers use the CMake compile database since 23-firmware-build (measured
+# 2026-09-30, docs/constraints.md §Observed conventions).
 
 Checks: '-*,readability-identifier-naming,readability-function-size,readability-magic-numbers'
 WarningsAsErrors: '*'
