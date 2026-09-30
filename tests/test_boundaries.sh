@@ -4,9 +4,11 @@
 # RULE R-ARCH-02 — docs/constraints.md §Invariants — every file under src/ respects the
 #                  dependency directions encoded in .claude/workflow/boundaries.rules
 #
-# This drives the existing edit hook rather than reimplementing it. The hook is a per-file
-# gate (one path in, exit 2 on violation); sweeping the tree is this script's job, so the
-# rule holds for files nobody has edited since the rule was written.
+# This drives the existing hooks rather than reimplementing them: boundary-check.sh (the
+# per-edit layer gate) and include-check.sh (the transitive-include gate, which follows
+# src/core/x.cpp through a header in no layer to src/hal/). Both are per-file gates (one
+# path in, exit 2 on violation); sweeping the tree is this script's job, so the rule holds
+# for files nobody has edited since the rule was written.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )
@@ -15,18 +17,21 @@ ROOT=$( pwd )
 # that cannot run to be reported as "the hook did not run", never as a breach, and the only
 # way to test that is to point HOOK at a stub. Defaults to the real hook.
 HOOK="${HOOK:-$ROOT/.claude/hooks/boundary-check.sh}"
+# Overridable for the same reason: the include hook's own stub case below points it at a
+# stub that exits 3. Defaults to the real hook.
+INCLUDE_HOOK="${INCLUDE_HOOK:-$ROOT/.claude/hooks/include-check.sh}"
 
 fail=0
 rejected=0
 
-# sweep <project-root> — runs the hook over every file below <project-root>/src, not just
-# *.cpp/*.h: the hook decides for itself what an import line looks like, and a layer can be
+# sweep <project-root> — runs both hooks over every file below <project-root>/src, not just
+# *.cpp/*.h: each hook decides for itself what an import line looks like, and a layer can be
 # breached from a header with any extension or from a build fragment sitting in the tree.
-# The hook itself always stays at its real path; only CLAUDE_PROJECT_DIR moves, which is
-# how the rejection case below gets a tree of its own.
+# The hooks themselves always stay at their real paths; only CLAUDE_PROJECT_DIR moves, which
+# is how the rejection cases below get a tree of their own.
 #
-# Exit codes are kept apart on purpose. The hook returns 2 and only 2 for a layering
-# breach; any other non-zero exit means the hook itself did not run (missing rules file,
+# Exit codes are kept apart on purpose. Each hook returns 2 and only 2 for a layering
+# breach; any other non-zero exit means that hook itself did not run (missing rules file,
 # bad interpreter, a bug). Reporting the second as "forbidden dependency direction" would
 # send the reader hunting for an import that does not exist.
 #   0 — every file clean          1 — at least one real violation          2 — hook error
@@ -41,22 +46,26 @@ sweep( ) {
     find "$sweep_root/src" -type f 2>/dev/null | {
         sweep_bad=0
         while IFS= read -r f; do
-            CLAUDE_PROJECT_DIR="$sweep_root" "$HOOK" "$f" </dev/null 2>&1
-            sweep_rc=$?
-            case "$sweep_rc" in
-                0 ) ;;
-                2 ) [ "$sweep_bad" -eq 2 ] || sweep_bad=1 ;;
-                * ) echo "boundary hook exited $sweep_rc on $f"; sweep_bad=2 ;;
-            esac
+            for sweep_hook in "$HOOK" "$INCLUDE_HOOK"; do
+                CLAUDE_PROJECT_DIR="$sweep_root" "$sweep_hook" "$f" </dev/null 2>&1
+                sweep_rc=$?
+                case "$sweep_rc" in
+                    0 ) ;;
+                    2 ) [ "$sweep_bad" -eq 2 ] || sweep_bad=1 ;;
+                    * ) echo "hook $sweep_hook exited $sweep_rc on $f"; sweep_bad=2 ;;
+                esac
+            done
         done
         exit "$sweep_bad"
     }
 }
 
-if [ ! -x "$HOOK" ]; then
-    echo "  FAIL: R-ARCH-02: $HOOK is missing or not executable"
-    exit 1
-fi
+for h in "$HOOK" "$INCLUDE_HOOK"; do
+    if [ ! -x "$h" ]; then
+        echo "  FAIL: R-ARCH-02: $h is missing or not executable"
+        exit 1
+    fi
+done
 
 # run_all <project-root> — the aggregate: sweep, then the verdict, then a return code. One
 # function for the real tree and for the wiring case below, so no case can pass while the
@@ -145,6 +154,42 @@ else
 fi
 rm -rf "$tmp"
 
+# A transitive include: core reaches hal through a header in no declared layer. The
+# boundary hook passes both files (each line it reads is clean for its own layer); only the
+# include hook follows the chain. Before sweep( ) ran it, this tree returned 0.
+tmp=$( mktemp -d ) || exit 1
+mkdir -p "$tmp/.claude/workflow" "$tmp/src/core" "$tmp/src/common"
+cp "$ROOT/.claude/workflow/boundaries.rules" "$tmp/.claude/workflow/boundaries.rules"
+printf '#include "common/y.h"\n' > "$tmp/src/core/x.cpp"
+printf '#include "hal/bus.h"\n' > "$tmp/src/common/y.h"
+sweep "$tmp" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -eq 1 ]; then
+    echo "  ok:   R-ARCH-02 rejection case (core -> unlayered header -> hal is refused)"
+    rejected=$(( rejected + 1 ))
+else
+    echo "  FAIL: R-ARCH-02 rejection case did not fire — core reaching hal through an unlayered header returned $rc, expected 1 (one known cause: include-check.sh run by a bash older than 4 exits 0 here)"
+    fail=1
+fi
+rm -rf "$tmp"
+
+# The include hook is held to the same exit contract as the boundary hook: a stub that
+# exits 3 on a clean tree must come back 2, not 1 and not 0.
+tmp=$( mktemp -d ) || exit 1
+mkdir -p "$tmp/.claude/workflow" "$tmp/src/core" "$tmp/stub"
+cp "$ROOT/.claude/workflow/boundaries.rules" "$tmp/.claude/workflow/boundaries.rules"
+printf '#include <cstdint>\n' > "$tmp/src/core/ok.cpp"
+printf '#!/bin/sh\nexit 3\n' > "$tmp/stub/hook"
+chmod +x "$tmp/stub/hook"
+if ( INCLUDE_HOOK="$tmp/stub/hook"; sweep "$tmp" >/dev/null 2>&1; [ $? -eq 2 ] ); then
+    echo "  ok:   R-ARCH-02 rejection case (an include hook that cannot run is not a pass)"
+    rejected=$(( rejected + 1 ))
+else
+    echo "  FAIL: R-ARCH-02 rejection case did not fire — a broken include hook was not reported as a hook error"
+    fail=1
+fi
+rm -rf "$tmp"
+
 # --- wiring case -------------------------------------------------------------------------
 # The rejection cases above assert sweep's verdict. This asserts that the verdict reaches
 # run_all's RETURN CODE and names the rule, which is a different claim: without it, deleting
@@ -164,12 +209,12 @@ else
 fi
 rm -rf "$tmp"
 
-# A floor, not an equality: an equality breaks when a third case is added, which is a floor
+# A floor, not an equality: an equality breaks when another case is added, which is a floor
 # written backwards (§How counts are stated). Prefixed so the liveness harness can see it.
-if [ "$rejected" -ge 3 ]; then
-    echo "  ok:   rejection cases: $rejected/3"
+if [ "$rejected" -ge 5 ]; then
+    echo "  ok:   rejection cases: $rejected/5"
 else
-    echo "  FAIL: rejection cases: $rejected/3"
+    echo "  FAIL: rejection cases: $rejected/5"
     fail=1
 fi
 
