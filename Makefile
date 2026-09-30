@@ -4,6 +4,8 @@
 #                  No hardware, no network, no ARM toolchain, no Pico SDK.
 #   make lint      Style gate: clang-format layout + clang-tidy naming. Fails if
 #                  either tool is missing (`make test` only skips them).
+#   make typecheck Compiles each src/core/*.h on its own; needs only the host
+#                  C++ compiler. Not part of `make test`.
 #   make firmware  Builds the .uf2 images. Needs cmake, arm-none-eabi-gcc and
 #                  PICO_SDK_PATH. Not required for `make test` to pass.
 #   make clean
@@ -15,12 +17,13 @@ CXXFLAGS ?= -std=c++23 -Wall -Wextra -Werror -Og -g -UNDEBUG -Isrc
 BUILD    := build/host
 
 CORE_SRC  := $(wildcard src/core/*.cpp)
+CORE_HDRS := $(wildcard src/core/*.h)
 CPP_TESTS := $(wildcard tests/test_*.cpp)
 CPP_BINS  := $(patsubst tests/%.cpp,$(BUILD)/%,$(CPP_TESTS))
 SH_TESTS  := $(wildcard tests/test_*.sh)
 PY_TESTS  := $(wildcard tests/test_*.py)
 
-.PHONY: test lint firmware clean
+.PHONY: test lint typecheck firmware clean
 
 test: $(CPP_BINS)
 	@fail=0; \
@@ -36,6 +39,17 @@ $(BUILD)/%: tests/%.cpp $(CORE_SRC)
 
 lint:
 	@sh tests/test_style.sh
+
+# Each header is included from a one-line TU on stdin, not compiled as the main file: that
+# form trips -Wpragma-once-outside-header and -Wunused-const-variable under -Werror, which
+# say nothing about missing includes. Every header runs even after one fails.
+typecheck:
+	@fail=0; \
+	for h in $(CORE_HDRS) ; do \
+	    printf '#include "%s"\n' "$$h" | $(CXX) $(CXXFLAGS) -fsyntax-only -xc++ - \
+	        || { echo "typecheck: $$h does not compile on its own"; fail=1; }; \
+	done; \
+	exit $$fail
 
 firmware:
 	@command -v cmake >/dev/null 2>&1 || { echo "firmware: cmake not installed. See docs/phases/00-scaffold/verify.md"; exit 1; }

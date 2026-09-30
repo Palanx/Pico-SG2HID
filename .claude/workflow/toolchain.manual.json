@@ -11,7 +11,8 @@
   "commands": {
     "lint": "make lint",
     "test": "make test",
-    "secrets": "gitleaks git --staged --no-banner --redact"
+    "secrets": "gitleaks git --staged --no-banner --redact",
+    "typecheck": "make typecheck"
   },
   "_comment_secrets": "gitleaks 8.30.1: `protect` still works but is deprecated upstream. Pinned to the modern `gitleaks git --staged` here so a future gitleaks that drops `protect` cannot turn the pre-commit gate into a confusing hard block. Both verified 2026-08-31 to exit 1 on a staged fake token."
 }
