@@ -21,10 +21,14 @@
 #
 # clang-tidy scope is every .cpp, .h, .hpp, .cc and .inl under src/ (any layer, any depth)
 # plus tests/*.cpp. clang-format's scope is the same five extensions anywhere in the repo.
-# A file under src/hal, src/usb, src/app or src/emu that includes a Pico SDK or TinyUSB
-# header fails lint with clang-diagnostic-error until 03-pio-bus supplies its include flags;
-# that failure is loud, which is the point — skipping those layers was a silent hole. See the
-# header of .clang-tidy for the upgrade path.
+# Two invocations. src/core and tests/ are linted with the host flags below. src/hal, src/usb,
+# src/app and src/emu include Pico SDK headers, so they are linted through the compile database
+# `make firmware` writes (build/pico), plus the ARM compiler's own standard-library directories
+# as -isystem: clang-tidy reads the ARM target from the driver name and then finds no <cstddef>
+# on its own (measured 2026-09-30, docs/constraints.md §Observed conventions). Lint on those
+# layers therefore needs a configured build; without one they are not linted, and a distinct
+# line says so — never `file not found` under the naming FAIL line. A header or a new file the
+# database does not list is interpolated from a neighbour, measured to lint correctly.
 #
 # Two flags, for two different failures, both measured 2026-09-11 with Homebrew LLVM 23.1.0
 # and both recorded in docs/constraints.md §Observed conventions:
@@ -98,6 +102,19 @@ tidy_sysroot_flag() {
   return 0
 }
 
+# arm_isystem_args <arm-g++> — one --extra-arg=-isystem<dir> per directory the ARM compiler
+# searches for C++ system headers, read from its own `-E -v`; empty when <arm-g++> is empty.
+# Never hardcoded: the directories carry the GCC version.
+# belay-debt: the result is word-split by its callers, so an ARM toolchain installed under a
+# path with a space breaks SDK-layer lint; the cask installs under
+# /Applications/ArmGNUToolchain/<version>/, which has none. Upgrade if another install is used.
+arm_isystem_args( ) {
+  [ -n "$1" ] || return 0
+  "$1" -mcpu=cortex-m0plus -mthumb -xc++ -E -v - </dev/null 2>&1 \
+    | sed -n '/^#include <...> search starts here:$/,/^End of search list\.$/p' | sed '1d;$d' \
+    | while read -r d; do printf ' --extra-arg=-isystem%s' "$d"; done
+}
+
 # The scratch dir for the rejection cases. Both tools find their config by walking up from the
 # file, so it holds copies of .clang-format and .clang-tidy.
 case_tmp=$( mktemp -d ) || exit 1
@@ -158,15 +175,34 @@ else
   # unconditional flag: -xc++ on a .cpp is accepted but then the language comes from this
   # line rather than from the file, which is the kind of flag that outlives a rename.
   SYSROOT=$( tidy_sysroot_flag )
+  # The ARM compiler the way tests/test_tool_versions.sh finds it: first on PATH, nothing else.
+  TIDY_DB=build/pico
+  ARM=$( command -v arm-none-eabi-g++ ) || ARM=""
+  ARM_ISYSTEM=$( arm_isystem_args "$ARM" )
+  sdk_files=$( printf '%s\n' "$files" | grep -E '^src/(hal|usb|app|emu)/' )
+  if [ -n "$sdk_files" ] && [ ! -f "$TIDY_DB/compile_commands.json" ]; then
+    skip_or_fail "R-STYLE-02: no compile database for src/hal, src/usb, src/app, src/emu — run make firmware"
+  elif [ -n "$sdk_files" ] && [ -z "$ARM_ISYSTEM" ]; then
+    skip_or_fail "R-STYLE-02: arm-none-eabi-g++ not on PATH — src/hal, src/usb, src/app, src/emu not linted"
+  fi
+  if [ -n "$sdk_files" ] && { [ ! -f "$TIDY_DB/compile_commands.json" ] || [ -z "$ARM_ISYSTEM" ]; }; then
+    files=$( printf '%s\n' "$files" | grep -vE '^src/(hal|usb|app|emu)/' )
+  fi
   if [ -z "$SYSROOT" ]; then
     echo "  note: no macOS SDK from xcrun; any header reaching libc++'s platform layer"
     echo "        will report clang-diagnostic-error (see the flag note at the top)"
   fi
+  # tidy_sdk <db-dir> <file> — one clang-tidy run through a compile database written for the
+  # ARM compiler. $ARM_ISYSTEM stays unquoted: it is one argument per directory.
+  tidy_sdk() { "$TIDY" --quiet -p "$1" $ARM_ISYSTEM "$2" 2>&1; }
   # tidy_files <file-list> — one clang-tidy run per line of <file-list>, diagnostics only.
   # $( tidy_lang ) and $SYSROOT stay unquoted: empty is no argument, the sysroot is two.
   tidy_files() {
     printf '%s\n' "$1" | while IFS= read -r f; do
-      "$TIDY" --quiet "$f" -- $( tidy_lang "$f" ) -std=c++23 -Isrc $SYSROOT 2>&1
+      case "$f" in
+        src/hal/*|src/usb/*|src/app/*|src/emu/*) tidy_sdk "$TIDY_DB" "$f" ;;
+        *) "$TIDY" --quiet "$f" -- $( tidy_lang "$f" ) -std=c++23 -Isrc $SYSROOT 2>&1 ;;
+      esac
     done | grep -E '(: (warning|error): |^error: )'
   }
   if [ -z "$files" ]; then
@@ -183,6 +219,25 @@ else
   fi
   printf 'void BadName( ) {}\n' > "$case_tmp/a b.cpp"
   style_case R-STYLE-02 "$( tidy_files "$case_tmp/a b.cpp" )" readability-identifier-naming "no such file or directory"
+  # A file compiled by the ARM compiler, through a scratch compile database, the way an SDK
+  # layer is linted: its naming violation must be reported, and no standard header missing.
+  if [ -n "$ARM_ISYSTEM" ]; then
+    mkdir "$case_tmp/arm"
+    printf '#include <optional>\nint BadName;\n' > "$case_tmp/arm/probe.cpp"
+    printf '[{"directory": "%s", "file": "%s", "arguments": ["%s", "-mcpu=cortex-m0plus", "-mthumb", "-std=gnu++23", "-c", "%s"]}]\n' \
+      "$case_tmp/arm" "$case_tmp/arm/probe.cpp" "$ARM" "$case_tmp/arm/probe.cpp" > "$case_tmp/arm/compile_commands.json"
+    arm_out=$( tidy_sdk "$case_tmp/arm" "$case_tmp/arm/probe.cpp" )
+    if printf '%s\n' "$arm_out" | grep -q "probe\.cpp:.*readability-identifier-naming" \
+       && ! printf '%s\n' "$arm_out" | grep -q 'file not found'; then
+      echo "  ok:   R-STYLE-02 rejection case: ARM compile database"
+    else
+      echo "  FAIL: R-STYLE-02 rejection case: ARM compile database not diagnosed as readability-identifier-naming"
+      printf '%s\n' "$arm_out" | head -8 | sed 's/^/        /'
+      fail=1
+    fi
+  else
+    echo "  skip: R-STYLE-02 rejection case: ARM compile database (arm-none-eabi-g++ not on PATH)"
+  fi
 fi
 
 exit $fail
