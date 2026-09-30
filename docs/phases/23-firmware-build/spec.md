@@ -18,11 +18,10 @@ The three gaps the phase closes:
 |---|---|---|
 | `-fno-exceptions -fno-rtti` on firmware is a claim, since no firmware build exists | A check reads `build/pico/compile_commands.json` and fails when any compile command for a C++ file under `src/` does not end up with both flags in effect | R-ERR-05 → `test: tests/test_firmware_flags.sh` |
 | A file under `src/hal/`, `src/usb/`, `src/app/` or `src/emu/` that includes an SDK header fails `make lint` with `file not found`, under a FAIL line naming R-STYLE-02 | `make lint` runs clang-tidy on those files through the CMake compile database. A naming violation there is reported as a naming violation. A missing database is its own FAIL line that says to run `make firmware` | `docs/phases/13-scaffold-check-gaps/notes.md` §For later phases |
-| R-SAFETY-09's function names were never checked against real SDK headers | Every name, and every starred prefix, resolves to a declaration in the SDK 2.3.1 headers. Any SDK function that can make a pin drive, and that is missing from the list, is added | `docs/phases/02-wiring/notes.md` §For later phases |
+| R-SAFETY-09's function names were never checked against real SDK headers | Every name, and every starred prefix, resolves to a declaration in the SDK 2.3.1 headers. | `docs/phases/02-wiring/notes.md` §For later phases |
 | `make typecheck` covers `src/core/*.h` only | `make typecheck` also runs the firmware build when `PICO_SDK_PATH` is set. When it is unset, it prints a `skip: firmware typecheck` line and judges only the core headers | `.claude/rules/tech-debt.md` "No typecheck gate configured", `make firmware` bullet |
 
-`make test` still needs only a C++23 compiler and `python3` (R-PROC-04). With no SDK and no
-ARM compiler, every new check either runs on synthetic input or prints a `skip:` line.
+`make test` still needs only a C++23 compiler and `python3` (R-PROC-04).
 
 ## Context pointers
 
@@ -52,12 +51,12 @@ ARM compiler, every new check either runs on synthetic input or prints a `skip:`
   database is the upgrade path. The header is rewritten; `CheckOptions` does not change.
 - `tests/test_style.sh`: the clang-tidy invocation (`tidy_files( )`, `tidy_sources( )`,
   `tidy_lang( )`, `tidy_sysroot_flag( )`), the `OPTIONAL_TOOLS` skip-or-fail convention,
-  the `style_case` rejection-case pattern, and the header note on flags.
+  and the header note on flags.
 - `tests/test_repo_shape.sh`:
   - `find_safety09( )` and its reject and accept cases (search `R-SAFETY-09`);
   - `src_files( )`.
 - `tests/test_tool_versions.sh`: how the ARM compiler is located and probed (`resolve( )`,
-  `arm_compiles( )`). Reuse the same lookup rather than hardcoding a path.
+  `arm_compiles( )`).
 - `tests/test_checks_are_live.py`:
   - every function in a `tests/test_*.sh` file is mutated, and neutering it must fail the
     file;
@@ -173,8 +172,7 @@ ARM compiler, every new check either runs on synthetic input or prints a `skip:`
      - a later `-fexceptions` or `-frtti` overrides one of them (the last flag wins in GCC).
    - A database with **zero** such entries is itself a failure line, never a vacuous pass.
    - The real run reads `${COMPILE_DB:-build/pico/compile_commands.json}`. When that file is
-     absent, it goes through the `skip_or_fail` convention of `tests/test_style.sh`: `skip:`
-     under `OPTIONAL_TOOLS=1`, `FAIL` otherwise.
+     absent, it prints `skip:` under `OPTIONAL_TOOLS=1` and `FAIL` otherwise.
    - Rejection cases, always run, each a hand-written JSON fixture fed to the same function
      and each required to fail:
      - `-fno-rtti` missing;
@@ -200,13 +198,14 @@ ARM compiler, every new check either runs on synthetic input or prints a `skip:`
      unchanged. A file under `src/hal/`, `src/usb/`, `src/app/` or `src/emu/` is run as
      `clang-tidy --quiet -p build/pico <arm -isystem extra args> <file>`, using the
      measured form in Context pointers.
-   - The `-isystem` directories are derived at run time from the ARM compiler, found the way
-     `tests/test_tool_versions.sh` finds it. They are never hardcoded.
+   - The `-isystem` directories are derived at run time from the first `arm-none-eabi-g++`
+     on `PATH`. They are never hardcoded.
    - With no `build/pico/compile_commands.json` and at least one SDK-layer file present, a
      distinct line is printed, `skip_or_fail`-style: `R-STYLE-02: no compile database for
      src/hal, src/usb, src/app, src/emu — run make firmware`. It never says `file not found`
-     under the naming FAIL line.
-   - New rejection case, `style_case`-shaped, run only when the ARM compiler and clang-tidy
+     under the naming FAIL line. With the database present and no `arm-none-eabi-g++` on
+     `PATH`, a second line of the same kind names the missing compiler.
+   - New rejection case, run only when the ARM compiler and clang-tidy
      are both present, `skip:` otherwise:
      - a scratch compile database whose one entry compiles a scratch file with the ARM
        compiler;
@@ -239,7 +238,10 @@ ARM compiler, every new check either runs on synthetic input or prints a `skip:`
      one-per-alternative shape.
    - Every considered and rejected candidate goes in `notes.md` with its reason.
    - The rule's sentence "not yet checked against installed SDK headers — `03-pio-bus` does
-     that" is replaced by "checked against pico-sdk 2.3.1 headers on <date>".
+     that" is replaced by "checked against pico-sdk 2.3.1 headers on <date>", plus a sentence that
+     SDK functions outside this search which configure pins internally (for example
+     `stdio_uart_init_full`) are neither named nor matched. The operator kept that gap
+     (2026-09-30).
    - Check: the name-resolution command in Acceptance criteria → no output.
    - Check: `sh tests/test_repo_shape.sh` → exit 0.
 
@@ -257,8 +259,13 @@ ARM compiler, every new check either runs on synthetic input or prints a `skip:`
 7. **`docs/phases/23-firmware-build/verify.md`**, for a non-specialist, with the two
    R-PROC-02 headings.
    - What the SDK and a UF2 are.
-   - Step 0's install, verbatim.
-   - Every Acceptance criteria command below, with what it should print.
+   - Step 0's install.
+   - These Acceptance criteria commands, with what each should print: `make firmware`, the
+     `CMAKE_CXX_STANDARD` grep, the version-mismatch `cmake`, the `gpio_|pio_` grep of
+     `src/app/main.cpp`, `sh tests/test_firmware_flags.sh` and its mutated-database run,
+     `make lint`, the lint probe, the no-database `make lint`, `make typecheck` with and
+     without `PICO_SDK_PATH`, and `make test`. The rest check the harness and the
+     documents, not the firmware, and stay out of `verify.md`.
    - The flashing procedure:
      - **the guitar unplugged from the socket** (R-SAFETY-08);
      - hold BOOTSEL while plugging USB, copy `build/pico/sg2hid.uf2` to the `RPI-RP2`
@@ -325,4 +332,5 @@ edit. That is the one criterion the implementation may extend.
 - Scanning `.c` files under `src/`. No `.c` is added here, and the gap is recorded in
   R-CLEAN-03/05 and `docs/phases/15-scaffold-file-lists/notes.md`.
 - Comments elsewhere that name `03-pio-bus` (`src/core/pins.h`, the `belay-debt:` headers).
-  Only the files this phase edits are corrected.
+  They stay, including in the files this phase edits, except in the passages Plan steps 4
+  and 5 rewrite.

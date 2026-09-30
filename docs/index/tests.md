@@ -5,9 +5,6 @@ Files: 24 · Lines: 4415
 
 ## Files and public symbols
 
-### tests/test_firmware_flags.sh (115 lines)
-_no declarations detected_
-
 ### tests/fixtures/incomplete_check.sh (40 lines)
 _no declarations detected_
 
@@ -43,6 +40,9 @@ _no declarations detected_
 - L448: `def property_alternation(names, unproven):`
 - L463: `def bootstrap():`
 - L487: `def main():`
+
+### tests/test_firmware_flags.sh (115 lines)
+_no declarations detected_
 
 ### tests/test_phase_docs.sh (124 lines)
 _no declarations detected_

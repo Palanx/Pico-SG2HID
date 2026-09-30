@@ -46,8 +46,9 @@ Three automatic checks come with it:
    `skip: firmware typecheck: PICO_SDK_PATH unset`.
 
 The list of forbidden pin-configuring functions (rule R-SAFETY-09) was also checked against
-the real SDK 2.3.1 headers. Every name exists, and no function that can make a pin drive was
-missing, so the list did not change.
+the real SDK 2.3.1 headers. Every name exists, and the search for similarly named functions
+found none that can make a pin drive, so the list did not change. One gap is kept on purpose:
+SDK helpers that set up pins internally, such as `stdio_uart_init_full`, are not on the list.
 
 `make test` still needs nothing but a C++ compiler and `python3`: no SDK, no ARM compiler.
 

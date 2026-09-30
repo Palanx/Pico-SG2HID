@@ -150,6 +150,63 @@ Considered and rejected. None of these changes function, direction or output ena
     bash entry in §For later phases.
 - **Spec pointers.** Every file touched is named in the Plan or the Context pointers. No
   missing pointer.
+- **Validation 2026-09-30: the independent review could not decide seven hunks from the spec
+  alone** (closure test FAILED). The spec needs these fixes. Delete text first, add only
+  where no sentence can carry the pointer:
+  - `tests/test_style.sh`: the second `skip_or_fail` line (database present, no ARM
+    compiler). Plan step 4 defines only the no-database line.
+  - `tests/test_style.sh`: `command -v arm-none-eabi-g++`. Plan step 4 says "found the way
+    `tests/test_tool_versions.sh` finds it" but not what that way is. `resolve( )` does
+    `command -v "$1"` for `arm-none-eabi-*`, so the hunk is right; the spec should say
+    "first on `PATH`".
+  - `tests/test_style.sh`: the ARM-database rejection case is written out by hand.
+    "`style_case`-shaped" does not say whether `style_case` must be called.
+  - `tests/test_firmware_flags.sh`: the missing-database branch is inline. "Goes through the
+    `skip_or_fail` convention" does not say whether the behaviour alone is enough.
+  - `docs/constraints.md`: R-SAFETY-10, R-PROTO-01, R-ERR-01, R-ERR-02 and the
+    "Consequence for `03-pio-bus`" finding still name `03-pio-bus`. §Out of scope's "Only
+    the files this phase edits are corrected" reads as every mention in an edited file. The
+    phase corrected only the passages it rewrote.
+  - `docs/constraints.md`: R-SAFETY-09 gains the `stdio_uart_init_full` sentence. Plan
+    step 5 asks for a one-sentence replacement only.
+  - Goal: "every new check either runs on synthetic input or prints a `skip:` line". The
+    new checks are not enumerated.
+- **Spec amended after the 2026-09-30 validation (operator's order: trim the spec, keep the
+  R-SAFETY-09 gap).**
+  - Deleted:
+    - Goal row 3, "Any SDK function that can make a pin drive … is added". It overclaimed;
+      Plan step 5 already carries the search and its joining criterion.
+    - Goal, "every new check either runs on synthetic input or prints a `skip:` line". The
+      bare `make test` criterion carries it.
+    - "`style_case`-shaped" (Plan step 4) and the `style_case` pattern in the Context
+      pointer for `tests/test_style.sh`.
+    - "Reuse the same lookup" (Context pointer for `tests/test_tool_versions.sh`).
+    - "verbatim" on step 0's install (Plan step 7). The reviewer listed it as taste;
+      deleted so it does not come back as a finding.
+  - Cut back:
+    - Plan step 3: the `skip_or_fail` reference is now the behaviour alone.
+    - Plan step 4: "the way `tests/test_tool_versions.sh` finds it" is now "the first
+      `arm-none-eabi-g++` on `PATH`", which is what `resolve( )` does for `arm-none-eabi-*`.
+  - Changed:
+    - Plan step 7 names the 12 commands `verify.md` carries, instead of "every Acceptance
+      criteria command". Operator's decision: the other 15 check the harness and the
+      documents, not the firmware.
+    - §Out of scope: `03-pio-bus` mentions stay, except in the passages Plan steps 4 and 5
+      rewrite.
+  - Added, where no existing sentence could carry it:
+    - Plan step 4: the second line for a database present with no ARM compiler.
+    - Plan step 5: the `stdio_uart_init_full` sentence, grounded in the operator's decision
+      to keep the gap.
+  - Code-side: `verify.md` line 49 no longer says that no function which can make a pin
+    drive was missing. It says what the search covered and names the kept gap.
+  - Reconciliation, statements that assert the same facts:
+    - Plan step 5's joining criterion and the Acceptance name loop are unchanged, and
+      consistent with the trimmed Goal.
+    - The `PHASES.md` row says only "every R-SAFETY-09 name resolves", so it is unaffected.
+    - The §Deviations entry "R-SAFETY-09's replaced sentence is longer" is now covered by
+      Plan step 5 and stays as history.
+    - `verify.md`'s "`make test` still needs nothing but a C++ compiler" prose is owned by
+      `25-scaffold-bash-floor` and is untouched.
 
 ## Debt
 
@@ -213,3 +270,27 @@ Considered and rejected. None of these changes function, direction or output ena
 - **Not done here, still unowned:** the `clang-query` + `compile_commands.json` upgrade of the
   grep checks. The compile database now exists at `build/pico/compile_commands.json`, so that
   row, once planned, has its input. The row has not been planned yet.
+- **Taste from the 2026-09-30 review (not findings):** `src/app/main.cpp` uses `uint32_t`
+  without `#include <cstdint>`. It compiles through `pico/stdlib.h`, but it should include
+  what it uses. `CMakeLists.txt` adds `target_include_directories( sg2hid PRIVATE src )`,
+  which the spec does not mention.
+
+## Validation — 2026-09-30
+- criteria: 27 passed / 0 failed
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean
+- independent review: contradicts (code-side): `verify.md` §1 lists 12 of the 27 Acceptance
+  criteria commands — Plan step 7 "Every Acceptance criteria command below, with what it
+  should print"; no Deviations entry records the omission. contradicts (spec-side): Goal gap
+  row 3 "Any SDK function that can make a pin drive, and that is missing from the list, is
+  added" vs the R-SAFETY-09 hunk naming `stdio_uart_init_full` as unmatched. Plan step 5
+  searches a narrower prefix set, the hunk follows step 5, and §Deviations records the
+  sentence as deliberate, so the Goal overclaims. Code-side part of the same finding:
+  `verify.md` line 49 "no function that can make a pin drive was missing" is false against
+  that hunk. undecidable: 7, listed in §Deviations.
+- closure test: fail: 7 undecidable hunks (missing pointers, §Deviations)
+- findings: 9
+- spec size: 23189 (first)
+- upstream: none
+- not-ours: none
+- verdict: returned to implementation
