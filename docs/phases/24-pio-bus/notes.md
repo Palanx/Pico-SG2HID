@@ -2,7 +2,7 @@
 
 ## Outcome
 
-- base: 946bb0f (the expansion commit; this phase's work is uncommitted in the working tree)
+- base: 946bb0f (the expansion commit; this phase's work is committed on top of it in 9e777ec)
 
 - **`src/core/`**: `ps2_protocol.h` gains `kWireBitsPerByte` (8), `kBusClockHz` (250 kHz) and
   `kAckTimeoutUs` (100, `belay-debt:`). `pins.h` gains `consteval gpio_of( Signal )`, and its
