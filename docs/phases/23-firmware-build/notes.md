@@ -294,3 +294,23 @@ Considered and rejected. None of these changes function, direction or output ena
 - upstream: none
 - not-ours: none
 - verdict: returned to implementation
+
+## Validation — 2026-09-30 (round 2)
+- criteria: 27 passed / 0 failed
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean
+- independent review: clean (0 contradicts, 0 undecidable)
+- closure test: pass
+- findings: 0
+- spec size: 23600 (+411)
+- upstream: none
+- not-ours: none
+- verdict: done
+
+Taste from the round-2 review (not findings):
+- `tests/test_firmware_flags.sh` is committed as mode 100644; `tests/test_style.sh` is
+  100755. Both are run through `sh`.
+- `verify.md` escapes the pipe inside a table code span (`'gpio_\|pio_'`). It renders
+  correctly, but copying from the raw Markdown gives a different regex.
+- Repeated from round 1: `-Werror` wording in Plan step 2, `int main()` spacing, the missing
+  `<cstdint>` include in `src/app/main.cpp`.
