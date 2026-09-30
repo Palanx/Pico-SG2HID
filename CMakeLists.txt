@@ -33,7 +33,9 @@ target_include_directories( sg2hid PRIVATE src )
 # Our sources only. The SDK's libraries are INTERFACE libraries, so their .c files compile
 # inside this target too, and target_compile_options would put -Werror on them.
 set_source_files_properties( ${SG2HID_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror" )
-target_link_libraries( sg2hid pico_stdlib )
+# The PS2 bus master's PIO program, assembled into build/pico/ps2_master.pio.h.
+pico_generate_pio_header( sg2hid ${CMAKE_CURRENT_LIST_DIR}/src/hal/ps2_master.pio )
+target_link_libraries( sg2hid pico_stdlib hardware_pio )
 
 # UART stdio would claim GP0 and GP1, which src/core/pins.h does not declare (R-SAFETY-02).
 pico_enable_stdio_usb( sg2hid 1 )

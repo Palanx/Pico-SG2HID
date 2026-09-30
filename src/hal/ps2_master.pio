@@ -1,0 +1,41 @@
+; The PS2 bus master: one byte per TX word, SPI mode 3, LSB first (R-PROTO-01).
+;
+; Pins, all mapped by src/hal/pio_port.cpp from src/core/pins.h:
+;   out   CMD   the bit the master sends
+;   in    DATA  the bit the controller sends
+;   side  CLK   idle high; low while CMD changes, high while DATA is sampled
+;   jmp   ACK   high at idle; the controller pulls it low to acknowledge a byte
+;
+; TX word: bits 0-7 the byte, bit 8 set when this byte waits for ACK. RX word: the byte shifted
+; in, in bits 24-31 (the ISR shifts right).
+;
+; This program never touches pin directions. CMD and CLK are made outputs once by
+; pio_port.cpp; DATA and ACK are never outputs (R-SAFETY-01).
+;
+; Cycle budget, at 4 PIO cycles per bit (the clock divider makes that kBusClockHz):
+;   pull + set                  2 cycles, CLK high
+;   per bit: out (CLK low)      2 cycles
+;            in + jmp (CLK high) 2 cycles   x 8 = 32 cycles = 32 us at 250 kHz
+;   out y + jmp !y              2 cycles
+;   ACK wait                    1 cycle per poll, until ACK is low; bounded by the CPU
+;   push                        1 cycle
+; So 37 cycles per byte without the ACK wait. Nothing waits for ACK to rise again: a byte
+; lasts 32 us and the ACK pulse a few.
+
+.program ps2_master
+.side_set 1 opt
+
+.wrap_target
+    pull block          side 1      ; wait for a byte with CLK idle high
+    set x, 7                        ; eight bits
+bitloop:
+    out pins, 1         side 0 [1]  ; CLK falls, CMD takes the next bit
+    in pins, 1          side 1      ; CLK rises, DATA is sampled
+    jmp x-- bitloop
+    out y, 1                        ; the "wait for ACK" flag
+    jmp !y done
+wait_ack:
+    jmp pin wait_ack                ; ACK still high: keep waiting
+done:
+    push block
+.wrap

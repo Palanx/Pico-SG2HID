@@ -35,6 +35,19 @@ constexpr std::uint8_t kModeDigital = 0x00;
 constexpr std::uint8_t kModeAnalog  = 0x01;
 constexpr std::uint8_t kModeLocked  = 0x03;  // keeps the mode across an ANALOG-button press
 
+// --- Bus timing -------------------------------------------------------------------------
+
+// Every byte on the bus is eight clocked bits, least significant first (R-PROTO-01).
+constexpr std::size_t kWireBitsPerByte = 8;
+
+// CLK frequency the master drives: 4 µs per bit, 32 µs per byte.
+constexpr std::uint32_t kBusClockHz = 250000;
+
+// How long the master waits for ACK after a byte's last bit before giving up on the byte.
+// belay-debt: a budget, not a measurement; 09-guitar-observe measures the real ACK delay and
+// replaces this if the guitar answers later than it allows.
+constexpr std::uint32_t kAckTimeoutUs = 100;
+
 // --- Bytes the controller sends ---------------------------------------------------------
 
 // The second response byte of every well-formed frame. A controller that is powered but not

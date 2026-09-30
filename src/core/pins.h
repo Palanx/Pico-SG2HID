@@ -13,6 +13,7 @@
 // wrong drive mode is visible at a glance.
 
 #include <cstdint>
+#include <utility>
 
 namespace ps2 {
 
@@ -30,7 +31,8 @@ struct PinAssignment {
     DriveMode    drive;
 };
 
-// Consecutive GPIOs so 03-pio-bus can map them onto PIO pin groups.
+// Consecutive GPIOs, so the PIO program in src/hal/ps2_master.pio can take CMD, DATA and CLK as
+// pin-group bases.
 inline constexpr PinAssignment kMasterPins[] = {
     {.gpio      = 2,
      .signal    = Signal::Data,
@@ -53,5 +55,17 @@ inline constexpr PinAssignment kMasterPins[] = {
      .direction = Direction::Input,
      .drive     = DriveMode::OpenDrainInputOnly},
 };
+
+// The GPIO a signal is wired to. `consteval`: a signal missing from the table reaches
+// `std::unreachable`, which is not a constant expression, so the build fails instead of the
+// firmware configuring a wrong pin.
+consteval std::uint8_t gpio_of( Signal signal ) {
+    for ( const PinAssignment& pin : kMasterPins ) {
+        if ( pin.signal == signal ) {
+            return pin.gpio;
+        }
+    }
+    std::unreachable();
+}
 
 }  // namespace ps2

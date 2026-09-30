@@ -14,6 +14,8 @@
 #                   marked [[nodiscard]]
 # RULE R-SAFETY-09 — docs/constraints.md §Invariants — no pin-configuring SDK call under src/
 #                   outside src/hal/
+# RULE R-SAFETY-10 — docs/constraints.md §Invariants — src/hal/ configures pins only by
+#                   iterating kMasterPins
 #
 # Every check takes the tree root as an argument. That is not decoration: when this file was
 # written the repo had no product code, so every check passed vacuously and one that was
@@ -40,7 +42,7 @@ ROOT=$( pwd )
 fail=0
 
 # One alternation, not -name clauses, so tests/test_checks_are_live.py mutates each extension.
-src_files( )  { find "$1/src" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl)$'; }
+src_files( )  { find "$1/src" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl|pio)$'; }
 core_files( ) { find "$1/src/core" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl)$'; }
 # R-ERR-02 scans HEADERS only, and that is a property of the rule rather than a shortcut: a
 # [[nodiscard]] belongs on the declaration, where it governs every call, and C++ does not
@@ -172,8 +174,18 @@ find_err02( ){ hits '^[[:space:]]*(constexpr[[:space:]]+)?(std::expected<[^;]*>[
 # name must be followed by optional whitespace and `(`, so a mention in prose or a pointer to
 # the function is not a call. `\b` keeps `pio_gpio_init` from matching the `gpio_init`
 # alternative; each has its own. The trailing `[a-z0-9_]*` is the rule's `*`: gpio_init_mask,
-# the gpio_set_dir_*masked forms and pio_sm_set_pindirs_with_mask64.
-find_safety09( ){ hits '\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(' '' "$( src_files "$1" | grep -vF "$1/src/hal/" )"; }
+# the gpio_set_dir_*masked forms and pio_sm_set_pindirs_with_mask64. The second half is the
+# PIO side of the same act: a `set`, `out` or `mov` to `pindirs` in a .pio program turns a pin
+# into an output as surely as gpio_set_dir does. A `pindirs` inside a `;` comment is a false
+# positive (hits( ) strips only `//`).
+find_safety09( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' '' "$( src_files "$1" | grep -vF "$1/src/hal/" )"; }
+
+# R-SAFETY-10: inside src/hal/, every pin-configuring call names `pin.gpio`, the loop variable
+# over kMasterPins, on the call's own line, and no .pio program sets pindirs at all. The same
+# alternation as find_safety09( ), written out again so each finder's alternatives are mutated
+# on their own. A grep: it does not prove `pin` is that loop's variable, and a direct register
+# write is not seen (R-SAFETY-10's Scope clause).
+find_safety10( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' 'pin\.gpio' "$( src_files "$1" | grep -F "$1/src/hal/" )"; }
 
 run_all( ) {
     report R-ARCH-01  "$( find_arch01  "$1" )" || fail=1
@@ -187,6 +199,7 @@ run_all( ) {
     report R-ERR-01   "$( find_err01   "$1" )" || fail=1
     report R-ERR-02   "$( find_err02   "$1" )" || fail=1
     report R-SAFETY-09 "$( find_safety09 "$1" )" || fail=1
+    report R-SAFETY-10 "$( find_safety10 "$1" )" || fail=1
 }
 
 run_all "$ROOT"
@@ -359,6 +372,29 @@ reject find_safety09 src/app/x.cpp  'gpio_init ( 2 );'
 reject find_safety09 src/emu/x.cpp  'gpio_set_dir( 2, true );'
 reject find_safety09 src/usb/x.cpp  'gpio_pull_up( 6 );'
 reject find_safety09 src/core/x.h   'gpio_init( 2 );'
+reject find_safety09 src/app/x.pio  'set pindirs, 1'
+reject find_safety09 src/app/x.pio  'out pindirs, 1'
+reject find_safety09 src/app/x.pio  'mov pindirs, x'
+# R-SAFETY-10: the same alternatives inside src/hal/, each with a literal GPIO instead of
+# `pin.gpio`, and the three pindirs forms in a .pio there.
+reject find_safety10 src/hal/x.cpp  'gpio_init( 2 );'
+reject find_safety10 src/hal/x.cpp  'gpio_set_dir( 2, false );'
+reject find_safety10 src/hal/x.cpp  'gpio_set_function( 5, GPIO_FUNC_PIO0 );'
+reject find_safety10 src/hal/x.cpp  'gpio_set_pulls( 2, true, false );'
+reject find_safety10 src/hal/x.cpp  'gpio_pull_up( 2 );'
+reject find_safety10 src/hal/x.cpp  'gpio_pull_down( 2 );'
+reject find_safety10 src/hal/x.cpp  'gpio_disable_pulls( 2 );'
+reject find_safety10 src/hal/x.cpp  'gpio_set_oeover( 2, GPIO_OVERRIDE_HIGH );'
+reject find_safety10 src/hal/x.cpp  'pio_gpio_init( pio0, 2 );'
+reject find_safety10 src/hal/x.cpp  'pio_sm_set_pindirs_with_mask( pio0, 0, 0, 0 );'
+reject find_safety10 src/hal/x.cpp  'pio_sm_set_consecutive_pindirs( pio0, 0, 2, 5, true );'
+reject find_safety10 src/hal/x.cpp  'gpio_init_mask( 0x7c );'
+reject find_safety10 src/hal/x.cpp  'gpio_set_dir_out_masked( 0x38 );'
+reject find_safety10 src/hal/x.cpp  'pio_sm_set_pindirs_with_mask64( pio0, 0, 0, 0 );'
+reject find_safety10 src/hal/x.cpp  'gpio_init ( 2 );'
+reject find_safety10 src/hal/x.pio  'set pindirs, 1'
+reject find_safety10 src/hal/x.pio  'out pindirs, 1'
+reject find_safety10 src/hal/x.pio  'mov pindirs, x'
 # No floor. A count next to "every alternative is covered" is the round-8 defect: the two
 # drift and the number is the one that stops being true. Sufficiency is asserted by
 # tests/test_checks_are_live.py, which derives what is needed from the patterns themselves.
@@ -460,10 +496,14 @@ accept find_safety09 src/hal/x.cpp 'gpio_init( 2 );'
 accept find_safety09 src/app/x.cpp 'gpio_put( 2, true );'
 # gpio_get outside hal
 accept find_safety09 src/app/x.cpp 'gpio_get( 6 );'
-if [ "$accepted" -ge 28 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 28)"
+# R-SAFETY-10: a configuring call on the table's loop variable is the allowed form
+accept find_safety10 src/hal/x.cpp 'gpio_init( pin.gpio );'
+# R-SAFETY-10 looks only inside src/hal/; outside it, R-SAFETY-09 owns the call
+accept find_safety10 src/app/x.cpp 'gpio_init( 2 );'
+if [ "$accepted" -ge 30 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 30)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 28)"
+    echo "  FAIL: false-positive cases: $accepted (floor 30)"
     fail=1
 fi
 
@@ -501,10 +541,11 @@ wiring R-PROTO-05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
 wiring R-ERR-01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
 wiring R-ERR-02   src/core/x.h   'LinkState step( Link& link );'
 wiring R-SAFETY-09 src/app/x.cpp 'gpio_init( 2 );'
-if [ "$wired" -eq 11 ]; then
-    echo "  ok:   wiring cases: $wired/11 (each rule's verdict reaches the exit code)"
+wiring R-SAFETY-10 src/hal/x.cpp 'gpio_init( 2 );'
+if [ "$wired" -eq 12 ]; then
+    echo "  ok:   wiring cases: $wired/12 (each rule's verdict reaches the exit code)"
 else
-    echo "  FAIL: wiring cases: $wired/11"
+    echo "  FAIL: wiring cases: $wired/12"
     fail=1
 fi
 
