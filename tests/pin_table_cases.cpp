@@ -27,6 +27,18 @@ constexpr std::uint8_t kReservedGpios[] = { 23, 24, 25, 29 };
 constexpr ps2::Signal kAllSignals[] = {
     ps2::Signal::Data, ps2::Signal::Cmd, ps2::Signal::Att, ps2::Signal::Clk, ps2::Signal::Ack };
 
+// gpio_of answers each row's own GPIO. Compile-time: a wrong answer is a build failure. A loop
+// over the rows rather than one assertion per index, so a table with a row deleted still
+// compiles here and the copied-tree case in tests/test_pin_table.py reaches R-SAFETY-02's line.
+static_assert( []() consteval {
+    for ( const ps2::PinAssignment& row : ps2::kMasterPins ) {
+        if ( ps2::gpio_of( row.signal ) != row.gpio ) {
+            return false;
+        }
+    }
+    return true;
+}() );
+
 // Large enough for every line one aggregate run prints.
 constexpr std::size_t kCaptureSize = 1024;
 
