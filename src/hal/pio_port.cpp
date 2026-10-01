@@ -112,14 +112,17 @@ void att_release() {
     gpio_put( gpio_of( Signal::Att ), true );
 }
 
-std::optional<std::uint8_t> exchange_byte( std::uint8_t out, bool should_wait_ack ) {
+ByteExchange exchange_byte( std::uint8_t out, bool should_wait_ack ) {
     const std::uint32_t start = time_us_32();
     pio_sm_put( bus_pio, bus_sm, out | ( should_wait_ack ? kWaitAckFlag : 0U ) );
-    if ( !rx_within( start, kByteBudgetUs ) ) {
+    const bool          is_complete = rx_within( start, kByteBudgetUs );
+    const std::uint32_t elapsed_us  = time_us_32() - start;  // before recover( ) on a timeout
+    if ( !is_complete ) {
         recover();
-        return std::nullopt;
+        return { .in = std::nullopt, .elapsed_us = elapsed_us };
     }
-    return static_cast<std::uint8_t>( pio_sm_get( bus_pio, bus_sm ) >> kRxByteShift );
+    return { .in = static_cast<std::uint8_t>( pio_sm_get( bus_pio, bus_sm ) >> kRxByteShift ),
+             .elapsed_us = elapsed_us };
 }
 
 std::optional<std::array<std::uint8_t, kWireBitsPerByte>> probe_wire_bits( std::uint8_t byte ) {

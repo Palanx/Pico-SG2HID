@@ -24,10 +24,17 @@ void att_assert();
 // ATT high: the controller is deselected and the bus is idle.
 void att_release();
 
+// One byte's outcome: the byte shifted in, or std::nullopt when the byte, or its ACK when one
+// was asked for, did not complete within kAckTimeoutUs; and on both paths the microseconds from
+// handing the byte over until it completed or was given up on (ADR-0015).
+struct ByteExchange {
+    std::optional<std::uint8_t> in;
+    std::uint32_t               elapsed_us;
+};
+
 // Shifts `out` onto CMD and one byte in from DATA, LSB first. With `should_wait_ack`, then
-// waits for the controller to pull ACK low. Returns the byte shifted in, or std::nullopt when
-// the byte, or its ACK when one was asked for, did not complete within kAckTimeoutUs.
-[[nodiscard]] std::optional<std::uint8_t> exchange_byte( std::uint8_t out, bool should_wait_ack );
+// waits for the controller to pull ACK low.
+[[nodiscard]] ByteExchange exchange_byte( std::uint8_t out, bool should_wait_ack );
 
 // The bit-order probe (R-PROTO-01): shifts `byte` out at a slow clock and reads the CMD pad at
 // each rising CLK edge, in time order. std::nullopt when eight edges did not come within a

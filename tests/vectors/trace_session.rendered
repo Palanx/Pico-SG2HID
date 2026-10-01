@@ -1,0 +1,29 @@
+probe: 0x01 on the wire: 1,0,0,0,0,0,0,0
+frame: 5/5 bytes, complete
+  byte 0: out 01 in 01 36 us ack 0 us
+  byte 1: out 42 in 42 39 us ack 2 us
+  byte 2: out 00 in 00 39 us ack 2 us
+  byte 3: out 00 in 00 39 us ack 2 us
+  byte 4: out 00 in 00 38 us
+frame: 1/1 bytes, complete
+  byte 0: out 80 in 80 38 us
+frame: 0/5 bytes, aborted at byte 0: no ACK after 134 us
+  byte 0: out 01 in -- 134 us
+  byte 1: out 42 in -- not sent
+  byte 2: out 00 in -- not sent
+  byte 3: out 00 in -- not sent
+  byte 4: out 00 in -- not sent
+frame: 4/9 bytes, aborted at byte 4: no ACK after 134 us
+  byte 0: out FF in FF 41 us ack 4 us
+  byte 1: out 00 in 00 52 us ack 15 us
+  byte 2: out A5 in A5 39 us ack 2 us
+  byte 3: out 5A in 5A 40 us ack 3 us
+  byte 4: out 80 in -- 134 us
+  byte 5: out 01 in -- not sent
+  byte 6: out FE in -- not sent
+  byte 7: out 7F in -- not sent
+  byte 8: out 3C in -- not sent
+frame: 1/2 bytes, aborted at byte 1: did not complete after 135 us
+  byte 0: out 01 in 01 39 us ack 2 us
+  byte 1: out 42 in -- 135 us
+unreadable trace line: T1 n=2 k=3 out=01,42 in=01,42 us=39,38

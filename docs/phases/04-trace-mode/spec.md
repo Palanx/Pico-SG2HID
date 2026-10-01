@@ -161,7 +161,10 @@ What this phase moves:
 
 7. **The shared vectors and R-PROTO-08's check.** Touches `tests/vectors/trace_session.txt`,
    `tests/vectors/trace_session.rendered`, `tests/bus_trace_cases.cpp`,
-   `tests/test_bus_trace.py`.
+   `tests/test_bus_trace.py`, `tests/vectors/README.md`.
+   - `README.md`: one paragraph saying the two `trace_session.*` files are the one exception to
+     its header form — the `T1` contract's literals are text — and that only
+     `tests/test_bus_trace.py` reads them.
    - `trace_session.txt`, hand-written: at least a complete 5-byte frame, a complete 1-byte
      frame, a 5-byte frame aborted at byte 0, a 9-byte frame aborted mid-frame, one `probe:`
      line, and one malformed `T1` line, which is last.
