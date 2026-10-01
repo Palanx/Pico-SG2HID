@@ -58,17 +58,22 @@ really exercised. That the wait actually waits is first observable against the e
 - `docs/wiring.md`: the pin table and the breadboard (330 Ω series resistors on all five
   lines, 10 kΩ pull-ups on `DATA` and `ACK`, socket pins 1, 2, 6, 9 for DATA, CMD, ATT, ACK).
   The loopback jumpers go between socket rows.
-- `src/core/pins.h`: `kMasterPins`, `Signal`, `Direction`, `DriveMode`. GP2..GP6 in the order
+- `src/core/pins.h`: `kMasterPins`, `Signal`, `Direction`, `DriveMode`; `DATA` and `ACK` are
+  the `OpenDrainInputOnly` rows. GP2..GP6 in the order
   DATA, CMD, ATT, CLK, ACK.
-- `src/core/ps2_protocol.h`: where wire-level constants live; the two new ones go here.
+- `src/core/ps2_protocol.h`: where wire-level constants live; the new ones go here.
+- `src/core/hid_report.h`: already defines `kBitsPerByte` in the same namespace, so the
+  wire's bit count needs its own name.
 - `src/app/main.cpp`: replaced by the loopback program.
 - `CMakeLists.txt`: the `SG2HID_SOURCES` glob and per-source `-Wall -Wextra -Werror`; the PIO
   header and `hardware_pio` are added here.
 - `Makefile`: `make test` runs every `tests/test_*.py`; nothing here changes.
 - `tests/test_ps2_codec.py` and `tests/ps2_codec_cases.cpp`: the model for the new driver and
-  cases file — `*_cases.cpp` not named `test_*.cpp`, the `make test` flags, forwarded `ok:`/
+  cases file — `*_cases.cpp` not named `test_*.cpp`, forwarded `ok:`/
   `FAIL:` lines, copied-tree mutations that assert their anchor matched.
 - `tests/pin_table_cases.cpp`: gains the `gpio_of` check (Plan step 1).
+- `tests/test_pin_table.py`: its copied-tree case "ACK entry deleted" compiles
+  `pin_table_cases.cpp` with a row missing, so that check cannot index rows by position.
 - `tests/test_repo_shape.sh`: `src_files( )`, `hits( )` (its second argument is an exclusion
   pattern), `find_safety09( )`, `run_all( )`, and the `reject`/`accept`/`wiring` sections with
   their counted floors.
@@ -89,15 +94,15 @@ really exercised. That the wait actually waits is first observable against the e
 ## Plan
 
 1. **Constants and one lookup in `core`.**
-   - `src/core/ps2_protocol.h` gains `kBusClockHz = 250000` and `kAckTimeoutUs = 100`. The
-     second carries a `belay-debt:` comment: a budget, not a measurement; `09-guitar-observe`
+   - `src/core/ps2_protocol.h` gains `kWireBitsPerByte = 8`, `kBusClockHz = 250000` and
+     `kAckTimeoutUs = 100`. The last carries a `belay-debt:` comment: a budget, not a measurement; `09-guitar-observe`
      owns measuring it.
    - `src/core/pins.h` gains `consteval std::uint8_t gpio_of( Signal signal )`, returning the
      table row's `gpio` and ending in `std::unreachable( )` after the loop. `consteval`, so a
      signal missing from the table is a compile error.
      The pins.h comment naming `03-pio-bus` is corrected.
-   - `tests/pin_table_cases.cpp` gains a `static_assert` that `gpio_of( row.signal ) ==
-     row.gpio` for each of the five rows.
+   - `tests/pin_table_cases.cpp` gains one `static_assert` over a loop on the table rows
+     that `gpio_of( row.signal ) == row.gpio`.
    - Check: `make test` → last line `OK`.
 
 2. **The frame loop and the seam, host-tested.** Touches `src/hal/bus_port.h`,
@@ -106,7 +111,7 @@ really exercised. That the wait actually waits is first observable against the e
    - `bus_port.h` declares, in `namespace ps2`: `void bus_init( );`, `void att_assert( );`,
      `void att_release( );`, `[[nodiscard]] std::optional<std::uint8_t> exchange_byte(
      std::uint8_t out, bool should_wait_ack );` and `[[nodiscard]]
-     std::optional<std::array<std::uint8_t, 8>> probe_wire_bits( std::uint8_t byte );`
+     std::optional<std::array<std::uint8_t, kWireBitsPerByte>> probe_wire_bits( std::uint8_t byte );`
      (implemented in step 4; the fake does not define it, and nothing in `bus_frame.cpp`
      calls it or `bus_init`).
      `exchange_byte` returns the byte shifted in, or `std::nullopt` when the byte (and its
@@ -125,7 +130,7 @@ really exercised. That the wait actually waits is first observable against the e
        not; after a failed byte, no further byte is exchanged. The returned count equals the
        failure position (or `n`), and completed bytes hold the fake's responses.
    - `tests/test_bus_frame.py` carries `RULE R-SAFETY-07` and `RULE R-PROTO-06`, compiles the
-     cases file with `src/hal/bus_frame.cpp` using `make test`'s flags, forwards its lines, then
+     cases file with `src/hal/bus_frame.cpp`, forwards its lines, then
      runs copied-tree mutations of `src/hal/bus_frame.cpp`, each asserting its anchor matched
      and requiring the named line to turn to `FAIL`:
      - no `att_release` call → R-SAFETY-07;
@@ -151,9 +156,11 @@ really exercised. That the wait actually waits is first observable against the e
        (`set pindirs, 1`, `out pindirs, 1`, `mov pindirs, x`);
      - `find_safety10`: one reject per alternative of its pattern, each in `src/hal/x.cpp`
        with a literal GPIO (or `src/hal/x.pio` for the three `pindirs` forms);
-     - `find_safety10`: accept `gpio_init( pin.gpio );` in `src/hal/x.cpp`;
+     - `find_safety10`: accept `gpio_init( pin.gpio );` in `src/hal/x.cpp`, and accept
+       `gpio_init( 2 );` in `src/app/x.cpp`;
      - a `wiring R-SAFETY-10` case.
-     Every counted floor rises by the number of cases added.
+     The accept floor rises 28 → 30 and the wiring floor 11 → 12; the reject section has no
+     floor.
    - Check: `sh tests/test_repo_shape.sh` → exit 0, an `ok:` line naming R-SAFETY-10.
    - Check: `python3 tests/test_checks_are_live.py` → exit 0.
 
@@ -167,25 +174,26 @@ really exercised. That the wait actually waits is first observable against the e
      then `push`. It never waits for `ACK` to go high again: a byte lasts 32 µs, the pulse a
      few µs. No `pindirs` instruction.
    - `pio_port.cpp` implements `bus_port.h`:
-     - `bus_init( )` configures pins in one `for ( const auto& pin : kMasterPins )` loop, and
-       every pin-configuring call on a line naming `pin.gpio`:
-       - inputs (`DATA`, `ACK`): `gpio_init`, `gpio_pull_up`;
+     - `bus_init( )` claims a state machine and loads the program (the pin calls below take
+       the claimed state machine), then configures pins in one `for ( const auto& pin : kMasterPins )` loop:
+       - the `DriveMode::OpenDrainInputOnly` rows (`DATA`, `ACK`): `gpio_init`, `gpio_pull_up`;
        - `ATT`: `gpio_init`, driven high, then `gpio_set_dir` out — released before it can
          drive;
        - `CMD`, `CLK`: set high through the state machine, then
          `pio_sm_set_consecutive_pindirs( …, pin.gpio, 1, true )`, then `pio_gpio_init`.
-       Then it loads the program and configures the state machine: out base `CMD`, in base
+       Then it configures the state machine: out base `CMD`, in base
        `DATA`, side-set base `CLK`, `jmp` pin `ACK` (all through `gpio_of`), both shifts
        right, no autopush/autopull, clock divider `clk_sys / ( 4 * kBusClockHz )`.
      - `att_assert( )`/`att_release( )`: `gpio_put` on `ATT`, low/high.
      - `exchange_byte( )` puts the word and waits for the RX word at most 8 bit periods plus
        `kAckTimeoutUs`. On timeout it disables the state machine, clears its FIFOs, restarts
        it at the program's first instruction, re-enables it, and returns `std::nullopt`.
-     - Every number (cycles per bit, bits per byte, the slowest divider, the probe's one
+     - Every number (cycles per bit, the slowest divider, the probe's one
        second) is a named `constexpr` (R-CLEAN-04; `make lint` reports a missed one).
      - `probe_wire_bits( )`: sets the slowest clock divider, sends `byte` with no `ACK` wait, and from the CPU samples
        the `CMD` pad on each rising edge of the `CLK` pad (`gpio_get`), in time order. It gives
-       up after one second (`std::nullopt`), and restores the bus clock divider either way.
+       up after one second (`std::nullopt`, recovering the state machine as `exchange_byte( )`
+       does), and restores the bus clock divider either way.
    - `CMakeLists.txt`: `pico_generate_pio_header( sg2hid ${CMAKE_CURRENT_LIST_DIR}/src/hal/ps2_master.pio )`
      and `hardware_pio` in `target_link_libraries`.
    - Check: `make firmware && test -f build/pico/sg2hid.uf2` → exit 0.
@@ -222,8 +230,8 @@ really exercised. That the wait actually waits is first observable against the e
      positive. R-CLEAN-03's and R-CLEAN-05's "File scope" sentences add `.pio`.
    - Check: `python3 tests/test_rule_traceability.py` → exit 0.
 
-7. **`docs/phases/24-pio-bus/verify.md`**, for a non-specialist, with the two R-PROC-02
-   headings.
+7. **`docs/phases/24-pio-bus/verify.md`**, for a non-specialist, with the R-PROC-02 headings
+   `## What was built` and `## Check it yourself`.
    - What PIO is; what `CLK`, `CMD`, `DATA`, `ATT`, `ACK` do in one frame; LSB-first and mode 3
      in one picture.
    - The host checks: `python3 tests/test_bus_frame.py` and what its lines mean.
