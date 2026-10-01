@@ -7,8 +7,8 @@ they bite.
 #                   but the last
 
 The driver for tests/bus_frame_cases.cpp, which is not named test_*.cpp for the reason
-tests/test_ps2_codec.py gives. It is compiled with src/hal/bus_frame.cpp and a fake port, with
-the flags `make test` uses, run, and its ok:/FAIL: lines forwarded verbatim.
+tests/test_ps2_codec.py gives. It is compiled with src/hal/bus_frame.cpp and a fake port, run,
+and its ok:/FAIL: lines forwarded verbatim.
 
 The rejection cases copy the tree, mutate the frame loop into one realistic bug each, and
 require that bug's rule line to turn to FAIL. Every mutation asserts its anchor matched: a
@@ -25,7 +25,6 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES = os.path.join("tests", "bus_frame_cases.cpp")
 FRAME = os.path.join("src", "hal", "bus_frame.cpp")
-# The flags make test uses (the Makefile's CXXFLAGS).
 CXXFLAGS = ["-std=c++23", "-Wall", "-Wextra", "-Werror", "-Og", "-g", "-UNDEBUG", "-Isrc"]
 # A mutant that loops forever must fail, not hang `make test`.
 RUN_TIMEOUT_S = 30

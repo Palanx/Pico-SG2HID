@@ -200,9 +200,9 @@ really exercised. That the wait actually waits is first observable against the e
      - `exchange_byte( )` puts the word and waits for the RX word at most 8 bit periods plus
        `kAckTimeoutUs`. On timeout it disables the state machine, clears its FIFOs, restarts
        it at the program's first instruction, re-enables it, and returns `std::nullopt`.
-     - Every number (cycles per bit, the slowest divider, the probe's one
+     - Every number (cycles per bit, the probe's divider, the probe's one
        second) is a named `constexpr` (R-CLEAN-04; `make lint` reports a missed one).
-     - `probe_wire_bits( )`: sets the slowest clock divider, sends `byte` with no `ACK` wait, and from the CPU samples
+     - `probe_wire_bits( )`: sets the clock divider to 65535, sends `byte` with no `ACK` wait, and from the CPU samples
        the `CMD` pad on each rising edge of the `CLK` pad (`gpio_get`), in time order. It gives
        up after one second (`std::nullopt`, recovering the state machine as `exchange_byte( )`
        does), and restores the bus clock divider either way.

@@ -295,6 +295,32 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
     - The For later phases entry "Round 5's open undecidable, closed by override" is now
       stale and was deleted in this edit.
 
+- **Operator override of round 6's escape, 2026-10-01.** Round 6 escaped to `/expand-phase`
+  (findings 3 → 1 → 2 since round 3's escape). The operator overrode it: status `pending` →
+  `in-progress`, after commit 9f186e8.
+  - The operator's reason: the belay feedback filed in round 3 against
+    `commands/validate-phase.md` (a starved reviewer turns up a different shallow gap on each
+    pass, so the findings count never reaches zero and the escape keeps firing) is a
+    package defect. It stops this phase from completing on its own terms.
+  - Closing exception, operator-granted: round 7 closes the phase by override if no gate
+    fails and the review has no `contradicts`. That holds even with spec-side
+    `undecidable`s, which then go to For later phases. No round 8.
+  - Cut 1, spec amendment: Plan step 4's "the slowest clock divider" becomes "the clock
+    divider to 65535", and the constexpr list's "the slowest divider" becomes "the probe's
+    divider". Founded on `src/hal/pio_port.cpp:26` (`kSlowestDivInt = 65535`).
+    - Reconciled: `docs/constraints.md` R-PROTO-01 said "its slowest divider" and now says
+      "divider 65535".
+    - Checked, no change needed: `verify.md`'s "about 500 times" (65535 against a bus divider
+      of 125 at 125 MHz, about 524 times) and the Goal, which does not mention the divider.
+  - Cut 2, a claim deleted rather than added to the spec: `tests/test_bus_frame.py`'s
+    docstring "with the flags `make test` uses" and its comment "The flags make test uses
+    (the Makefile's CXXFLAGS)" were removed. Round 2 had already deleted the spec sentence
+    behind them.
+    - The list is unchanged, and it matches `Makefile:20` as of 2026-10-01. Nothing ties the
+      two together; that is recorded under Debt.
+    - Checked: no other file in the phase claims those flags (grep over `test_bus_frame.py`,
+      `bus_frame_cases.cpp`, `spec.md` and `verify.md`).
+
 ## Debt
 
 - `kAckTimeoutUs` (`src/core/ps2_protocol.h`, `belay-debt:`) is a 100 µs budget, not a
@@ -305,6 +331,11 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
 - `find_safety10( )` excuses any line containing `pin.gpio`, so it does not check that `pin`
   is the table loop variable (stated in R-SAFETY-10's Scope clause). Upgrade path: the
   `clang-query` + compile database upgrade, which has no row yet.
+
+- `tests/test_bus_frame.py`'s `CXXFLAGS` is a hand-copied list, not read from the
+  `Makefile`. Ceiling: a flag added to `make test` doesn't reach this test. Upgrade path:
+  have the driver ask `make` for `CXXFLAGS`, if the two ever drift. No owner row; recorded,
+  not scheduled.
 
 ## For later phases
 
@@ -334,6 +365,12 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
     constexpr arithmetic (`kRxByteShift`, `kByteBudgetUs`).
   - `verify.md` §1 expects "three `ok:` lines" from `test_bus_frame.py`. That count includes
     the `rejection cases` line alongside the two rule lines.
+
+- **Validation round 7 (2026-10-01), taste, not blocking:**
+  - `pio_port.cpp` `bus_init( )` computes `mask` for every row, but only the CMD/CLK branch
+    uses it.
+  - `find_safety10( )`'s comment says "no .pio program sets pindirs at all". A `.pio` line
+    that contains `pin.gpio` would still be excused by the shared `pin\.gpio` exclusion.
 
 ## Validation — 2026-09-30
 - criteria: 29 passed / 0 failed (24 host commands + 5 bench, run on the operator's build/loopback.log and build/ackopen.log: probe 10/10 LSB-first, all loopback frames match with ATT high and 1x–2x clock time, ACK-open frames abort 0/5 and 0/9 with ATT high, and 1/1 completes 10 times)
@@ -435,4 +472,23 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
 - verdict: escaped to /expand-phase: spec re-expanded. Findings since round 3's escape verdict
   are 3 → 1 → 2, not strictly falling, so the status is set to pending. The operator overrode
   round 3's escape; whether to override this one is theirs.
+
+## Validation — 2026-10-01 (round 7)
+- criteria: 28 passed / 0 failed. All 23 host criteria were re-run this round, exactly as
+  written; criterion 1's and 3's `ok:` rule lines were confirmed. The 5 bench criteria carry
+  over from round 5 (same logs). The firmware source has not changed since; this round
+  touched only `tests/test_bus_frame.py`'s comments and docs.
+- project gates: test pass, lint pass, typecheck pass (scripts/check.sh rc 0, no
+  `workflow gap:` line)
+- boundary sweep: clean
+- independent review: clean. Taste: 2 items, moved to For later phases.
+- closure test: pass. All four sections have entries. The reviewer found every non-workflow
+  file in the diff named in the Plan. No Deviations entry reports a missing pointer since the
+  round-6 cuts.
+- findings: 0
+- spec size: 23361 (+1 since the previous validation)
+- upstream: none in this round. The round-3 belay feedback against
+  `commands/validate-phase.md` still stands.
+- not-ours: none
+- verdict: done. A clean pass, so the operator's round-7 closing exception was not needed.
 
