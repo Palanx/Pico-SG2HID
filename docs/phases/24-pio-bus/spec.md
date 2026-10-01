@@ -154,7 +154,9 @@ really exercised. That the wait actually waits is first observable against the e
      `run_all( )` gains its `report` line.
    - New `find_proto07( )`: `hits` over the `.pio` files under `src/hal/`, pattern a line
      starting with `in pins`, `out pins` or `pull`, exclusion the same instruction carrying
-     `side 1`, `side 0` or `side 1` respectively before any `;`. Header gains
+     `side 1`, `side 0` or `side 1` respectively before any `;`. `hits( )` applies the
+     exclusion to `grep -n` output, so each line reaches it as `N:text`; the exclusion is
+     anchored on that `N:` prefix so its `[^;]*` cannot start after a `;`. Header gains
      `# RULE R-PROTO-07`; `run_all( )` gains its `report` line.
    - Cases:
      - `find_safety09`: one reject per new alternative, each in `src/app/x.pio`

@@ -276,6 +276,25 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
       still true, and rows are never edited.
     - Done phases' notes that quote "LSB-first, SPI mode 3" are history.
 
+- **Round 5's undecidable, closed in the spec (operator-ordered, 2026-10-01).** The operator
+  reopened the phase after the round-5 override (status `done` → `in-progress`, commit
+  9dbd4f3) to close the gap rather than defer it.
+  - Spec amendment: Plan step 3's `find_proto07( )` bullet now says that `hits( )` applies the
+    exclusion to `grep -n` output (`N:text` lines), and that the exclusion is anchored on that
+    prefix so `[^;]*` cannot start after a `;`.
+  - Founded on the code, not on the fix: `tests/test_repo_shape.sh` `hits( )` pipes
+    `grep -nE "$1"` output into `grep -vE "$2"`.
+  - The code is unchanged. The anchor stays because without it a `;` comment that itself
+    reads `in pins … side 1` would excuse the line.
+  - Reconciliation checked:
+    - The `test_repo_shape.sh` Context pointer ("its second argument is an exclusion
+      pattern") is still true. It is the general pointer, and step 3 now carries the
+      specifics.
+    - `find_safety10( )`'s unanchored `pin\.gpio` exclusion doesn't depend on the prefix,
+      so nothing else needs it.
+    - The For later phases entry "Round 5's open undecidable, closed by override" is now
+      stale and was deleted in this edit.
+
 ## Debt
 
 - `kAckTimeoutUs` (`src/core/ps2_protocol.h`, `belay-debt:`) is a 100 µs budget, not a
@@ -315,11 +334,6 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
     constexpr arithmetic (`kRxByteShift`, `kByteBudgetUs`).
   - `verify.md` §1 expects "three `ok:` lines" from `test_bus_frame.py`. That count includes
     the `rejection cases` line alongside the two rule lines.
-- **Round 5's open undecidable, closed by override (see the round 5 record).** Plan step 3
-  doesn't say that `hits( )` gives its exclusion pattern `N:text` lines, and
-  `find_proto07( )`'s exclusion relies on that through its `^[0-9]+:` anchor. If a later phase
-  touches `hits( )` or that finder, the cheapest fix is to drop the anchor: `[^;]*` already
-  makes the match stop at the first `;`.
 
 ## Validation — 2026-09-30
 - criteria: 29 passed / 0 failed (24 host commands + 5 bench, run on the operator's build/loopback.log and build/ackopen.log: probe 10/10 LSB-first, all loopback frames match with ATT high and 1x–2x clock time, ACK-open frames abort 0/5 and 0/9 with ATT high, and 1/1 completes 10 times)
@@ -393,3 +407,32 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
 - not-ours: none
 - verdict: done (operator override per the round-4 closing rule; closure test failed on one
   undecidable). Lifetime findings: 6 → 3 → 3 → 3 → 1.
+
+## Validation — 2026-10-01 (round 6)
+- criteria: 28 passed / 0 failed. All 23 host criteria were re-run this round, exactly as
+  written; criterion 3's `ok: R-SAFETY-10` and `ok: R-PROTO-07` lines were confirmed. The 5
+  bench criteria carry over from round 5 (same logs). The firmware source has not changed
+  since then.
+- project gates: test pass, lint pass, typecheck pass (scripts/check.sh rc 0, no
+  `workflow gap:` line)
+- boundary sweep: clean
+- independent review:
+  - undecidable: Plan step 4's "the slowest clock divider" is not defined. `pio_port.cpp`
+    uses `kSlowestDivInt = 65535`, the largest integer divider. The hardware also takes a
+    fractional part, and 0 means 65536.
+  - undecidable: `tests/test_bus_frame.py`'s docstring and the comment above its hard-coded
+    `CXXFLAGS` claim "the flags `make test` uses". Round 2 deleted the spec sentence behind
+    that claim. The list matches `Makefile:20` today, checked 2026-10-01; the spec just does
+    not say it must.
+  - Round 5's `hits( )` `N:` prefix finding was not raised again.
+  - Taste: `kWireBitsPerByte` as `std::size_t` (repeat); the `verify.md` greps
+    `| grep SAFETY-10` and `| grep PROTO-07` can match more than the one `ok:` line.
+- closure test: fail: two undecidables (missing pointers)
+- findings: 2
+- spec size: 23360 (+187 since the previous validation)
+- upstream: none
+- not-ours: none
+- verdict: escaped to /expand-phase: spec re-expanded. Findings since round 3's escape verdict
+  are 3 → 1 → 2, not strictly falling, so the status is set to pending. The operator overrode
+  round 3's escape; whether to override this one is theirs.
+
