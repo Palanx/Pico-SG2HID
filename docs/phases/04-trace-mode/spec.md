@@ -127,7 +127,11 @@ What this phase moves:
 4. **The PIO port measures.** Touches `src/hal/pio_port.cpp`.
    - `exchange_byte` returns `elapsed_us = time_us_32( ) - start` taken when the RX word is
      seen, or when the budget is given up on (before `recover( )`). `start` is taken before
-     `pio_sm_put`, as today. Nothing else in the file changes.
+     `pio_sm_put`, as today. Interrupts are disabled from before `start` until `elapsed_us` is
+     taken (`save_and_disable_interrupts( )` / `restore_interrupts( )`, `hardware/sync.h`), so
+     no interrupt's time is counted in a byte; `recover( )` runs after they are restored.
+     Nothing else in the file changes. *(Amended 2026-10-01 after the first bench capture; see
+     `notes.md` §Deviations.)*
    - Check: `make firmware && test -f build/pico/sg2hid.uf2` → exit 0; `make lint` → exit 0.
 
 5. **The loopback program prints the trace.** Touches `src/app/main.cpp`.

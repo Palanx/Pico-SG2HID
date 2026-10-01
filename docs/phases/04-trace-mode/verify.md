@@ -35,7 +35,9 @@ T1 n=5 k=5 out=01,42,00,00,00 in=01,42,00,00,00 us=38,39,39,39,38
 | `us=…` | For every byte the Pico *tried*, how many microseconds (µs, millionths of a second) passed between handing the byte to the PIO and the byte finishing or being given up on. `-` for a byte never tried. |
 
 The timing is taken by the main CPU reading its microsecond clock, before and after each byte
-(ADR-0015). That adds a few µs of slack to every number: good enough to see a controller that
+(ADR-0015), with interrupts switched off while a byte is timed so that nothing else the Pico
+does (like sending the previous line over USB) is counted in it. The CPU's own reads of the
+clock still add a µs or two to every number: good enough to see a controller that
 answers in 10 µs versus one that never answers, not good enough for single-µs precision.
 
 ### What an `ACK` delay is, and why it is "elapsed minus the shift time"
@@ -161,7 +163,7 @@ steps 1–3 if you have not done them before.
 
    **Expected:** `0` from the decoder. Every frame headline ends in `complete`. Every `ack`
    is between 0 and about 5 µs (the jumper holds `ACK` low, so there is nothing to wait for).
-   Every byte's `us` is roughly 37–45.
+   Every byte's `us` is roughly 36–40.
 
    **Read one frame aloud**, for example the 5-byte one: "five bytes, all completed; the
    Pico sent 01 42 00 00 00 and got the same back, because CMD is wired to DATA; each byte

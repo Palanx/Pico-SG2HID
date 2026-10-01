@@ -11,6 +11,7 @@
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/pio.h"
+#include "hardware/sync.h"
 #include "pico/time.h"
 #include "ps2_master.pio.h"
 
@@ -113,10 +114,15 @@ void att_release() {
 }
 
 ByteExchange exchange_byte( std::uint8_t out, bool should_wait_ack ) {
-    const std::uint32_t start = time_us_32();
+    // Interrupts off for the timed window only, at most kByteBudgetUs: a USB interrupt landing
+    // between the two clock reads would add its own time to the byte, which the trace would
+    // show as ACK delay (measured 2026-10-01: up to 14 us on the first byte after a printf).
+    const std::uint32_t irq_state = save_and_disable_interrupts();
+    const std::uint32_t start     = time_us_32();
     pio_sm_put( bus_pio, bus_sm, out | ( should_wait_ack ? kWaitAckFlag : 0U ) );
     const bool          is_complete = rx_within( start, kByteBudgetUs );
     const std::uint32_t elapsed_us  = time_us_32() - start;  // before recover( ) on a timeout
+    restore_interrupts( irq_state );
     if ( !is_complete ) {
         recover();
         return { .in = std::nullopt, .elapsed_us = elapsed_us };

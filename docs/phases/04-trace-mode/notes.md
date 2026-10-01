@@ -15,7 +15,8 @@
   `.elapsed_us` for every attempted byte (the failed one included) and `.in` for completed
   bytes. ATT framing, the ACK flag and the single exit and release are unchanged.
 - `src/hal/pio_port.cpp`: `exchange_byte` takes `elapsed_us = time_us_32( ) - start` right
-  after `rx_within` on both paths, before `recover( )` on a timeout. `ps2_master.pio` is
+  after `rx_within` on both paths, before `recover( )` on a timeout, with interrupts disabled
+  for that timed window (at most `kByteBudgetUs`, ~132 µs). `ps2_master.pio` is
   unchanged.
 - `src/app/main.cpp`: each sequence runs as a `WireByte` array. The `loopback:` line is
   unchanged and is followed by the `T1` line, or by `trace: line too long`.
@@ -60,6 +61,24 @@
 - **Decoder row format chosen here.** The spec fixed the row's content, not its exact
   layout. The layout above is now pinned by `trace_session.rendered` and by the bench `awk`
   (` ack <d> us`).
+
+- **Interrupts disabled around the timed window in `exchange_byte` (2026-10-01, operator's
+  choice after the first bench capture).** The spec's step 4 said nothing else in
+  `pio_port.cpp` changes. The first capture (`build/trace.log`, ATT→ACK jumpered, firmware
+  `7c100ad`) failed the bench criterion "every `ack` ≤ 5 µs" with 6 values of 6–14 µs.
+  - Steady-state bytes read 36–38 µs, so `SHIFT_US = 37` holds.
+  - The outliers were mostly byte 0 of the 9-byte frame (43–44, once 51 on byte 1), plus
+    byte 4 once (45). The 1-byte frame, which waits for no ACK, read 42–46.
+  - So the excess was not ACK. Inferred cause, not proven: USB stdio interrupts after the
+    preceding `printf` landing inside the timed window.
+  - Fix: `save_and_disable_interrupts( )` before `start`, `restore_interrupts( )` after
+    `elapsed_us`, before `recover( )`; `#include "hardware/sync.h"`.
+  - Reconciled: spec step 4 amended in this edit. `verify.md` now says interrupts are off and
+    expects 36–40 µs per byte, not 37–45. ADR-0015's "a few µs" overhead statement is still
+    true and was left as is (ADRs are immutable). Checked: the Goal and the acceptance
+    criteria say nothing about interrupts.
+  - The ACK-open capture (`build/trace-ackopen.log`) passed all its criteria before the fix.
+  - Both captures need re-taking on the new firmware before `/validate-phase`.
 
 ## Debt
 
