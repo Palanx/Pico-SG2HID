@@ -16,6 +16,8 @@
 #                   outside src/hal/
 # RULE R-SAFETY-10 — docs/constraints.md §Invariants — src/hal/ configures pins only by
 #                   iterating kMasterPins
+# RULE R-PROTO-07  — docs/constraints.md §Invariants — the bus master's PIO program is SPI
+#                   mode 3
 #
 # Every check takes the tree root as an argument. That is not decoration: when this file was
 # written the repo had no product code, so every check passed vacuously and one that was
@@ -187,6 +189,14 @@ find_safety09( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_
 # write is not seen (R-SAFETY-10's Scope clause).
 find_safety10( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' 'pin\.gpio' "$( src_files "$1" | grep -F "$1/src/hal/" )"; }
 
+# R-PROTO-07: in a .pio under src/hal/, `CLK` is the side-set, so every `pull` (where the
+# program idles) must carry `side 1`, every `out pins` `side 0` (CMD changes while CLK is low)
+# and every `in pins` `side 1` (DATA is sampled as CLK rises). The pattern is anchored at the
+# line's start so `;` comments are not read; the exclusion stops at `;` so a `side` inside a
+# comment does not excuse the line. Reads the program's text, not the wire (R-PROTO-07's
+# Scope clause).
+find_proto07( ){ hits '^[[:space:]]*(in[[:space:]]+pins|out[[:space:]]+pins|pull)\b' '^[0-9]+:[^;]*(\bin[[:space:]]+pins[^;]*side[[:space:]]+1\b|\bout[[:space:]]+pins[^;]*side[[:space:]]+0\b|\bpull\b[^;]*side[[:space:]]+1\b)' "$( src_files "$1" | grep -F "$1/src/hal/" | grep -E "\.pio$" )"; }
+
 run_all( ) {
     report R-ARCH-01  "$( find_arch01  "$1" )" || fail=1
     report R-ARCH-03  "$( find_arch03  "$1" )" || fail=1
@@ -200,6 +210,7 @@ run_all( ) {
     report R-ERR-02   "$( find_err02   "$1" )" || fail=1
     report R-SAFETY-09 "$( find_safety09 "$1" )" || fail=1
     report R-SAFETY-10 "$( find_safety10 "$1" )" || fail=1
+    report R-PROTO-07 "$( find_proto07 "$1" )" || fail=1
 }
 
 run_all "$ROOT"
@@ -395,6 +406,12 @@ reject find_safety10 src/hal/x.cpp  'gpio_init ( 2 );'
 reject find_safety10 src/hal/x.pio  'set pindirs, 1'
 reject find_safety10 src/hal/x.pio  'out pindirs, 1'
 reject find_safety10 src/hal/x.pio  'mov pindirs, x'
+# R-PROTO-07: one per alternative of the pattern, each on the wrong side-set.
+reject find_proto07 src/hal/x.pio  '    in pins, 1          side 0'
+reject find_proto07 src/hal/x.pio  '    out pins, 1         side 1 [1]'
+reject find_proto07 src/hal/x.pio  '    pull block          side 0'
+# A `side` in a trailing comment does not excuse the line.
+reject find_proto07 src/hal/x.pio  '    in pins, 1    ; side 1'
 # No floor. A count next to "every alternative is covered" is the round-8 defect: the two
 # drift and the number is the one that stops being true. Sufficiency is asserted by
 # tests/test_checks_are_live.py, which derives what is needed from the patterns themselves.
@@ -500,10 +517,19 @@ accept find_safety09 src/app/x.cpp 'gpio_get( 6 );'
 accept find_safety10 src/hal/x.cpp 'gpio_init( pin.gpio );'
 # R-SAFETY-10 looks only inside src/hal/; outside it, R-SAFETY-09 owns the call
 accept find_safety10 src/app/x.cpp 'gpio_init( 2 );'
-if [ "$accepted" -ge 30 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 30)"
+# R-PROTO-07: one per alternative of the exclusion — the three correct side-sets
+# in pins on the rising edge
+accept find_proto07 src/hal/x.pio  '    in pins, 1          side 1      ; CLK rises'
+# out pins while CLK is low
+accept find_proto07 src/hal/x.pio  '    out pins, 1         side 0 [1]'
+# pull idles CLK high
+accept find_proto07 src/hal/x.pio  '    pull block          side 1'
+# a comment mentioning the instructions is not an instruction
+accept find_proto07 src/hal/x.pio  ';   pull + set          2 cycles, CLK high'
+if [ "$accepted" -ge 34 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 34)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 30)"
+    echo "  FAIL: false-positive cases: $accepted (floor 34)"
     fail=1
 fi
 
@@ -542,10 +568,11 @@ wiring R-ERR-01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p 
 wiring R-ERR-02   src/core/x.h   'LinkState step( Link& link );'
 wiring R-SAFETY-09 src/app/x.cpp 'gpio_init( 2 );'
 wiring R-SAFETY-10 src/hal/x.cpp 'gpio_init( 2 );'
-if [ "$wired" -eq 12 ]; then
-    echo "  ok:   wiring cases: $wired/12 (each rule's verdict reaches the exit code)"
+wiring R-PROTO-07 src/hal/x.pio  '    in pins, 1 side 0'
+if [ "$wired" -eq 13 ]; then
+    echo "  ok:   wiring cases: $wired/13 (each rule's verdict reaches the exit code)"
 else
-    echo "  FAIL: wiring cases: $wired/12"
+    echo "  FAIL: wiring cases: $wired/13"
     fail=1
 fi
 

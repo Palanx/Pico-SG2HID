@@ -36,11 +36,14 @@
   - `tests/test_repo_shape.sh`: `src_files( )` lists `.pio`, and `find_safety09( )` also
     matches `(set|out|mov) pindirs`. New `find_safety10( )` excludes on `pin\.gpio`. It gets
     18 reject cases, 2 accept cases (floor 28 → 30) and 1 wiring case (11 → 12).
+    New `find_proto07( )` (R-PROTO-07, SPI mode 3 on the `.pio` side-sets): 4 rejects, 4
+    accepts (floor → 34), 1 wiring case (→ 13). See the R-PROTO-07 Deviation.
   - `tests/pin_table_cases.cpp` asserts `gpio_of` at compile time.
 - **`docs/constraints.md`**:
   - Bindings: R-SAFETY-07 and R-PROTO-06 → `test: tests/test_bus_frame.py`, R-SAFETY-10 →
     `test: tests/test_repo_shape.sh`, each with a dated Scope clause. R-PROTO-01 → `manual:`
-    (the probe).
+    (the probe), narrowed to LSB-first. New R-PROTO-07 (mode 3) → `test:
+    tests/test_repo_shape.sh`.
   - R-PROTO-01's text no longer says the loopback can observe bit order, and says why it
     cannot. R-SAFETY-10's "does not exist before `03-pio-bus`" sentence is corrected.
   - R-SAFETY-09's Scope names `.pio` and the `pindirs` forms. R-CLEAN-03/05 File scope list
@@ -196,6 +199,83 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
       and no failed gate, the operator closes the phase by override. Record it in the round 5
       verdict and set the status to `done`. Do not iterate a round 6.
 
+- **Round 5 implementation, 2026-09-30 — the resolution above, applied.**
+  - Code: `docs/constraints.md` R-SAFETY-07 Scope now claims two mutations, naming them. Text
+    exactly as item 1.
+  - Spec amendment: the rules table's R-PROTO-01 To column (`spec.md:27`) and step 6's
+    R-PROTO-01 bullet now split the binding: the probe for bit order, mode 3 read off the PIO
+    program (`in pins, 1` on the `side 1` instruction, `src/hal/ps2_master.pio:33`, checked).
+  - Spec amendment: step 6's R-SAFETY-10 bullet now lists the `clang-format` wrap false
+    positive, matching the sentence kept in `docs/constraints.md`.
+  - Generalised (step 5):
+    - Property 1: a Scope clause claims only the mutations that check its own rule.
+      Checked every mutation-count claim in `docs/constraints.md`,
+      `docs/phases/24-pio-bus/verify.md`, `src/hal/` and `tests/test_bus_frame.py`. Only
+      R-SAFETY-07 counted mutations. R-PROTO-06's Scope makes no count claim. `Outcome`'s "5
+      copied-tree mutations each flip their own rule" is correct as written.
+    - Property 2: every statement of R-PROTO-01's binding separates bit order (probe) from
+      mode 3 (program). Checked `spec.md`, `verify.md`, `docs/constraints.md`,
+      `ps2_master.pio`, `docs/index/`. `constraints.md` R-PROTO-01 already split it. One
+      more instance found and fixed: `verify.md` §"Why the probe line means LSB-first" said
+      the probe catches "a mistake in the program" and that R-PROTO-01 is bound to it whole.
+      It now says bit-order mistake, binds only that half, and explains why the probe cannot
+      see the sampling edge. `ps2_master.pio:1` names both properties as a description of
+      the program, not a binding — left as is.
+  - Reconciliation checked: Goal's "LSB-first in SPI mode 3" describes behaviour, not the
+    binding, unchanged; step 7's "LSB-first and mode 3 in one picture" is still true of
+    `verify.md`; the Acceptance grep `R-PROTO-01 .* — manual: ` still matches.
+  - Re-run: `test_rule_traceability.py`, `test_phase_docs.sh`, `test_bus_frame.py` → rc 0;
+    `make test` → `OK`. No source file changed this round.
+
+- **R-PROTO-01 split; new R-PROTO-07 (operator-ordered, 2026-09-30, after the round-5
+  amendment above).** The round-5 wording left mode 3 with no check, only a description of
+  how it was reviewed. A rule carries exactly one binding (ADR-0005), so the rule was split,
+  following the R-PROTO-06 / R-SAFETY-10 / R-ERR-05 precedent.
+  - `docs/constraints.md`: R-PROTO-01 narrowed to "LSB-first", still `manual:` (the probe),
+    with a "Narrowed" note. New R-PROTO-07, "the bus master runs SPI mode 3", →
+    `test: tests/test_repo_shape.sh`, with a Split note and a Scope clause. The clause says
+    the check reads program text, not the wire. It names what is not checked: the side-set
+    pin being `CLK`, the settling delays, and an instruction after a label on the same line.
+    It also says the emulator evidence in `06-hil-digital` is inferred, not observed.
+  - `tests/test_repo_shape.sh`:
+    - New `find_proto07( )` over `.pio` files under `src/hal/`. A line starting with
+      `pull` / `out pins` / `in pins` must carry `side 1` / `side 0` / `side 1` before any
+      `;` comment.
+    - Header `# RULE R-PROTO-07` and a `run_all( )` line.
+    - Cases: 4 rejects (one per pattern alternative, plus a `side 1` hidden in a comment),
+      4 accepts (one per exclusion alternative, plus a comment line naming `pull`) and
+      1 wiring case.
+    - Accept floor 30 → 34, wiring 12 → 13.
+    - Checked on the real program: each of the three side-sets flipped in
+      `src/hal/ps2_master.pio` turns `R-PROTO-07` to `FAIL` naming the line. The file was
+      restored after.
+  - `src/hal/ps2_master.pio:1`: the comment names R-PROTO-07 for mode 3 and R-PROTO-01 for
+    LSB-first. Comment only.
+  - Spec amendment:
+    - Rules table: R-PROTO-01 narrowed, plus a new R-PROTO-07 row.
+    - Context pointer §Invariants: adds 07.
+    - Step 3: the finder, its cases and floors 28 → 34 / 11 → 13.
+    - Step 6: R-PROTO-01 narrowed, plus a new R-PROTO-07 bullet.
+    - Acceptance: the `test_repo_shape.sh` line expects R-PROTO-07, plus a new binding grep.
+    - This replaces the round-5 "mode 3 read off the PIO program" wording in the table and in
+      step 6.
+  - `verify.md`:
+    - §"LSB first, mode 3" tags mode 3 with R-PROTO-07.
+    - The file table paragraph names the new check.
+    - §1 gains a `grep PROTO-07` row.
+    - The probe section binds R-PROTO-01 to bit order only and points to R-PROTO-07.
+  - Reconciliation checked:
+    - Goal's "LSB-first in SPI mode 3" describes behaviour and is still true.
+    - Goal's "which is why R-PROTO-01 needs the probe" is about bit order and is still true.
+    - Step 4's PIO bullet already specifies `out` with `CLK` low and `in` as it rises.
+    - Step 7's "LSB-first and mode 3 in one picture" still holds.
+    - `src/core/ps2_protocol.h:40` and `src/hal/bus_port.h:32` cite R-PROTO-01 for bit order
+      only, so they are correct as they are.
+  - Not changed, on purpose:
+    - PHASES.md row 24's acceptance text ("R-PROTO-01 to `manual:`") stays as is. That is
+      still true, and rows are never edited.
+    - Done phases' notes that quote "LSB-first, SPI mode 3" are history.
+
 ## Debt
 
 - `kAckTimeoutUs` (`src/core/ps2_protocol.h`, `belay-debt:`) is a 100 µs budget, not a
@@ -229,6 +309,17 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
   "every bit pattern that would show a stuck or swapped line", which nine bytes cannot
   cover. The `recover( )` comment says it leaves "CLK high"; that holds only because the
   `jmp` lands on `pull … side 1`.
+
+- **Validation round 5 (2026-10-01), taste, not blocking:**
+  - `kWireBitsPerByte` is a `std::size_t`, but `pio_port.cpp` uses it in `std::uint32_t`
+    constexpr arithmetic (`kRxByteShift`, `kByteBudgetUs`).
+  - `verify.md` §1 expects "three `ok:` lines" from `test_bus_frame.py`. That count includes
+    the `rejection cases` line alongside the two rule lines.
+- **Round 5's open undecidable, closed by override (see the round 5 record).** Plan step 3
+  doesn't say that `hits( )` gives its exclusion pattern `N:text` lines, and
+  `find_proto07( )`'s exclusion relies on that through its `^[0-9]+:` anchor. If a later phase
+  touches `hits( )` or that finder, the cheapest fix is to drop the anchor: `[^;]*` already
+  makes the match stop at the first `;`.
 
 ## Validation — 2026-09-30
 - criteria: 29 passed / 0 failed (24 host commands + 5 bench, run on the operator's build/loopback.log and build/ackopen.log: probe 10/10 LSB-first, all loopback frames match with ATT high and 1x–2x clock time, ACK-open frames abort 0/5 and 0/9 with ATT high, and 1/1 completes 10 times)
@@ -278,3 +369,27 @@ literal: `make lint` reported it as `readability-magic-numbers`. The file was re
 - not-ours: none
 - verdict: returned to implementation. Escape not taken: the operator overrode round 3's escape and declared round 4 the last patch round. The count after round 3's escape verdict is 1 round. Lifetime findings: 6 → 3 → 3 → 3.
 
+## Validation — 2026-10-01 (round 5)
+- criteria: 28 passed / 0 failed. All 23 host criteria were run this round, exactly as
+  written; criterion 3's `ok: R-SAFETY-10` and `ok: R-PROTO-07` lines were confirmed
+  separately. The 5 bench criteria were re-run on the operator's build/loopback.log and
+  build/ackopen.log (2026-09-30). Since those logs, the firmware source has changed only in
+  `ps2_master.pio`'s first-line comment.
+- project gates: test pass, lint pass, typecheck pass (scripts/check.sh rc 0, no
+  `workflow gap:` line)
+- boundary sweep: clean (`scripts/check.sh --files` over the 10 `src/` files in the set:
+  all gates passed)
+- independent review: undecidable: Plan step 3 doesn't say that `hits( )` gives the
+  exclusion `N:`-prefixed lines, and `find_proto07( )`'s `^[0-9]+:` exclusion anchor
+  relies on it. No contradicts. Taste: 2 items, moved to For later phases.
+- closure test: fail: one undecidable (missing pointer). Overridden by the operator's
+  closing rule (round 4 resolution, 2026-09-30): round 5 has only spec-side undecidable
+  nits, no contradicts and no failed gate, so the phase closes by override. The spec was not
+  amended for it, and no round 6 was run. The finding and its fix are recorded under For
+  later phases.
+- findings: 1
+- spec size: 23173 (+1381 since the previous validation)
+- upstream: none (manifest present; no file in the set is package-owned)
+- not-ours: none
+- verdict: done (operator override per the round-4 closing rule; closure test failed on one
+  undecidable). Lifetime findings: 6 → 3 → 3 → 3 → 1.

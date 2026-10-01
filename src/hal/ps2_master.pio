@@ -1,4 +1,4 @@
-; The PS2 bus master: one byte per TX word, SPI mode 3, LSB first (R-PROTO-01).
+; The PS2 bus master: one byte per TX word, SPI mode 3 (R-PROTO-07), LSB first (R-PROTO-01).
 ;
 ; Pins, all mapped by src/hal/pio_port.cpp from src/core/pins.h:
 ;   out   CMD   the bit the master sends

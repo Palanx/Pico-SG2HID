@@ -42,7 +42,7 @@ CMD         1   0   0   0   0   0   0   0
 
 - **LSB-first** (R-PROTO-01): the lowest bit of the byte travels first. `0x01` is therefore
   `1` then seven `0`s. Most-significant-first would be seven `0`s then `1`.
-- **SPI mode 3** is a name for the clock's shape: the clock rests high, each bit is *put on*
+- **SPI mode 3** (R-PROTO-07) is a name for the clock's shape: the clock rests high, each bit is *put on*
   the wire while the clock is low, and *read* at the moment the clock goes back up (the
   rising edge). The bit has had half a tick to settle by then.
 
@@ -70,7 +70,9 @@ each step takes.
 Pin setup happens in exactly one loop over the pin table in `src/core/pins.h`. `DATA` and
 `ACK` are only ever made inputs with a pull-up (R-SAFETY-01: making them outputs could short
 two chips against each other). A new automatic check, R-SAFETY-10, fails the build if any
-pin-setting call in `src/hal/` does not use the pin table's entry.
+pin-setting call in `src/hal/` does not use the pin table's entry. Another, R-PROTO-07, fails
+it if the PIO program stops being mode 3: it reads `ps2_master.pio` and requires the clock to
+be low on the instruction that changes `CMD` and high on the one that reads `DATA`.
 
 ## Check it yourself
 
@@ -82,6 +84,7 @@ From the repository root:
 |---|---|
 | `python3 tests/test_bus_frame.py; echo rc=$?` | three `ok:` lines, then `rc=0` |
 | `sh tests/test_repo_shape.sh \| grep SAFETY-10` | `ok:   R-SAFETY-10` |
+| `sh tests/test_repo_shape.sh \| grep PROTO-07` | `ok:   R-PROTO-07` |
 | `make firmware && test -f build/pico/sg2hid.uf2; echo rc=$?` | many `Building …` lines, then `rc=0` |
 | `make lint; echo rc=$?` | only `ok:` lines, then `rc=0` |
 | `make test \| tail -1` | `OK` |
@@ -217,8 +220,12 @@ they appeared. `0x01` is the one byte whose only `1` is its lowest bit, so:
 - `0,0,0,0,0,0,0,1` would mean the highest bit went first: wrong order.
 - `probe: timeout` means the clock never ticked: the PIO program is not running.
 
-The probe reads the wire, not the program, so a mistake in the program would show up here.
-That is why R-PROTO-01 is now bound to this manual check.
+The probe reads the wire, not the program, so a bit-order mistake in the program would show
+up here. That is why R-PROTO-01 (bit order) is bound to this manual check. Mode 3 the probe
+cannot see: the CPU reads `CMD` on every rising edge, whichever edge the PIO program samples
+`DATA` on, and nothing on one Pico's pins shows that moment. So mode 3 is its own rule,
+R-PROTO-07, checked automatically on the program itself: `in pins, 1` must sit on the
+instruction that raises `CLK` (`side 1`). That check reads the program's text, not the wire.
 
 ### What this phase does not prove
 

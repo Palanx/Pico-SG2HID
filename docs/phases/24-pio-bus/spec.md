@@ -24,7 +24,8 @@ Rules this phase moves:
 | R-SAFETY-07 (`ATT` released on every path) | `planned: 24-pio-bus` | `test: tests/test_bus_frame.py` |
 | R-PROTO-06 (`ACK` waited after every byte but the last) | `planned: 24-pio-bus` | `test: tests/test_bus_frame.py` |
 | R-SAFETY-10 (`src/hal/` configures pins only by iterating the table) | `planned: 24-pio-bus` | `test: tests/test_repo_shape.sh` |
-| R-PROTO-01 (LSB-first, SPI mode 3) | `planned: 24-pio-bus` | `manual:` — the slow-clock bit-order probe |
+| R-PROTO-01 (LSB-first; narrowed, it used to say "LSB-first, SPI mode 3") | `planned: 24-pio-bus` | `manual:` — the slow-clock bit-order probe |
+| R-PROTO-07 (SPI mode 3; split out of R-PROTO-01) | new | `test: tests/test_repo_shape.sh` |
 
 R-SAFETY-09 also widens: `.pio` joins `src_files( )`, and a `set`, `out` or `mov` to `pindirs`
 in a `.pio` file outside `src/hal/` is reported.
@@ -49,7 +50,7 @@ really exercised. That the wait actually waits is first observable against the e
   failed call. This phase only reports how many bytes completed; turning that into a
   `DecodeOutcome` and a `step` is `06-hil-digital`'s.
 - `docs/constraints.md`:
-  - §Invariants: R-SAFETY-01, 07, 09, 10; R-PROTO-01, 06; R-CLEAN-03 and R-CLEAN-05 (their
+  - §Invariants: R-SAFETY-01, 07, 09, 10; R-PROTO-01, 06, 07; R-CLEAN-03 and R-CLEAN-05 (their
     "File scope" sentences list `src_files( )`' extensions); R-PROC-04.
   - §Observed conventions: "One PIO program per bus role … with the cycle budget written above
     it as a comment"; the SDK-layer clang-tidy entry (why `make lint` on `src/hal/` needs
@@ -142,7 +143,7 @@ really exercised. That the wait actually waits is first observable against the e
    - Check: `python3 tests/test_bus_frame.py` → exit 0, `ok:` lines naming R-SAFETY-07 and
      R-PROTO-06, `rejection cases: 5/5`.
 
-3. **R-SAFETY-10, and `.pio` in R-SAFETY-09.** Touches `tests/test_repo_shape.sh`.
+3. **R-SAFETY-10, R-PROTO-07, and `.pio` in R-SAFETY-09.** Touches `tests/test_repo_shape.sh`.
    - `src_files( )` gains `pio` in its extension alternation.
    - `find_safety09( )`'s pattern also matches `set`, `out` or `mov` followed by whitespace and
      `pindirs`.
@@ -151,6 +152,10 @@ really exercised. That the wait actually waits is first observable against the e
      `pin\.gpio`. It reports any pin-configuring call in `src/hal/` whose line does not name
      `pin.gpio`, and any `pindirs` instruction there. Header gains `# RULE R-SAFETY-10`;
      `run_all( )` gains its `report` line.
+   - New `find_proto07( )`: `hits` over the `.pio` files under `src/hal/`, pattern a line
+     starting with `in pins`, `out pins` or `pull`, exclusion the same instruction carrying
+     `side 1`, `side 0` or `side 1` respectively before any `;`. Header gains
+     `# RULE R-PROTO-07`; `run_all( )` gains its `report` line.
    - Cases:
      - `find_safety09`: one reject per new alternative, each in `src/app/x.pio`
        (`set pindirs, 1`, `out pindirs, 1`, `mov pindirs, x`);
@@ -158,10 +163,15 @@ really exercised. That the wait actually waits is first observable against the e
        with a literal GPIO (or `src/hal/x.pio` for the three `pindirs` forms);
      - `find_safety10`: accept `gpio_init( pin.gpio );` in `src/hal/x.cpp`, and accept
        `gpio_init( 2 );` in `src/app/x.cpp`;
-     - a `wiring R-SAFETY-10` case.
-     The accept floor rises 28 → 30 and the wiring floor 11 → 12; the reject section has no
+     - a `wiring R-SAFETY-10` case;
+     - `find_proto07`: one reject per pattern alternative, each on the wrong side-set, plus one
+       whose `side 1` sits in a `;` comment; one accept per exclusion alternative, plus one
+       `;` comment line naming `pull`;
+     - a `wiring R-PROTO-07` case.
+     The accept floor rises 28 → 34 and the wiring floor 11 → 13; the reject section has no
      floor.
-   - Check: `sh tests/test_repo_shape.sh` → exit 0, an `ok:` line naming R-SAFETY-10.
+   - Check: `sh tests/test_repo_shape.sh` → exit 0, `ok:` lines naming R-SAFETY-10 and
+     R-PROTO-07.
    - Check: `python3 tests/test_checks_are_live.py` → exit 0.
 
 4. **The PIO port and the build.** Touches `src/hal/ps2_master.pio`, `src/hal/pio_port.cpp`,
@@ -220,11 +230,16 @@ really exercised. That the wait actually waits is first observable against the e
        failure position; not the PIO program, and not the timing of anything.
      - R-SAFETY-10: a line in `src/hal/` naming a configuring call or a `pindirs` instruction
        must contain `pin.gpio`; it does not prove `pin` is the loop variable over `kMasterPins`,
-       and direct register writes are not seen.
+       direct register writes are not seen, and a call whose arguments `clang-format` wraps
+       onto the next line is reported (a false positive).
    - R-SAFETY-10's "does not exist before `03-pio-bus`" sentence is corrected.
-   - R-PROTO-01 → `manual:`, reason: the probe's output is read by the operator from a flashed
-     Pico. Its text drops the claim that the loopback round-trip can observe bit order, and
+   - R-PROTO-01 is narrowed to LSB-first and → `manual:`, reason: the probe's output is read by
+     the operator from a flashed Pico. The probe shows bit order only. Its text drops the claim that the loopback round-trip can observe bit order, and
      says why it cannot (a symmetric `CMD`→`DATA` loopback reads the same in either order).
+   - New R-PROTO-07, SPI mode 3, split out of R-PROTO-01 → `test: tests/test_repo_shape.sh`.
+     Its text says why no pin of one Pico shows the sampling edge. Its Scope clause: the
+     program's text, not the wire; it does not check that the side-set pin is `CLK`, the
+     settling delays, or an instruction after a label on the same line.
    - R-SAFETY-09's Scope clause: `src_files( )` lists `.pio`; `set`/`out`/`mov pindirs` in a
      `.pio` outside `src/hal/` is reported; a `pindirs` inside a `;` comment is a false
      positive. R-CLEAN-03's and R-CLEAN-05's "File scope" sentences add `.pio`.
@@ -252,7 +267,7 @@ cask's ARM `bin` on `PATH`, in order.
 ```
 python3 tests/test_bus_frame.py                                          # expect: exit 0; `ok:` lines naming R-SAFETY-07 and R-PROTO-06; `rejection cases: 5/5`
 grep -lE '#[[:space:]]*include[[:space:]]*[<"](pico|hardware)/' src/hal/bus_port.h src/hal/bus_frame.h src/hal/bus_frame.cpp   # expect: no output
-sh tests/test_repo_shape.sh                                              # expect: exit 0; an `ok:` line naming R-SAFETY-10
+sh tests/test_repo_shape.sh                                              # expect: exit 0; `ok:` lines naming R-SAFETY-10 and R-PROTO-07
 grep -c 'for ( const auto& pin : kMasterPins )' src/hal/pio_port.cpp     # expect: 1
 grep -cE '(set|out|mov)[[:space:]]+pindirs|% c-sdk' src/hal/ps2_master.pio   # expect: 0
 grep -c 'pico_generate_pio_header' CMakeLists.txt                        # expect: 1
@@ -261,6 +276,7 @@ grep -cE '^- \*\*R-SAFETY-07\*\* .* — test: `tests/test_bus_frame\.py`$' docs/
 grep -cE '^- \*\*R-PROTO-06\*\* .* — test: `tests/test_bus_frame\.py`$' docs/constraints.md    # expect: 1
 grep -cE '^- \*\*R-SAFETY-10\*\* .* — test: `tests/test_repo_shape\.sh`$' docs/constraints.md  # expect: 1
 grep -cE '^- \*\*R-PROTO-01\*\* .* — manual: ' docs/constraints.md       # expect: 1
+grep -cE '^- \*\*R-PROTO-07\*\* .* — test: `tests/test_repo_shape\.sh`$' docs/constraints.md  # expect: 1
 grep -c 'is the first thing that can' docs/constraints.md                # expect: 0
 make firmware && test -f build/pico/sg2hid.uf2                           # expect: exit 0
 make lint                                                                # expect: exit 0
