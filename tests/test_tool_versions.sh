@@ -2,13 +2,14 @@
 # The tools the other checks depend on are present, recent enough, and actually work.
 #
 # RULE R-TOOL-01 — docs/constraints.md §Invariants — minimum versions
-# R-TOOL-01 is four independent probes behind one rule id, so deleting any one of them
-# leaves the other three still reporting it. One LIVE label per probe; the harness requires
+# R-TOOL-01 is five independent probes behind one rule id, so deleting any one of them
+# leaves the other four still reporting it. One LIVE label per probe; the harness requires
 # each to prefix exactly one result line. Same shape, and same fix, as R-SEC-01's two scans.
 # LIVE R-TOOL-01: clang-format
 # LIVE R-TOOL-01: clang-tidy
 # LIVE R-TOOL-01: arm-none-eabi-g++
 # LIVE R-TOOL-01: python3
+# LIVE R-TOOL-01: bash
 #
 # RULE R-TOOL-02 — docs/constraints.md §Invariants — the arm-none-eabi-g++ first on PATH
 #                  can compile a translation unit that includes <cstdint> for cortex-m0plus
@@ -45,9 +46,10 @@ ver_num( ) {
 # Deliberately NOT applied to arm-none-eabi-*: R-TOOL-02 is a claim about what is first on
 # PATH, and probing alternative locations would paper over the exact trap it exists to
 # catch. The early return is what makes that true — without it R-TOOL-01 could version-check
-# a binary R-TOOL-02 never probes.
+# a binary R-TOOL-02 never probes. bash takes the same early return: it is probed where
+# include-check.sh's `#!/usr/bin/env bash` finds it, so it is never looked up elsewhere.
 resolve( ) {
-    case "$1" in arm-none-eabi-*) command -v "$1"; return ;; esac
+    case "$1" in arm-none-eabi-*|bash ) command -v "$1"; return ;; esac
     for r_c in "$1" "/opt/homebrew/opt/llvm/bin/$1" "/usr/local/opt/llvm/bin/$1"; do
         command -v "$r_c" >/dev/null 2>&1 && { command -v "$r_c"; return 0; }
     done
@@ -106,6 +108,7 @@ arm_compiles( ) {
 # arm-none-eabi-g++ 12, the release in which libstdc++ gained <expected> — inferred from
 # the library's history, NOT verified here; only 15.3.1 has been measured (ADR-0008
 # §Verification). python3 3.8 for the meta-test — floors carry a minor number for a reason.
+# bash 4, because .claude/hooks/include-check.sh uses `local -A` (associative arrays).
 # probe <binary> <min> <flag> — one probe, and the ONLY place R-TOOL-01's failure
 # flag is set. Four call sites used to carry `|| fail=1` each, which is four independent
 # failure paths and would need four wiring cases to cover; collapsing them to one path is
@@ -120,6 +123,7 @@ run_all( ) {
     probe clang-tidy        23 --version
     probe arm-none-eabi-g++ 12 -dumpversion
     probe python3          3.8 --version
+    probe bash               4 --version
 
     # --- R-TOOL-02 -----------------------------------------------------------------------
     if command -v arm-none-eabi-g++ >/dev/null 2>&1; then
@@ -198,6 +202,21 @@ else
     rejected=$(( rejected + 1 ))
 fi
 
+# Stock macOS's /bin/bash. Removed right after: wiring case (2) needs every R-TOOL-01 probe,
+# bash's included, to pass with $stub_dir first on PATH.
+cat > "$stub_dir/bash" <<'STUB'
+#!/bin/sh
+echo "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin25)"
+STUB
+chmod +x "$stub_dir/bash"
+if PATH="$stub_dir:$PATH" check_version bash 4 --version >/dev/null 2>&1; then
+    echo "  FAIL: R-TOOL-01 rejection case did not fire — bash 3.2.57 passed a floor of 4"
+    fail=1
+else
+    rejected=$(( rejected + 1 ))
+fi
+rm -f "$stub_dir/bash"
+
 # A banner whose first number is not the version. Both were read as that first number
 # (86, 99) and cleared the floor before ver_num( ) looked after the word "version". Their
 # own stub name: the wiring case below needs the clang-format stub above to stay at 14.
@@ -222,13 +241,14 @@ else
     fail=1
 fi
 
-# A floor, not an equality (§How counts are stated): the six names are clang-format below
+# A floor, not an equality (§How counts are stated): the seven names are clang-format below
 # its floor, a cross-compiler with no target libc, an unparsable banner, a python3 below a
-# floor that needs its minor number, and two banners whose first number is not the version.
-if [ "$rejected" -ge 6 ]; then
-    echo "  ok:   rejection cases: $rejected/6"
+# floor that needs its minor number, a bash below its floor, and two banners whose first
+# number is not the version.
+if [ "$rejected" -ge 7 ]; then
+    echo "  ok:   rejection cases: $rejected/7"
 else
-    echo "  FAIL: rejection cases: $rejected/6"
+    echo "  FAIL: rejection cases: $rejected/7"
     fail=1
 fi
 
