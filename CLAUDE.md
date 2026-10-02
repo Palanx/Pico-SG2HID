@@ -83,8 +83,8 @@ Errors (ADR-0007, ADR-0009): pure decoding returns `[[nodiscard]] std::expected<
 transition to `Absent`, not a failed call. No exceptions, and never a status returned
 alongside a separate out-parameter (R-ERR-01..03).
 
-`make` is the only entry point. `make test` needs a C++23 compiler and `python3` and
-nothing else — no hardware, no network, no ARM toolchain. `make firmware` needs cmake,
+`make` is the only entry point. `make test` needs a C++23 compiler, `python3` and
+bash >= 4 — no hardware, no network, no ARM toolchain. `make firmware` needs cmake,
 `arm-none-eabi-gcc` and `PICO_SDK_PATH`; it is never a precondition for `make test`.
 
 Enforcement is real, and its exact reach is recorded, not assumed: the hooks run whatever

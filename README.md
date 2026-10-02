@@ -84,7 +84,8 @@ make firmware  # .uf2 images (not yet — no sources)
 make clean
 ```
 
-`make test` needs only a C++23 compiler and `python3`. `make lint` additionally
+`make test` needs only a C++23 compiler, `python3` and bash >= 4 (`brew install bash`
+on macOS, whose `/bin/bash` is 3.2). `make lint` additionally
 needs `clang-format` and `clang-tidy` (`brew install clang-format llvm`);
 `make test` skips the style check when they are absent, `make lint` fails.
 
