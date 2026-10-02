@@ -34,6 +34,11 @@ constexpr std::size_t kFrameLengths[] = { 1, 2, 5, 9 };
 
 constexpr std::size_t kMaxFrame = 9;
 
+// The fake's elapsed time for exchange i is kElapsedBase + i, so every attempted byte holds a
+// distinct value. A byte never sent keeps kUnsentUs, which the fake never returns.
+constexpr std::uint32_t kElapsedBase = 100;
+constexpr std::uint32_t kUnsentUs    = 0xFFFFFFFF;
+
 std::vector<Call> calls;
 std::size_t       fail_at;  // the exchange that returns nullopt; the frame length for none
 std::size_t       exchanges;
@@ -54,13 +59,15 @@ void att_release() {
     calls.push_back( { .kind = CallKind::Release, .out = 0, .should_wait_ack = false } );
 }
 
-std::optional<std::uint8_t> exchange_byte( std::uint8_t out, bool should_wait_ack ) {
+ByteExchange exchange_byte( std::uint8_t out, bool should_wait_ack ) {
     calls.push_back(
         { .kind = CallKind::Exchange, .out = out, .should_wait_ack = should_wait_ack } );
-    if ( exchanges++ == fail_at ) {
-        return std::nullopt;
+    const std::size_t   index      = exchanges++;
+    const std::uint32_t elapsed_us = kElapsedBase + static_cast<std::uint32_t>( index );
+    if ( index == fail_at ) {
+        return { .in = std::nullopt, .elapsed_us = elapsed_us };
     }
-    return response_to( out );
+    return { .in = response_to( out ), .elapsed_us = elapsed_us };
 }
 
 }  // namespace ps2
@@ -68,23 +75,23 @@ std::optional<std::uint8_t> exchange_byte( std::uint8_t out, bool should_wait_ac
 namespace {
 
 struct Run {
-    std::size_t  length;
-    std::size_t  fail_at;
-    std::size_t  count;
-    std::uint8_t sent[ kMaxFrame ];
-    std::uint8_t frame[ kMaxFrame ];
+    std::size_t   length;
+    std::size_t   fail_at;
+    std::size_t   count;
+    std::uint8_t  sent[ kMaxFrame ];
+    ps2::WireByte frame[ kMaxFrame ];
 };
 
 [[nodiscard]] Run run_frame( std::size_t length, std::size_t failure ) {
     Run run{ .length = length, .fail_at = failure, .count = 0, .sent = {}, .frame = {} };
     for ( std::size_t i = 0; i < length; ++i ) {
         run.sent[ i ]  = static_cast<std::uint8_t>( i + 1 );
-        run.frame[ i ] = run.sent[ i ];
+        run.frame[ i ] = { .out = run.sent[ i ], .in = 0, .elapsed_us = kUnsentUs };
     }
     calls.clear();
     fail_at   = failure;
     exchanges = 0;
-    run.count = ps2::exchange_frame( std::span<std::uint8_t>( run.frame, length ) );
+    run.count = ps2::exchange_frame( std::span<ps2::WireByte>( run.frame, length ) );
     return run;
 }
 
@@ -120,7 +127,21 @@ struct Run {
         return false;
     }
     for ( std::size_t i = 0; i < expected; ++i ) {
-        if ( run.frame[ i ] != response_to( run.sent[ i ] ) ) {
+        if ( run.frame[ i ].in != response_to( run.sent[ i ] ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The trace's timing: every attempted byte, the failed one included, holds the fake's elapsed
+// time for it, and every byte never sent still holds kUnsentUs.
+[[nodiscard]] bool elapsed_recorded( const Run& run ) {
+    const std::size_t attempted = run.fail_at < run.length ? run.fail_at + 1 : run.length;
+    for ( std::size_t i = 0; i < run.length; ++i ) {
+        const std::uint32_t expected =
+            i < attempted ? kElapsedBase + static_cast<std::uint32_t>( i ) : kUnsentUs;
+        if ( run.frame[ i ].elapsed_us != expected ) {
             return false;
         }
     }
@@ -137,6 +158,7 @@ struct Run {
 int main() {
     bool is_framed = true;
     bool is_acked  = true;
+    bool is_timed  = true;
     for ( const std::size_t length : kFrameLengths ) {
         // failure == length is the run where nothing fails.
         for ( std::size_t failure = 0; failure <= length; ++failure ) {
@@ -152,6 +174,12 @@ int main() {
                              failure );
                 is_acked = false;
             }
+            if ( !elapsed_recorded( run ) ) {
+                std::printf( "    frame of %zu failing at %zu: elapsed time not where it belongs\n",
+                             length,
+                             failure );
+                is_timed = false;
+            }
         }
     }
     bool is_ok = report( is_framed,
@@ -161,5 +189,9 @@ int main() {
             is_acked,
             "R-PROTO-06 (ACK waited after every byte but the last; stop at the first failure)" ) &&
         is_ok;
+    is_ok = report( is_timed,
+                    "elapsed time kept for every attempted byte, the failed one included; "
+                    "never-sent bytes untouched" ) &&
+            is_ok;
     return is_ok ? 0 : 1;
 }

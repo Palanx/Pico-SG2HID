@@ -16,3 +16,10 @@ have to become unreadable binary to benefit.
 
 Digital buttons are **active low**: a bit is `1` when the button is released. A frame with
 nothing pressed is therefore `0xFF 0xFF`, not `0x00 0x00`.
+
+**The one exception to the header form is the bus trace** (`04-trace-mode`, R-PROTO-08).
+`trace_session.txt` is a session as the serial port shows it, `T1` lines included, and
+`trace_session.rendered` is the decoder's exact output for it. The `T1` format is text, so its
+literals are text: the expected value is a line, not bytes the controller sent. Both are
+written by hand and read only by `tests/test_bus_trace.py`, which compares them as whole lines
+and parses nothing.

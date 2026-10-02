@@ -83,15 +83,15 @@ MUTATIONS = [
     Mutation("R-SAFETY-07", "ATT is never released",
              "    att_release();\n", "\n"),
     Mutation("R-SAFETY-07", "the failure path returns before releasing ATT",
-             "        if ( !in ) {\n            break;",
-             "        if ( !in ) {\n            return done;"),
+             "        if ( !got.in ) {\n            break;",
+             "        if ( !got.in ) {\n            return done;"),
     Mutation("R-PROTO-06", "the last byte also waits for ACK",
              "should_wait_ack = done + 1 < frame.size();", "should_wait_ack = true;"),
     Mutation("R-PROTO-06", "no byte waits for ACK",
              "should_wait_ack = done + 1 < frame.size();", "should_wait_ack = false;"),
     Mutation("R-PROTO-06", "the loop goes on after a failed byte",
-             "        if ( !in ) {\n            break;",
-             "        if ( !in ) {\n            ++done;\n            continue;"),
+             "        if ( !got.in ) {\n            break;",
+             "        if ( !got.in ) {\n            ++done;\n            continue;"),
 ]
 
 
