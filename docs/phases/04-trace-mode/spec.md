@@ -28,7 +28,7 @@ T1 n=<n> k=<k> out=<b0>,…,<bn-1> in=<b0>,…,<bn-1> us=<u0>,…,<un-1>
 
 | Field | Content |
 |---|---|
-| `n` | frame length, decimal |
+| `n` | frame length, decimal, `n >= 1` |
 | `k` | bytes completed, decimal, `0 <= k <= n` |
 | `out` | every byte sent, two uppercase hex digits each |
 | `in` | byte `i` received for `i < k`; `--` for `i >= k` |
@@ -86,7 +86,7 @@ What this phase moves:
 
 1. **ADR-0015.** Touches `docs/adr/0015-bus-trace-text-lines-cpu-timing.md`.
    - Status accepted. Decision: CPU-side per-byte timing, `T1` text lines over USB stdio, a pure
-     formatter in `core`, a stdlib-only decoder in `tools/`. Alternatives recorded: a PIO cycle
+     formatter in `core`, a stdlib-only decoder in `tools/`. Rejected alternatives, one line each under Consequences as `docs/templates/adr.md` asks: a PIO cycle
      counter (exact, but rewrites `ps2_master.pio`, touches R-PROTO-07 and voids 24's bench
      logs), and a binary framed format (unreadable without the decoder; the bandwidth is not
      needed).
@@ -99,7 +99,8 @@ What this phase moves:
      - `[[nodiscard]] std::size_t format_trace_line( std::span<const WireByte> frame,
        std::size_t completed, std::span<char> line );` — writes the `T1` line (§Goal), with no
        newline and no terminating NUL, and returns its length. Returns 0 and leaves the line's
-       content unspecified when `completed > frame.size( )` or the line does not fit.
+       content unspecified when `frame` is empty, `completed > frame.size( )` or the line does
+       not fit.
    - No allocation, no I/O, no clock; every number is a named `constexpr` (R-CLEAN-04).
    - Check: `make typecheck` → exit 0; `make test` → last line `OK`.
 
@@ -175,10 +176,10 @@ What this phase moves:
    - `trace_session.rendered`, hand-written: the decoder's exact expected output for it.
    - `bus_trace_cases.cpp` (not `test_*.cpp`, as `ps2_codec_cases.cpp`): hand-written
      `WireByte` inputs, one per well-formed `T1` line of the session, in order; prints each
-     formatted line. It also asserts that `completed > n` and a too-small buffer return 0.
+     formatted line. It also asserts that an empty frame, `completed > n` and a too-small
+     buffer return 0.
    - `test_bus_trace.py`, docstring `RULE R-PROTO-08`. Real run:
-     - formatter: compiles `bus_trace_cases.cpp` with `src/core/bus_trace.cpp`, using the same
-       `CXXFLAGS` list `tests/test_bus_frame.py` defines, runs it, and requires its output lines to equal the
+     - formatter: compiles `bus_trace_cases.cpp` with `src/core/bus_trace.cpp`, runs it, and requires its output lines to equal the
        session's well-formed `T1` lines in order;
      - decoder: runs `tools/trace_decode.py` on `trace_session.txt` and requires exit 1 (the
        malformed line) and stdout equal to `trace_session.rendered`;

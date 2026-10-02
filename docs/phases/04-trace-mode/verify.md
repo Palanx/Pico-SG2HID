@@ -130,8 +130,8 @@ From the repository root:
 What the three lines of `test_bus_trace.py` mean:
 
 - `ok:   format_trace_line returns 0 …` — the firmware's writer refuses impossible input
-  (more bytes completed than the frame has) and a buffer too small for the line, rather than
-  printing half a line.
+  (a frame with no bytes, or more bytes completed than the frame has) and a buffer too small
+  for the line, rather than printing half a line.
 - `ok:   R-PROTO-08 (…)` — the firmware's writer was given five hand-built frames and wrote
   exactly the five `T1` lines in `tests/vectors/trace_session.txt`; and the decoder, run on
   that file, printed exactly `tests/vectors/trace_session.rendered`. Both files were written

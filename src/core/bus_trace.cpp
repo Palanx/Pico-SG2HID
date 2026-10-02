@@ -77,7 +77,7 @@ private:
 
 std::size_t
 format_trace_line( std::span<const WireByte> frame, std::size_t completed, std::span<char> line ) {
-    if ( completed > frame.size() ) {
+    if ( frame.empty() || completed > frame.size() ) {
         return 0;
     }
     LineWriter writer( line );

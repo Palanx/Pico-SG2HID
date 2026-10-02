@@ -2,13 +2,14 @@
 
 ## Outcome
 
+- base: b57a88f (the expansion commit; operator's choice at validation, 2026-10-01 — the work is committed in 7c100ad and 51f1291)
 - `docs/adr/0015-bus-trace-text-lines-cpu-timing.md`: CPU-side per-byte timing, `T1` text lines,
   a pure formatter in `core`, a stdlib-only decoder in `tools/`. Rejected: a PIO cycle counter,
   a binary format.
 - `src/core/bus_trace.{h,cpp}` (new): `ps2::WireByte { out, in, elapsed_us }` and
   `format_trace_line( frame, completed, line )`. It writes the `T1` line into a caller's buffer
   through a file-local `LineWriter` (`std::to_chars` for decimals, a digit table for hex), with
-  no allocation and no I/O. It returns 0 for `completed > n` or overflow.
+  no allocation and no I/O. It returns 0 for an empty frame, `completed > n` or overflow.
 - `src/hal/bus_port.h`: `struct ByteExchange { std::optional<std::uint8_t> in; std::uint32_t
   elapsed_us; }`; `exchange_byte` returns it.
 - `src/hal/bus_frame.{h,cpp}`: `exchange_frame( std::span<WireByte> )`. It sends `.out`, writes
@@ -80,12 +81,55 @@
   - The ACK-open capture (`build/trace-ackopen.log`) passed all its criteria before the fix.
   - Both captures need re-taking on the new firmware before `/validate-phase`.
 
+- **Spec amended at validation round 1 (2026-10-01): three undecidables from the independent review.**
+  - `T1`'s `n` had no lower bound. `format_trace_line` writes `T1 n=0 k=0 out= in= us=`, and
+    `trace_decode.py` rejects it as unreadable. Operator's decision: `n >= 1`, and the formatter
+    refuses an empty frame. The Goal table's `n` row and Plan 7's `bus_trace_cases.cpp` bullet
+    now say so. The code still has to follow (returned to implementation).
+  - Plan 7's "using the same `CXXFLAGS` list `tests/test_bus_frame.py` defines" was deleted: equal
+    values or one shared definition could not be told apart. The two lists are equal today; the
+    copy is already in Debt.
+  - Plan 1's "Alternatives recorded:" now says they go one line each under Consequences, as
+    `docs/templates/adr.md` asks. ADR-0015 already does that.
+  - Reconciled. Checked: the Goal table's `k` row (`0 <= k <= n`, still true); Plan 7's other
+    bullets; the acceptance criteria (none state `n`'s range, the flags or the ADR's sections).
+    Two statements outside the spec name the formatter's refusals and become incomplete once the
+    code changes: R-PROTO-08's Scope clause in `docs/constraints.md` ("its refusal of
+    `completed > n` and of a short buffer") and `verify.md`'s `format_trace_line returns 0`
+    bullet. They are the implementation round's to update, in the same edit as the code.
+
+- **Implementation round 2 (2026-10-02): the formatter refuses an empty frame.**
+  - Code: `format_trace_line` returns 0 when `frame.empty( )`. Its header comment says `n` is
+    at least 1 and lists the refusal. `bus_trace_cases.cpp` asserts it in the existing refusal
+    line, now "returns 0 for an empty frame, completed > n and a short buffer". Mutation
+    checked by hand: with the guard removed, that line prints `FAIL`.
+  - Generalised. The property is "every line the formatter emits, the decoder parses". Each
+    rejection in `trace_decode.py` `parse( )` was checked against the formatter:
+    - the empty `\S+` lists and `n == 0`: the gap fixed here;
+    - `k > n`: already refused;
+    - list length `n`: each list loops over `frame.size( )`;
+    - `out` two uppercase hex digits: `kHexDigits`;
+    - `in` hex below `k` and `--` from `k`: same split;
+    - `us` decimal up to `k` and `-` after: `is_attempted = i <= completed`, `uint32_t`.
+    No other gap.
+  - The caller in `src/app/main.cpp` prints `trace: line too long` on any 0. That is unreachable
+    for an empty frame, because its sequences are non-empty constants. Left as is.
+  - Reconciled, in the same edit: R-PROTO-08's Scope clause in `docs/constraints.md` and
+    `verify.md`'s `format_trace_line returns 0` bullet. Plan 3's signature bullet (`spec.md`,
+    "Returns 0 … when `completed > frame.size( )` or the line does not fit") was missed by
+    round 1's reconciliation and now names the empty frame too. A grep for
+    `completed > (n|frame)` over `docs`, `src`, `tests` and `tools` finds no other statement
+    of the refusals.
+  - Bench: the firmware binary changed, but only for a frame `main.cpp` never builds. The
+    trace lines are byte-identical, so the round-1 captures still stand.
+
 ## Debt
 
-- `SHIFT_US = 37` (`tools/trace_decode.py`) is computed from `ps2_master.pio`'s cycle budget,
-  not measured. Ceiling: every `ack` delay carries the CPU's polling overhead (a few µs).
-  Upgrade path: re-read it off this phase's ATT→ACK bench capture (`verify.md` explains how),
-  and re-check it against the emulator in `06-hil-digital`.
+- `SHIFT_US = 37` (`tools/trace_decode.py`) is computed from `ps2_master.pio`'s cycle budget.
+  The ATT→ACK bench capture (firmware 51f1291) confirms it: 36–38 µs per byte, `ack` 0–1 µs.
+  It is still a hand copy that nothing checks against the `.pio` file. That is logged in
+  `.claude/rules/tech-debt.md`, "`SHIFT_US` is a hand copy of the PIO cycle budget"
+  (2026-10-02). Re-check it against the emulator in `06-hil-digital`.
 - `tests/test_bus_trace.py`'s `CXXFLAGS` is a hand-copied list, the same as
   `tests/test_bus_frame.py`'s, and is not read from the `Makefile`. Same ceiling and upgrade
   path as the 24-pio-bus entry. Recorded, not scheduled.
@@ -101,3 +145,62 @@
   guitar's `ack` delays are read as absolute numbers.
 - **Format changes**: per ADR-0015, a changed line is `T2` with its own vectors, never an edit
   of `T1`. `trace_decode.py` currently echoes a `T2` line as an unknown line.
+
+- **Review taste (validation round 1), not blocking:**
+  - R-PROTO-08 says `T1` is fixed in `src/core/bus_trace.h`; ADR-0015 points at the spec's Goal.
+    Two homes for one format.
+  - `tests/test_bus_trace.py` passes a bare `timeout=300` to the build step, next to the named
+    `RUN_TIMEOUT_S`.
+  - `tests/bus_trace_cases.cpp` mixes `{.out = …}` and `{ .out = … }`.
+  - `bus_trace.cpp` leaves the two hex digits that `put_hex` writes implicit.
+  - `verify.md` gives 37 µs for the shift and 32 µs of shifting in the timeout budget. Both are
+    true (8 bits × 4 µs, plus about 5 µs of bookkeeping), but a reader may stumble.
+  - The vectors README and R-PROTO-08's Scope count five frames. The session has six.
+- **Review taste (validation round 2), not blocking:** `trace_decode.py` strips `\r\n` before
+  echoing a non-trace line, so the Pico's CRLF lines come out as LF; the spec says "echoed
+  unchanged" (the visible text is identical). The other two taste items repeat round 1's.
+
+## Validation — 2026-10-01
+- criteria: 27 passed / 0 failed. All 19 host criteria were run exactly as written. The 8 bench
+  criteria were run on the operator's build/trace.log and build/trace-ackopen.log, captured at
+  18:19–18:20 on firmware 51f1291 (committed 18:18; `make firmware` rebuilt nothing). Measured:
+  21 `T1` lines, ack 0–1 µs, bytes 36–38 µs; ACK open: 14 aborts at 133 µs, seven 1/1 frames
+  complete.
+- project gates: test pass, lint pass, typecheck pass (scripts/check.sh rc 0, no
+  `workflow gap:` line)
+- boundary sweep: clean (`scripts/check.sh --files` over the 12 source and test files in the set)
+- independent review: undecidable: `T1` does not bound `n`, so the formatter writes an `n=0` line
+  the decoder rejects — undecidable: Plan 7's "the same `CXXFLAGS` list" (equal values or one
+  definition) — undecidable: Plan 1's "Alternatives recorded" vs the ADR, which puts them under
+  Consequences. No contradicts. Taste: 6 items, moved to For later phases. (settled: 1 — the bench `awk … ack …`
+  criterion, `SHIFT_US = 37`)
+- closure test: fail: 3 undecidables not settled by a passing criterion (spec amended, see
+  Deviations)
+- findings: 3
+- spec size: 18829 (first)
+- upstream: none
+- not-ours: none
+- verdict: returned to implementation. Code side: `format_trace_line` returns 0 for an empty
+  frame, plus a `bus_trace_cases.cpp` assertion; R-PROTO-08's Scope clause and `verify.md`'s
+  refusal bullet are updated in the same edit.
+
+## Validation — 2026-10-02
+- criteria: 27 passed / 0 failed. All 19 host criteria were run exactly as written. The 8 bench
+  criteria were run verbatim on the operator's existing captures, `build/trace.log` and
+  `build/trace-ackopen.log`, taken on firmware 51f1291. They were not re-captured: round 2
+  changed only the formatter's empty-frame refusal, and `main.cpp` never builds an empty frame
+  (notes §Deviations, implementation round 2). Measured: 21 `T1` lines, 0 incomplete, 0
+  `ack` > 5 µs; ACK open: 0 unexpected headlines, seven 1/1 frames complete.
+- project gates: test pass, lint pass, typecheck pass (scripts/check.sh rc 0, no
+  `workflow gap:` line)
+- boundary sweep: clean (`scripts/check.sh --files` over the 12 source, test and tool files in
+  the set; 13 active deny rules; files under src/core/, src/hal/, src/app/)
+- independent review: clean. No contradicts. (settled: 2 — the bench `awk … ack …` criterion,
+  for `SHIFT_US = 37`; `python3 tests/test_checks_are_live.py`, for the unnamed refusal `ok:`
+  line in `test_bus_trace.py`). Taste: 3 items, one new, under For later phases.
+- closure test: pass
+- findings: 0
+- spec size: 18859 (+30 since the previous validation)
+- upstream: none
+- not-ours: none
+- verdict: done

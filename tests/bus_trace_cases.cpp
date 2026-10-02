@@ -85,9 +85,11 @@ int main() {
 
     std::array<char, kShortSize> short_line{};
     const bool                   is_refused =
+        ps2::format_trace_line( std::span<const ps2::WireByte>{}, 0, line ) == 0 &&
         ps2::format_trace_line( kPollComplete, std::size( kPollComplete ) + 1, line ) == 0 &&
         ps2::format_trace_line( kPollComplete, std::size( kPollComplete ), short_line ) == 0;
-    std::printf( "  %s format_trace_line returns 0 for completed > n and for a short buffer\n",
-                 is_refused ? "ok:  " : "FAIL:" );
+    std::printf(
+        "  %s format_trace_line returns 0 for an empty frame, completed > n and a short buffer\n",
+        is_refused ? "ok:  " : "FAIL:" );
     return is_refused ? 0 : 1;
 }
