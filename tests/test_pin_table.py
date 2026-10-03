@@ -6,6 +6,8 @@ RULE R-SAFETY-01 — docs/constraints.md §Invariants — DATA and ACK are never
 RULE R-SAFETY-02 — docs/constraints.md §Invariants — every GPIO declared once in pins.h, and
                    docs/wiring.md names the same GPIO per signal
 RULE R-SAFETY-03 — docs/constraints.md §Invariants — no reserved GPIO, no GPIO shared
+RULE R-SAFETY-06 — docs/constraints.md §Invariants — kEmulatorPins sound, and no signal is an
+                   output in both kMasterPins and kEmulatorPins
 LIVE R-SAFETY-02 (table)
 LIVE R-SAFETY-02 (wiring doc)
 
@@ -141,6 +143,10 @@ MUTATIONS = [
     Mutation("CLK moved to GPIO 25", "R-SAFETY-03", PINS,
              "    {.gpio      = 5,\n     .signal    = Signal::Clk,",
              "    {.gpio      = 25,\n     .signal    = Signal::Clk,"),
+    # The master's CMD row is an Output, so this anchor only matches kEmulatorPins' CMD row.
+    Mutation("emulator CMD made an output", "R-SAFETY-06", PINS,
+             ".signal = Signal::Cmd, .direction = Direction::Input,",
+             ".signal = Signal::Cmd, .direction = Direction::Output,"),
 ]
 
 

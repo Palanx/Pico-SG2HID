@@ -1,0 +1,45 @@
+; The PS2 bus device: the emulator's side of one byte, LSB first, the controller half of SPI
+; mode 3. It puts each bit on DATA while CLK is low and samples CMD as CLK rises.
+;
+; Pins, all mapped by src/hal/pio_device.cpp from kEmulatorPins in src/core/pins.h:
+;   out (direction)  DATA  open-drain: output pulls low, input releases (ADR-0016)
+;   set (direction)  ACK   open-drain, likewise
+;   in               CMD   the bit the master sends; `in` base
+;   wait pin 2       CLK   in base + 2, driven by the master
+;
+; DATA and ACK have their pad output forced low (gpio_set_outover) before this program runs, so
+; writing a pin's direction is the only thing it can do to them: every such line below carries
+; `; open-drain` (R-SAFETY-10). It never writes `pins`.
+;
+; TX word: bit 0 set when the byte just received is ACKed; bits 1-8 the next byte to send,
+; INVERTED, because a 1 in pindirs pulls DATA low, which is a 0 on the wire. A word of 0 is the
+; frame start: no ACK, then 0xFF (DATA released for all eight bits). RX word: the byte shifted
+; in from CMD, in bits 24-31 (the ISR shifts right), as in ps2_master.pio.
+;
+; Timing, at kDeviceCyclesPerUs (8) PIO cycles per µs: the ACK pulse is ACK_PULSE_CYCLES long,
+; static_asserted against kAckPulseUs in pio_device.cpp. DATA follows a falling CLK edge within
+; two cycles (250 ns) of the master's two-microsecond low half-bit. The CPU waits the ACK delay
+; before it pushes the word that asks for the pulse.
+
+.program ps2_device
+
+.define PUBLIC ACK_PULSE_CYCLES 16
+
+.wrap_target
+    pull block                          ; the next word: ACK flag, then the next byte
+    out x, 1                            ; the ACK flag for the byte just received
+    jmp !x shift
+    set pindirs, 1 [ACK_PULSE_CYCLES-1] ; open-drain: ACK low for the pulse
+    set pindirs, 0                      ; open-drain: ACK released
+shift:
+    set y, 7                            ; eight bits
+bitloop:
+    wait 0 pin 2                        ; CLK falls
+    out pindirs, 1                      ; open-drain: DATA low for a 0, released for a 1
+    wait 1 pin 2                        ; CLK rises
+    in pins, 1                          ; CMD sampled
+    jmp y-- bitloop
+    mov osr, null                       ; RP2040 cannot mov to directions: release through out
+    out pindirs, 1                      ; open-drain: DATA released after the eighth bit
+    push block
+.wrap

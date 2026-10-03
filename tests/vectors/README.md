@@ -14,6 +14,9 @@ about the literal it reads, and then the vector is no longer the literal. `#embe
 considered and rejected in the phase spec — it embeds a file verbatim, so the vectors would
 have to become unreadable binary to benefit.
 
+`poll_exchange.h` is the other direction: the master's poll bytes and the controller's
+`0xFF` answer to the address byte, which `tests/emulator_cases.cpp` drives the emulator with.
+
 Digital buttons are **active low**: a bit is `1` when the button is released. A frame with
 nothing pressed is therefore `0xFF 0xFF`, not `0x00 0x00`.
 
