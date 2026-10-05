@@ -91,7 +91,7 @@ Bench incident, no damage observed: on the first attempt the second Pico was sti
   - Checked: no other statement in the spec names where the pulse constant lives.
 - **The outover-presence check is a separate finder, `find_safety10od( )`.**
   - Spec step 4: `find_safety10( )` reports a marked line with no outover.
-  - Done: `find_safety10( )` itself gains only the exclusion `pindirs[^;]*;[[:space:]]*open-drain`. The presence check is `find_safety10od( )`, and `run_all` reports both under the single `R-SAFETY-10` line.
+  - Done: `find_safety10( )` itself gains only one exclusion, `^[0-9]+:[[:space:]]*(set|out)[[:space:]]+pindirs[^;]*;[[:space:]]*open-drain` (narrowed in round 2, see below). The presence check is `find_safety10od( )`, and `run_all` reports both under the single `R-SAFETY-10` line.
   - Why: `tests/test_checks_are_live.py` mutates only one-line finders with at most two pattern strings. A multi-line `find_safety10( )` would have silently dropped its whole alternation from mutation coverage.
   - Added for the new finder: an `accept_pair( )` helper, because the accept case needs two files; one reject case; one accept case; and one wiring case for the outover half, so the wiring count goes 13 → 14. The false-positive floor goes 34 → 37.
 - **Unmarked `out pindirs` reject case.** Spec: add one. The unmarked `out pindirs, 1` case already existed from 24-pio-bus. The new case is `out pindirs, 1 ; drives DATA`: a comment that is not the marker excuses nothing.
@@ -103,6 +103,17 @@ Bench incident, no damage observed: on the first attempt the second Pico was sti
   - `report_rules( )` now takes `( master, emulator )`.
   - `Rejection` gained an `emulator` fixture that defaults to the real `kEmulatorPins`, so the existing master-table cases break only the master.
   - `good_fixture( )` takes its source table.
+- **Round 2 (validation 2026-10-05): the `; open-drain` excuse covers PIO instructions only.**
+  - Finding: spec step 4 limits the excuse to `.pio` lines. The round-1 exclusion `pindirs[^;]*;[[:space:]]*open-drain` excused any `src/hal/` line with the marker after `pindirs`. The reviewer's example, `pio_sm_set_pindirs_with_mask( … ); /* ; open-drain */`, was in fact still reported, because `[^;]*` stops at the call's own `;`. But `pio_sm_set_pindirs_with_mask( pio0, 0, 0, 0 /* ; open-drain */ );` was excused. I proved this by running the new reject case against the old pattern: `FAIL: … did not fire`.
+  - Done: the exclusion is anchored to a line that starts with a PIO `set` or `out` to `pindirs`. `mov` is left out because RP2040 has no `mov` to `pindirs`. New cases: one reject (the call above, in `src/hal/x.cpp`) and one accept (an indented `set pindirs, 1 ; open-drain`). The false-positive floor goes 37 → 38.
+  - Why by syntax and not by file extension: `hits( )` applies the exclusion before it prefixes the file name, and `tests/test_checks_are_live.py` mutates only one-line finders with at most two patterns. A C/C++ line that starts with `set pindirs`/`out pindirs` is not code. So a configuring call that carries the marker cannot be excused, whatever file it is in.
+  - Spec amended: in step 4, "In a `.pio` under `src/hal/`, a `pindirs` line …" becomes "A line that starts with a PIO `set` or `out` to `pindirs` …". R-SAFETY-10's Scope clause in `docs/constraints.md` was changed in the same edit; the rule's test is `tests/test_repo_shape.sh`, which changed with it.
+  - Property enumerated: "the open-drain marker never excuses a C call". Checked every finder that reads `; open-drain`. `find_safety10( )` was fixed. `find_safety10od( )` was already limited to `.pio` (`grep -E "\.pio$"`), and there it is a trigger, not an excuse. No other finder (`find_safety09( )`, R-SAFETY-01/06 in `tests/test_pin_table.py`) has the marker.
+- **Round 2: spec step 6, outover order.** The spec said "gets the outover LOW before its direction is ever set". `device_init( )` sets the PIO direction to *input* first, then `pio_gpio_init( )`, then the outover. The literal order is impossible: `pio_gpio_init( )` clears OUTOVER (see the `§Observed conventions` finding). Amended to "… before its direction is ever set to output", which is what the code does. Reconciled against the spec Goal §Electrically, spec step 1, ADR-0016 ("before the program can set any direction") and the constraints finding. All of them already agree, so none changed.
+- **Round 2: `verify.md` "Eight" → "Nine" refused lines**, to match `kRefused` and R-EMU-02's Scope.
+- **Validation round 2 (2026-10-05), spec amended for two unsettled `undecidable` findings:**
+  - ACK start point. The Goal said the ACK "starts `kAckDelayUs` after the byte's last rising `CLK` edge". The code starts counting only after `serve_frame` sees the RX push, and the PIO `pull`/`out`/`jmp` adds a few cycles. Amended to "starts at least `kAckDelayUs` after". The `fault late` row ("every ACK starts `us` µs after its byte") becomes "every ACK waits `us` µs instead of `kAckDelayUs`". Both rest on `src/emu/main.cpp` `serve_frame` and `src/hal/ps2_device.pio`, and the Debt entry "ACK delay is CPU-timed" already records the jitter. Reconciled: step 5 ("with `kAckDelayUs`", the model's `ack_delay_us`, still exact) and the step-9 rows `fault late 200`/`fault late 50` are unchanged and still agree.
+  - seq 1 frame length. `verify.md` writes `bytes=0/9`, and the spec said only "stops at byte 0". The step-9 defaults row now reads "`bytes=0/9`: the master's 9-byte pattern stops at byte 0, `att=high`". This rests on `kSeqPattern` in `src/app/main.cpp` (9 bytes) and the bench output. The other rows say "as above", so they need no change.
 - **Spec sufficiency.** None missing. Every file read was in the Context pointers or the Plan. The exceptions are the pico-sdk sources (`hardware_gpio/gpio.c`, `hardware_pio/pio.c`), read to confirm the outover ordering, and `docs/wiring.md`'s resistor values, which was a pointer.
 
 ## Debt
@@ -124,3 +135,53 @@ Bench incident, no damage observed: on the first attempt the second Pico was sti
   - The ACK pulse is 2 µs, and the master never waits for ACK to rise. If the master's turnaround between bytes ever drops under about 2 µs, the device would still be pulsing when CLK falls. It recovers within the same half-bit, but this has not been measured.
 - **07-analog-mode** — `SgModel::step( )` answers only `01 42 …`. A `0x43`/`0x44` frame gets an ACK at byte 0 and nothing after, so the config-mode sequence has to be added to `step( )` there, together with R-EMU-01's cases. `mode analog` already gives the 9-byte `0x73` frame.
 - **09-guitar-observe** — replace `kAckDelayUs`/`kAckPulseUs` with measured values. Keep `kDeviceAckPulseUs` and `ACK_PULSE_CYCLES` in `ps2_device.pio` in step; the static asserts enforce it.
+- **Validation 2026-10-05, reviewer taste (not blocking):**
+  - `verify.md` part 1 says "Eight bad command lines"; `kRefused` in `tests/emulator_cases.cpp` and R-EMU-02's Scope both say nine. Fixed in round 2.
+  - `tests/pin_table_cases.cpp` reflows the 11 existing `Rejection` initialisers (diff noise only).
+  - `next_word( )` accepts repeated and leading spaces; `main.cpp` drops a byte completed while `ATT` is high. Neither is in the spec's grammar, neither is forbidden.
+
+## Validation — 2026-10-05
+- criteria: 13 passed / 0 failed. Manual bench re-run by the agent on the operator's still-wired two Picos (master `/dev/cu.usbmodem101`, emulator `/dev/cu.usbmodem2101`): all 7 `verify.md` rows reproduce the `## Bench readings` table (ack 8–11 µs default, 48–50 µs under `fault late 50`). Extra: `payload 7f fe 80 80 80 80` arrives as `in … 7F FE` (asymmetric bytes, so bit order holds); `fault id zz`, `fault late 10001` and `fault ack 8` answer `error: usage: …` and the next frame is unchanged.
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- independent review: contradicts (code-side): spec Plan step 4 "In a `.pio` under `src/hal/`, a `pindirs` line that carries `; open-drain` is excused" — `find_safety10( )` in `tests/test_repo_shape.sh` applies the exclusion `pindirs[^;]*;[[:space:]]*open-drain` to every `src/hal/` file, so a `.cpp` line such as `pio_sm_set_pindirs_with_mask( … ); /* ; open-drain */` is excused too. Evidence for code-side: the sentence is from the expansion (2d3a529), no Deviations entry records widening it, and the excuse is a weakening of a safety check. | contradicts (spec-side): spec Plan step 6 "An `OpenDrainOutput` pin gets the outover LOW before its direction is ever set" — `device_init( )` sets the PIO direction to input, then `pio_gpio_init( )`, then the outover. Evidence for spec-side: the `§Observed conventions` finding in `docs/constraints.md` (`pio_gpio_init( )` clears OUTOVER) shows the literal order loses the override; the code's order never lets the direction be output before the outover is set. Fix: "before its direction is ever set" → "before its direction is ever set to output"; checked the spec's Goal §Electrically and ADR-0016's wording, neither states the order. (settled: 1 — `make test` for "`tests/test_checks_are_live.py` has no change": `PY_TESTS := $(wildcard tests/test_*.py)` runs it, and the criterion passed)
+- closure test: pass (every changed file is named in the spec; four notes sections present)
+- findings: 2
+- spec size: 20349 (first)
+- upstream: none
+- not-ours: none
+- verdict: returned to implementation — `/implement-phase 05-emulator`: restrict R-SAFETY-10's `; open-drain` excuse to `.pio` files (with a reject case: a `.cpp` `pindirs` call carrying `; open-drain` in a block comment), fix "Eight" → "nine" in `verify.md`; and amend spec step 6 as above with its Deviations entry.
+- **Validation round 2, reviewer taste (not blocking):**
+  - `find_safety10od( )` triggers on `pindirs[^;]*;[[:space:]]*open-drain`, which is looser than `find_safety10( )`'s anchored excuse. It can only over-trigger: the outover then has to be present. It does not excuse anything.
+  - `kDeviceAckPulseUs` has no `belay-debt:` marker of its own. It is tied to `kAckPulseUs` by a `static_assert` (see Deviations).
+  - `device_restart( )` has a second loop over `kEmulatorPins`, which releases DATA and ACK. Step 6's "one loop" refers to `device_init( )`.
+  - The R-SAFETY-06 line puts a `Strengthened` clause before the Scope clause.
+
+## Validation — 2026-10-05 (round 2)
+- criteria: 13 passed / 0 failed. Firmware unchanged since the round-1 bench re-run, so the manual bench reading stands.
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- independent review: undecidable: ACK start point (counted from the byte's last rising edge vs. from when the CPU sees the push) — no criterion | undecidable: seq 1's frame length `0/9` in `verify.md`, not stated in the spec — no criterion (settled: 1 — `make test` for the separate `find_safety10od( )` finder / `test_checks_are_live.py` not edited)
+- closure test: fail: the two unsettled `undecidable` findings are missing pointers. The spec was amended for both in this round (see Deviations).
+- findings: 2
+- spec size: 20410 (+61 since the previous validation; measured after this round's amendment)
+- upstream: none
+- not-ours: none
+- verdict: returned to spec. The spec is already amended; re-run `/validate-phase 05-emulator`.
+- **Validation round 3, reviewer taste (not blocking):** an un-rewrapped comment line in `tests/test_repo_shape.sh` ("…still reported. The same alternation as find_safety09( ), written"); `verify.md`'s last row reads "`fault none`, then `mode digital`" where the spec says "`fault none`" (consistent: `fault none` does not reset the mode); `tests/pin_table_cases.cpp` reflow churn; `find_safety10od( )`'s unanchored trigger (already noted in round 2).
+
+## Validation — 2026-10-05 (round 3)
+- criteria: 13 passed / 0 failed (firmware unchanged; round-1 bench reading stands)
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- independent review:
+  - undecidable: no proof that the round-2 spec amendments are authorized. The spec's header requires a Deviations entry in `notes.md`, which the reviewer is withheld. The entries do exist (round-1 and round-2 Deviations), but no criterion settles this.
+  - undecidable: the new `§Observed conventions` entry in `docs/constraints.md`. The spec names `docs/constraints.md` only for `§Invariants`/`§Layering`.
+  - undecidable: the separate `find_safety10od( )` finder. Step 4 puts the outover report inside `find_safety10( )`; recorded in round-1 Deviations, but the spec never names the finder.
+  - settled: 1. `make test` for the untouched `test_checks_are_live.py` (`PY_TESTS := $(wildcard tests/test_*.py)`).
+- closure test: fail: the three unsettled `undecidable` findings are missing pointers.
+- findings: 3
+- spec size: 20410 (+0 since the previous validation)
+- upstream: `docs/templates/spec.md`. Its header makes a spec amendment depend on a `notes.md` Deviations entry, but `/validate-phase` step 5 withholds `notes.md` from the reviewer. So every amended spec yields an undecidable finding that no criterion can settle. /belay-feedback recommended.
+- not-ours: none
+- verdict: escaped to /expand-phase: spec re-expanded. Round 3, findings 2 → 2 → 3, not strictly falling. Status set to `pending`.

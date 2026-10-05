@@ -184,11 +184,12 @@ find_safety09( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_
 
 # R-SAFETY-10: inside src/hal/, every pin-configuring call names `pin.gpio`, the loop variable
 # over a src/core/pins.h table, on the call's own line, and a .pio program sets pindirs only on
-# a line marked `; open-drain` (ADR-0016). The same alternation as find_safety09( ), written
+# a line marked `; open-drain` (ADR-0016). The excuse is anchored to a line that starts with a
+# PIO `set` or `out` to `pindirs`, so a C call carrying the marker in a comment is still reported. The same alternation as find_safety09( ), written
 # out again so each finder's alternatives are mutated on their own. A grep: it does not prove
 # `pin` is that loop's variable, that a marked pin really is open-drain, and a direct register
 # write is not seen (R-SAFETY-10's Scope clause).
-find_safety10( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' 'pin\.gpio|pindirs[^;]*;[[:space:]]*open-drain' "$( src_files "$1" | grep -F "$1/src/hal/" )"; }
+find_safety10( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' 'pin\.gpio|^[0-9]+:[[:space:]]*(set|out)[[:space:]]+pindirs[^;]*;[[:space:]]*open-drain' "$( src_files "$1" | grep -F "$1/src/hal/" )"; }
 
 # R-SAFETY-10's other half: a `; open-drain` pindirs line is only excused while some .cpp under
 # src/hal/ forces a pad output low on the table's loop variable. Presence, not per pin: which
@@ -415,6 +416,8 @@ reject find_safety10 src/hal/x.pio  'out pindirs, 1'
 reject find_safety10 src/hal/x.pio  'mov pindirs, x'
 # A comment that is not the open-drain marker excuses nothing.
 reject find_safety10 src/hal/x.pio  'out pindirs, 1 ; drives DATA'
+# The marker excuses a PIO instruction only, never a C call that carries it in a comment.
+reject find_safety10 src/hal/x.cpp  'pio_sm_set_pindirs_with_mask( pio0, 0, 0, 0 /* ; open-drain */ );'
 # The marker with no outover anywhere under src/hal/.
 reject find_safety10od src/hal/x.pio 'out pindirs, 1 ; open-drain'
 # R-PROTO-07: one per alternative of the pattern, each on the wrong side-set.
@@ -556,13 +559,14 @@ accept find_proto07 src/hal/ps2_master.pio ';   pull + set          2 cycles, CL
 accept find_proto07 src/hal/ps2_device.pio '    pull block'
 # R-SAFETY-10: a pindirs line marked open-drain is excused by the call-site finder
 accept find_safety10 src/hal/x.pio 'out pindirs, 1 ; open-drain'
+accept find_safety10 src/hal/x.pio '    set pindirs, 1 ; open-drain'
 # R-SAFETY-10: the marked line is accepted while a .cpp under src/hal/ forces the pad low
 accept_pair find_safety10od src/hal/x.pio 'out pindirs, 1 ; open-drain' \
     src/hal/x.cpp 'gpio_set_outover( pin.gpio, GPIO_OVERRIDE_LOW );'
-if [ "$accepted" -ge 37 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 37)"
+if [ "$accepted" -ge 38 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 38)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 37)"
+    echo "  FAIL: false-positive cases: $accepted (floor 38)"
     fail=1
 fi
 

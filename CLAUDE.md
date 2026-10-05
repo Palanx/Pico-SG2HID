@@ -16,6 +16,7 @@ trust the table, not memory. Never expand a phase whose dependencies aren't `don
 mark `done` yourself; only `/validate-phase` does. A cut that turns out wrong is
 superseded by new rows, never edited or deleted — same rule as an ADR.
 A phase's diff always carries files the workflow wrote, not its plan — `docs/phases/<id>/spec.md`, `docs/phases/<id>/notes.md`, `docs/phases/PHASES.md`, `docs/index/`. They are never that phase escaping its scope.
+A spec amendment is authorized by its `notes.md` Deviations entry, which `/validate-phase`'s reviewer is never shown — so an amendment is never itself a finding. (belay-bypass, 2026-10-05: remove once the package fixes `docs/templates/spec.md` vs. the withheld `notes.md`; see `~/.claude-belay/feedback/pico-sg2hid.md`.)
 
 ## Session reading rule
 

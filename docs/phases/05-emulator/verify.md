@@ -84,7 +84,7 @@ From the repository root:
 What the lines of `test_emulator.py` mean:
 
 - `ok:   R-EMU-01 …`: the emulator's logic was fed a poll and answered with exactly the bytes in the hand-written files under `tests/vectors/`. It did this in digital mode, analog mode, and with buttons "pressed". It also stayed silent for a frame that starts wrong.
-- `ok:   R-EMU-02 …`: each fault changed only its own part of the answer. Eight bad command lines were each refused and changed nothing, including `fault ack 8`, `fault late 0` and a line that is too long.
+- `ok:   R-EMU-02 …`: each fault changed only its own part of the answer. Nine bad command lines were each refused and changed nothing, including `fault ack 8`, `fault late 0` and a line that is too long.
 - `ok:   rejection cases: 2/2`: the test broke the logic on purpose twice (an ACK on the last byte; the id fault ignored). Each break turned its line to `FAIL`, so the checks bite.
 
 ### 2. The bench: two Picos, no guitar

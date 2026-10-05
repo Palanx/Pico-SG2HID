@@ -25,7 +25,7 @@ on `DATA` while `CLK` is low and sampling `CMD` as `CLK` rises:
 A frame's last byte is wire byte `frame_len( id )` (5 bytes on the wire digital, 9 analog), and it
 gets no ACK. A frame whose byte 0 is not `0x01`, or whose byte 1 is not `0x42`, gets no ACK from
 that byte on, so the master aborts there. A master byte past the frame's end is answered with
-`0xFF` and no ACK. Each ACK is a low pulse on `ACK` that starts `kAckDelayUs` after the byte's
+`0xFF` and no ACK. Each ACK is a low pulse on `ACK` that starts at least `kAckDelayUs` after the byte's
 last rising `CLK` edge and lasts `kAckPulseUs`. Both are named in `src/emu/sg_model.h` and carry a
 `belay-debt:` marker naming `09-guitar-observe`, because they are budgets, not measurements.
 
@@ -44,7 +44,7 @@ so a command takes effect from the next frame.
 | `payload h0 h1 h2 h3 h4 h5` | exactly six two-digit hex bytes (either case); digital sends the first two | `FF FF 80 80 80 80` |
 | `fault none` | no fault | active |
 | `fault ack <n>` | no ACK after wire byte `n`, decimal `0`–`7`; every other byte as without the fault | — |
-| `fault late <us>` | every ACK starts `us` µs after its byte instead of `kAckDelayUs`, decimal `1`–`10000` | — |
+| `fault late <us>` | every ACK waits `us` µs instead of `kAckDelayUs`, decimal `1`–`10000` | — |
 | `fault id <hh>` | wire byte 1 is `hh` instead of the id; the frame length still follows the mode | — |
 
 One fault is active at a time: a `fault` line replaces the previous one. Refused lines include,
@@ -157,7 +157,8 @@ the bench, the 24-pio-bus loopback firmware is what drives the frames the operat
      Update R-PROTO-07's Scope sentence ("`.pio` files under `src/hal/` (`src/hal/ps2_master.pio`
      today)") in the same edit.
    - `find_safety10( )`:
-     - In a `.pio` under `src/hal/`, a `pindirs` line that carries `; open-drain` is excused.
+     - A line that starts with a PIO `set` or `out` to `pindirs` and carries `; open-drain` is
+       excused.
      - If any such line exists while no `.cpp` under `src/hal/` contains
        `gpio_set_outover( pin.gpio, GPIO_OVERRIDE_LOW )`, it reports that.
      - Reject cases: a marked line with no outover anywhere; an unmarked `out pindirs`.
@@ -205,7 +206,7 @@ the bench, the 24-pio-bus loopback firmware is what drives the frames the operat
    header), `src/hal/pio_device.cpp` and `src/hal/ps2_device.pio`.
    - `device_init( )` configures pins in one loop over `kEmulatorPins`, with every configuring
      call on a line naming `pin.gpio`. An `OpenDrainOutput` pin gets the outover LOW before its
-     direction is ever set.
+     direction is ever set to output.
    - The program releases `DATA` before the first edge. On each falling `CLK` edge it sets
      `DATA`'s direction from the next bit (output for a 0) with `out pindirs` marked
      `; open-drain`, and it samples `CMD` on each rising edge. After eight bits it pushes the
@@ -259,7 +260,7 @@ the bench, the 24-pio-bus loopback firmware is what drives the frames the operat
 
      | emulator state | seq 0 (`01 42 00 00 00`) | seq 1 (starts `FF`) | seq 2 (`80`) |
      |---|---|---|---|
-     | defaults | all 5 bytes complete; `in` = `FF 41 5A FF FF` | stops at byte 0, `att=high` | 1/1, `in` = `FF` |
+     | defaults | all 5 bytes complete; `in` = `FF 41 5A FF FF` | `bytes=0/9`: the master's 9-byte pattern stops at byte 0, `att=high` | 1/1, `in` = `FF` |
      | `mode analog` | 5/5, `in` = `FF 73 5A FF FF` | as above | as above |
      | `fault ack 2` | stops at byte 2, `att=high` | as above | as above |
      | `fault late 200` | stops at byte 0, `att=high` | as above | as above |
