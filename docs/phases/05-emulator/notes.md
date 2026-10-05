@@ -4,7 +4,7 @@
 
 - base: 2d3a529 (working tree; nothing committed yet)
 
-A second firmware, `build/pico/sg2hid_emu.uf2`, plays a wired SG on the bus. It was built and host-tested. **It has not yet been run on two Picos**: the step-9 bench is owed (see `## Bench readings`).
+A second firmware, `build/pico/sg2hid_emu.uf2`, plays a wired SG on the bus. It was built and host-tested, and the two-Pico bench passed on 2026-10-05 (see `## Bench readings`).
 
 - **`src/core/pins.h`**
   - Adds `DriveMode::Input`, `DriveMode::OpenDrainOutput`, and `kEmulatorPins` on GPIO 2–6. DATA and ACK are `Output`/`OpenDrainOutput`; CMD, ATT and CLK are `Input`/`Input`.
@@ -54,7 +54,7 @@ Acceptance criteria run 2026-10-02:
 | `git diff --quiet main -- <master files>` | exit 0 |
 | `test_phase_docs.sh` | exit 0 |
 | `make test` | `OK`, exit 0 |
-| Manual bench table | **owed** |
+| Manual bench table | all 7 rows match, 2026-10-05 |
 
 ## Acceptance: make test
 
@@ -62,17 +62,25 @@ Acceptance criteria run 2026-10-02:
 
 ## Bench readings
 
-Owed by the operator. Run `verify.md` part 2 and record one reading per row, as seen on seq 0, seq 1 and seq 2:
+2026-10-05. Two Picos, no guitar. Master on `/dev/cu.usbmodem101` (`sg2hid.uf2`), emulator on `/dev/cu.usbmodem2101` (`sg2hid_emu.uf2`). Wired per `docs/wiring-emulator.md`, signal wires inserted after both boards were running. Loopback jumpers removed. The operator ran `verify.md` end to end by hand. The table below is the recorded capture of part 2 step 6, read through `tools/trace_decode.py`. Every row matches `verify.md`.
 
-| emulator state | seq 0 | seq 1 | seq 2 |
+| emulator state | seq 0 (`01 42 00 00 00`) | seq 1 | seq 2 |
 |---|---|---|---|
-| defaults | — | — | — |
-| `mode analog` | — | — | — |
-| `fault ack 2` | — | — | — |
-| `fault late 200` | — | — | — |
-| `fault late 50` | — | — | — |
-| `fault id 79` | — | — | — |
-| `fault none` | — | — | — |
+| defaults (`fault none`, `mode digital`) | `5/5`, in `FF 41 5A FF FF`, ack 9/9/8/8 µs | `0/9`, aborted at byte 0, `att=high` | `1/1`, in `FF` |
+| `mode analog` | `5/5`, in `FF 73 5A FF FF`, ack 10/9/9/9 µs | same | same |
+| `fault ack 2` | `2/5`, in `FF 41`, aborted at byte 2, `att=high` | same | same |
+| `fault late 200` | `0/5`, aborted at byte 0, `att=high` | same | same |
+| `fault late 50` | `5/5`, in `FF 41 5A FF FF`, ack 50/49/48/48 µs | same | same |
+| `fault id 79` | `5/5`, in `FF 79 5A FF FF`, ack 9/8/9/8 µs | same | same |
+| `fault none`, then `mode digital` | `5/5`, in `FF 41 5A FF FF`, ack 9/8/8/8 µs | same | same |
+
+Every command was answered `ok: <line>` on the emulator port.
+
+Reading notes:
+- `match=no` on every `loopback:` line is expected. The master still runs the phase-04 loopback comparison, and the emulator's answers differ from what was sent.
+- The decoder prints `no ACK after 133 us`. That is the byte time (~36 µs) plus the master's ~100 µs ACK wait, so it agrees with the 100 µs budget in `verify.md`.
+
+Bench incident, no damage observed: on the first attempt the second Pico was still running `sg2hid.uf2`, the master firmware. Both ports printed `loopback:` lines. CMD, ATT and CLK were then push-pull on both boards, with one 330 Ω in each path, which limits contention to ≈ 10 mA. The signal wires were pulled, the board was reflashed with `sg2hid_emu.uf2`, and the run above followed. Identify the emulator by its silence plus an `ok:` reply to `fault none` before inserting the signal wires.
 
 ## Deviations
 
