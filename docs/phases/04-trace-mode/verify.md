@@ -152,7 +152,7 @@ steps 1–3 if you have not done them before.
 2. Jumpers in place: **socket pin 2 (CMD) → socket pin 1 (DATA)** and **socket pin 6 (ATT)
    → socket pin 9 (ACK)**, between the socket-side rows.
 3. Flash: `make firmware`, hold **BOOTSEL**, plug USB in, release, then
-   `cp build/pico/sg2hid.uf2 /Volumes/RPI-RP2/`.
+   `cp build/pico/sg2hid_loopback.uf2 /Volumes/RPI-RP2/`.
 4. Capture 50 lines (about seven seconds: seven lines per second) and decode them:
 
    ```

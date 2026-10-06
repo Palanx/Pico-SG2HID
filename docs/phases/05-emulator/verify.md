@@ -91,7 +91,7 @@ What the lines of `test_emulator.py` mean:
 
 **Before anything: the guitar is unplugged and not on the bench.** Nothing in this phase touches it.
 
-1. **Flash the master.** Hold its **BOOTSEL** button, plug its USB in, release, then run `cp build/pico/sg2hid.uf2 /Volumes/RPI-RP2/`. The master runs the same loopback firmware as phase 04. Remove both jumpers from phase 24/04 (CMD→DATA and ATT→ACK): the emulator replaces them.
+1. **Flash the master.** Hold its **BOOTSEL** button, plug its USB in, release, then run `cp build/pico/sg2hid_loopback.uf2 /Volumes/RPI-RP2/`. The master runs the same loopback firmware as phase 04. Remove both jumpers from phase 24/04 (CMD→DATA and ATT→ACK): the emulator replaces them.
 2. **Flash the emulator.** Do the same with the second Pico: `cp build/pico/sg2hid_emu.uf2 /Volumes/RPI-RP2/`.
 3. **Find the two serial ports.** With only the master plugged in, run `ls /dev/cu.usbmodem*`: that name is the master. Plug the emulator in and run it again: the new name is the emulator. Write them down:
 
