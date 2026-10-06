@@ -3,6 +3,7 @@
 ## Outcome
 
 - base: 2d3a529 (working tree; nothing committed yet)
+- not-ours: CLAUDE.md — operator-ordered belay-bypass line, 2026-10-05
 
 A second firmware, `build/pico/sg2hid_emu.uf2`, plays a wired SG on the bus. It was built and host-tested, and the two-Pico bench passed on 2026-10-05 (see `## Bench readings`).
 
@@ -56,6 +57,13 @@ Acceptance criteria run 2026-10-02:
 | `make test` | `OK`, exit 0 |
 | Manual bench table | all 7 rows match, 2026-10-05 |
 
+**Re-expansion implementation round, 2026-10-05.** The spec now requires a broken frame to get `0xFF` on every later wire byte.
+- `SgModel::step( )` in `src/emu/sg_model.cpp` answers `kIdleByte` once `m_is_broken` is set. The `src/emu/sg_model.h` header comment says the same.
+- `tests/emulator_cases.cpp` gains `released_after( )` and two R-EMU-01 cases: `42 42 …` sends `0xFF` after byte 0, and `01 43 …` sends `0xFF` after byte 1. With `step( )` reverted, both FAIL and R-EMU-01 turns to FAIL; the source was restored afterwards.
+- R-EMU-01's text and Scope clause in `docs/constraints.md` say the same.
+- `verify.md` line 31 is reworded (see Deviations).
+- All 14 acceptance criteria pass. `sg2hid_emu.uf2` was rebuilt 23:00, the operator re-flashed it, and the bench was re-read (see `## Bench readings`).
+
 ## Acceptance: make test
 
 2026-10-02, full tree: last line `OK`, exit 0. `tests/test_checks_are_live.py` passed with the new finder, cases and LIVE accounting. `tests/test_emulator.py` passed: R-EMU-01 ok, R-EMU-02 ok, rejection cases 2/2.
@@ -81,6 +89,20 @@ Reading notes:
 - The decoder prints `no ACK after 133 us`. That is the byte time (~36 µs) plus the master's ~100 µs ACK wait, so it agrees with the 100 µs budget in `verify.md`.
 
 Bench incident, no damage observed: on the first attempt the second Pico was still running `sg2hid.uf2`, the master firmware. Both ports printed `loopback:` lines. CMD, ATT and CLK were then push-pull on both boards, with one 330 Ω in each path, which limits contention to ≈ 10 mA. The signal wires were pulled, the board was reflashed with `sg2hid_emu.uf2`, and the run above followed. Identify the emulator by its silence plus an `ok:` reply to `fault none` before inserting the signal wires.
+
+**Re-read 2026-10-05, after the broken-frame change.** Same ports and wiring. The operator re-flashed the emulator and confirmed `ok: fault none` before reconnecting the signal wires. The agent then drove both ports, sending each row's commands to the emulator and decoding about 2 s of the master with `tools/trace_decode.py`. Every command was answered `ok: <line>`. All 7 rows match `verify.md`:
+
+| emulator state | seq 0 | seq 1 | seq 2 |
+|---|---|---|---|
+| `mode digital` | `5/5`, in `FF 41 5A FF FF`, ack 10/10/9/9 µs | `0/9`, aborted at byte 0, `att=high` | `1/1`, in `FF` |
+| `mode analog` | `5/5`, in `FF 73 5A FF FF`, ack 10/10/9/10 µs | same | same |
+| `fault ack 2` | `2/5`, in `FF 41`, aborted at byte 2 | same | same |
+| `fault late 200` | `0/5`, aborted at byte 0 | same | same |
+| `fault late 50` | `5/5`, in `FF 41 5A FF FF`, ack 50/49/49/49 µs | same | same |
+| `fault id 79` | `5/5`, in `FF 79 5A FF FF`, ack 10/10/9/9 µs | same | same |
+| `fault none`, then `mode digital` | `5/5`, in `FF 41 5A FF FF`, ack 10/9/9/9 µs | same | same |
+
+The broken-frame change is not visible on this bench. The master aborts at the first missing ACK, so it never clocks the bytes after a break. Only the host cases show it.
 
 ## Deviations
 
@@ -114,6 +136,22 @@ Bench incident, no damage observed: on the first attempt the second Pico was sti
 - **Validation round 2 (2026-10-05), spec amended for two unsettled `undecidable` findings:**
   - ACK start point. The Goal said the ACK "starts `kAckDelayUs` after the byte's last rising `CLK` edge". The code starts counting only after `serve_frame` sees the RX push, and the PIO `pull`/`out`/`jmp` adds a few cycles. Amended to "starts at least `kAckDelayUs` after". The `fault late` row ("every ACK starts `us` µs after its byte") becomes "every ACK waits `us` µs instead of `kAckDelayUs`". Both rest on `src/emu/main.cpp` `serve_frame` and `src/hal/ps2_device.pio`, and the Debt entry "ACK delay is CPU-timed" already records the jitter. Reconciled: step 5 ("with `kAckDelayUs`", the model's `ack_delay_us`, still exact) and the step-9 rows `fault late 200`/`fault late 50` are unchanged and still agree.
   - seq 1 frame length. `verify.md` writes `bytes=0/9`, and the spec said only "stops at byte 0". The step-9 defaults row now reads "`bytes=0/9`: the master's 9-byte pattern stops at byte 0, `att=high`". This rests on `kSeqPattern` in `src/app/main.cpp` (9 bytes) and the bench output. The other rows say "as above", so they need no change.
+- **Re-expansion 2026-10-05 (after the validation round-3 escape).** `spec.md` was rewritten from scratch by `/expand-phase`, on the operator's order, with no change to `src/`, `tests/`, the build, `verify.md`, ADR-0016 or `docs/wiring-emulator.md` (all final as of 108b48f). Every amendment above (round 1, round 2, validation rounds 1–3) is folded into base text. The header no longer makes amendments conditional on a Deviations entry (package defect, reported via `/belay-feedback` 2026-10-05). Context pointers now name every file in `git diff --name-only 2d3a529` (exempt: `spec.md`, `notes.md`, `PHASES.md`, `docs/index/`; `CLAUDE.md` is not-ours) and `docs/constraints.md` §Observed conventions. Step 4 names `find_safety10od( )`; a 14th criterion, `python3 tests/test_checks_are_live.py` → exit 0 (measured 2026-10-05, ~6 min), settles the finder question mechanically.
+- **Validation round 4 fix (2026-10-05): misplaced §Layering pointer.** The `docs/constraints.md` pointer under "Files this phase writes" ended with "§Layering: `emu` → `core`, `hal`.", but no hunk touches §Layering. Deleted that sentence; nothing added. Reconciled: the only other statement of the layering in the spec is the `CLAUDE.md` read pointer ("layering"), which stays and is correct; step 6's "`hal` cannot include `emu`" agrees with `CLAUDE.md` §Architecture. No other sentence relied on it.
+- **Validation round 5 fix (2026-10-05): two step-7 sentences, spec only, no code change.**
+  - Compile flags: the `-Wall;-Wextra;-Werror` / stdio / extra-outputs list was attached to `sg2hid_emu` alone, so the reviewer could not tell whether the master's flags on the shared `src/core/*.cpp` changed. Reworded to "Each target sets the same `-Wall;-Wextra;-Werror` source property on every source in its list, USB stdio on, UART stdio off, and extra outputs." Founded on `CMakeLists.txt` lines 42 and 47–49 (master, line 42 identical at 2d3a529) and 56 and 62–64 (emulator).
+  - Line overflow: added "It keeps the first `kMaxLineLen` + 2 characters of a line and drops the rest, so a longer line still reaches `apply( )` too long and is refused." Founded on `kLineBufferSize = ps2::kMaxLineLen + 2` and the `reader.len < kLineBufferSize` guard in `src/emu/main.cpp`, and on `SgModel::apply( )` stripping a trailing `\r` before refusing any line over `kMaxLineLen`.
+  - Reconciled: the Goal's "a line longer than `kMaxLineLen` (64) characters" refused line and "It answers every line with one line" agree and stay; step 5's "nine refused lines" is unaffected; step 7's Check is unchanged. Nothing became redundant. Closure re-checked: every file in the phase's file set is still named in the spec.
+- **Re-expansion round: `verify.md` line 31 reworded.**
+  - The spec's step 5 names the code change, but not this `verify.md` sentence.
+  - The old text, "It also stays silent if byte 1 is not `42`", was false for byte 1 itself: its answer, the id, is decided at byte 0 and goes out while the master's byte 1 is still arriving.
+  - Now: "it has already sent its id on that byte … and it is silent from byte 2 on". This is in scope: spec step 9 touches `verify.md`, and the Goal says "`0xFF` on every **later** wire byte".
+  - Property enumerated, "`DATA` is released whenever this controller is not being answered", at every place it must hold:
+    - `ATT` high: `device_restart( )` loads the word for `0xFF`. Holds.
+    - Past the frame's end: `byte_at( )` returns `kIdleByte`. Holds.
+    - After a break at byte 0 or 1: fixed this round.
+    - The broken byte 1 itself: cannot hold, because the answer is already on the wire. Now stated in `verify.md`.
+  - The other "silent" claims in `verify.md` (line 86, "stayed silent for a frame that starts wrong"; line 138, seq 1 starts `FF`) are true as written and were left unchanged.
 - **Spec sufficiency.** None missing. Every file read was in the Context pointers or the Plan. The exceptions are the pico-sdk sources (`hardware_gpio/gpio.c`, `hardware_pio/pio.c`), read to confirm the outover ordering, and `docs/wiring.md`'s resistor values, which was a pointer.
 
 ## Debt
@@ -133,12 +171,16 @@ Bench incident, no damage observed: on the first attempt the second Pico was sti
   - Commands are line-based on the emulator's own CDC port: `mode`, `payload`, `fault none|ack <n>|late <us>|id <hh>`.
   - The emulator ignores clocks while ATT is high: any byte completed then is dropped and the state machine re-armed.
   - The ACK pulse is 2 µs, and the master never waits for ACK to rise. If the master's turnaround between bytes ever drops under about 2 µs, the device would still be pulsing when CLK falls. It recovers within the same half-bit, but this has not been measured.
+- **06-hil-digital** — a broken frame now releases `DATA` for the rest of the frame, but no bench has seen it: the master always aborts at the first missing ACK. A master that keeps clocking after a missing ACK, if 06 builds one for recovery tests, is the first thing that can observe it.
 - **07-analog-mode** — `SgModel::step( )` answers only `01 42 …`. A `0x43`/`0x44` frame gets an ACK at byte 0 and nothing after, so the config-mode sequence has to be added to `step( )` there, together with R-EMU-01's cases. `mode analog` already gives the 9-byte `0x73` frame.
 - **09-guitar-observe** — replace `kAckDelayUs`/`kAckPulseUs` with measured values. Keep `kDeviceAckPulseUs` and `ACK_PULSE_CYCLES` in `ps2_device.pio` in step; the static asserts enforce it.
 - **Validation 2026-10-05, reviewer taste (not blocking):**
   - `verify.md` part 1 says "Eight bad command lines"; `kRefused` in `tests/emulator_cases.cpp` and R-EMU-02's Scope both say nine. Fixed in round 2.
   - `tests/pin_table_cases.cpp` reflows the 11 existing `Rejection` initialisers (diff noise only).
   - `next_word( )` accepts repeated and leading spaces; `main.cpp` drops a byte completed while `ATT` is high. Neither is in the spec's grammar, neither is forbidden.
+- **Validation round 4 (after re-expansion), reviewer taste (not blocking):** the un-rewrapped R-SAFETY-10 comment line in `tests/test_repo_shape.sh` (already noted in round 3); `refused_lines( )` in `tests/emulator_cases.cpp` applies each refused line to a fresh default model, so it shows "leaves the default frame", not "changes nothing" from a non-default state; one `belay-debt:` comment covers both `kAckDelayUs` and `kAckPulseUs` in `src/emu/sg_model.h`; `tests/pin_table_cases.cpp` reflow churn (already noted).
+- **Validation round 5, reviewer taste (not blocking):** `src/emu/main.cpp` uses `std::size_t` without `<cstddef>` and strips `\r` itself as well as in `SgModel::apply( )`; `Fixture::pins` in `tests/pin_table_cases.cpp` is sized from `kMasterPins` while it also holds emulator tables (correct only because both have 5 rows); `device_restart( )`'s `pio_sm_exec( … pio_encode_jmp( device_offset ) )` is not listed in step 6; the over-long R-SAFETY-10 comment line (again).
+- **Validation round 6, reviewer taste (not blocking):** the over-long R-SAFETY-10 comment line and the `tests/pin_table_cases.cpp` reflow (again); R-EMU-02 in `docs/constraints.md` takes its grammar from `docs/phases/05-emulator/spec.md` §Goal, so a standing rule rests on a phase document (`src/emu/sg_model.h` would outlive it); `gpio_set_outover` and the other pad-override setters are not in R-SAFETY-09's call-name list, so one outside `src/hal/` would not be reported.
 
 ## Validation — 2026-10-05
 - criteria: 13 passed / 0 failed. Manual bench re-run by the agent on the operator's still-wired two Picos (master `/dev/cu.usbmodem101`, emulator `/dev/cu.usbmodem2101`): all 7 `verify.md` rows reproduce the `## Bench readings` table (ack 8–11 µs default, 48–50 µs under `fault late 50`). Extra: `payload 7f fe 80 80 80 80` arrives as `in … 7F FE` (asymmetric bytes, so bit order holds); `fault id zz`, `fault late 10001` and `fault ack 8` answer `error: usage: …` and the next frame is unchanged.
@@ -185,3 +227,40 @@ Bench incident, no damage observed: on the first attempt the second Pico was sti
 - upstream: `docs/templates/spec.md`. Its header makes a spec amendment depend on a `notes.md` Deviations entry, but `/validate-phase` step 5 withholds `notes.md` from the reviewer. So every amended spec yields an undecidable finding that no criterion can settle. /belay-feedback recommended.
 - not-ours: none
 - verdict: escaped to /expand-phase: spec re-expanded. Round 3, findings 2 → 2 → 3, not strictly falling. Status set to `pending`.
+
+## Validation — 2026-10-05 (round 4, first after re-expansion)
+- precondition: status was `expanded`, not `in-progress`; the code was final at 108b48f and the operator ordered this run, so the status was set to `in-progress` at its start.
+- criteria: 14 passed / 0 failed. `src/`, `tests/`, `CMakeLists.txt` and `Makefile` are unchanged since 108b48f, so the round-1 manual bench reading stands.
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- independent review: undecidable: spec Context pointers list `docs/constraints.md` "§Layering: `emu` → `core`, `hal`" under "Files this phase writes", but no hunk touches §Layering — no criterion (settled: 1 — `python3 tests/test_checks_are_live.py` for whether `find_safety10od( )` is mutation-live)
+- closure test: fail: the unsettled `undecidable` is a misplaced pointer — §Layering is read-only context, written into the "writes" list at re-expansion.
+- findings: 1
+- spec size: 20477 (+67 since the previous validation)
+- upstream: none
+- not-ours: CLAUDE.md subtracted
+- verdict: returned to spec. Fix: delete "§Layering: `emu` → `core`, `hal`." from the `docs/constraints.md` pointer under "Files this phase writes" (CLAUDE.md §Architecture already states the layering), add a Deviations entry, re-run `/validate-phase 05-emulator`.
+
+## Validation — 2026-10-05 (round 5)
+- criteria: 14 passed / 0 failed. Code unchanged since 108b48f; the round-1 bench reading stands.
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- independent review: undecidable: `CMakeLists.txt` sets `-Wall;-Wextra;-Werror` as a source property on `${SG2HID_EMU_ALL_SOURCES}`, which includes the `src/core/*.cpp` the master also compiles; the spec does not say whether the master's flags stay unchanged — no criterion (fact, checked in the tree: the master sets the identical property on `${SG2HID_SOURCES}`, line 42, as at 2d3a529) | undecidable: `poll_command( )` in `src/emu/main.cpp` drops characters past `kLineBufferSize` and hands the truncated line to `apply( )`; the Goal does not say how an overflowing line is handled — no criterion (settled: 1 — `python3 tests/test_checks_are_live.py` for `find_safety10od( )` liveness)
+- closure test: fail: the two unsettled `undecidable` findings are missing pointers.
+- findings: 2
+- spec size: 20440 (-37 since the previous validation)
+- upstream: none
+- not-ours: CLAUDE.md subtracted
+- verdict: returned to spec. Second round against the re-expanded spec (1 → 2); the iteration-3 escape is not yet in reach. Proposed fixes: step 7 states that both targets set `-Wall;-Wextra;-Werror` on every source they compile (reword of the existing `sg2hid_emu` sentence); step 7 states that `main.cpp` keeps at most `kMaxLineLen` + 2 characters of a line, so a longer line still reaches `apply( )` too long and is refused.
+
+## Validation — 2026-10-05 (round 6)
+- criteria: 14 passed / 0 failed. Code unchanged since 108b48f; the round-1 bench reading stands.
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- independent review: undecidable: what the emulator puts on `DATA` after a broken frame — `SgModel::step( )` sets `m_is_broken`, which clears only `should_ack`; `next` is still `byte_at( index + 1 )` (id, `0x5A`, payload), so if the master kept clocking past a wrong byte 0 the emulator would drive `DATA`. `verify.md` lines 31, 86 and 138 tell the operator it "stays silent". The spec says only "gets no ACK from that byte on" — no criterion (R-EMU-01's `0x42…` and `01 43` cases check the ACK, not the bytes sent). Confirmed by reading `src/emu/sg_model.cpp`. Harmless on the step-9 bench: the master aborts at the first missing ACK.
+- closure test: fail: the unsettled `undecidable` is a missing statement about `DATA` after a broken frame.
+- findings: 1
+- spec size: 20674 (+234 since the previous validation)
+- upstream: none
+- not-ours: CLAUDE.md subtracted
+- verdict: escaped to /expand-phase: spec re-expanded. Third round against the re-expanded spec, findings 1 → 2 → 1, not strictly falling. Status set to `pending`. For the re-expansion: the spec must say what `DATA` carries after a broken byte, and that decides which side changes — a spec statement that the emulator keeps shifting the frame's bytes with ACK withheld (then `verify.md`'s "stays silent" is wrong and needs rewording), or a code change that answers `0xFF` once broken (then a code-side fix plus an R-EMU-01 case on the bytes sent). `verify.md` and `src/` were outside the operator's re-expansion order, so this is the operator's call.

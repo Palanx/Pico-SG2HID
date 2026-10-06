@@ -150,7 +150,8 @@ ByteAnswer SgModel::step( std::uint8_t received ) {
     if ( m_fault.kind == FaultKind::Ack && index == m_fault.value ) {
         should_ack = false;
     }
-    return { .next         = byte_at( index + 1 ),
+    // A broken frame is not this controller's: DATA stays released for the rest of it.
+    return { .next         = m_is_broken ? kIdleByte : byte_at( index + 1 ),
              .should_ack   = should_ack,
              .ack_delay_us = m_fault.kind == FaultKind::Late ? m_fault.value : kAckDelayUs };
 }

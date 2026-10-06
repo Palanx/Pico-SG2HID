@@ -11,6 +11,8 @@
 //     sends   0xFF   id    0x5A   payload bytes
 //     ACKs    when the master sent 0x01 at 0 and 0x42 at 1, then every byte but the last
 //
+// A frame broken at byte 0 or 1 gets no ACK from that byte on, and 0xFF on every later byte.
+//
 // The answer to byte i is decided when byte i-1 arrives, because the PIO program shifts it out
 // while the master's byte i is still coming in.
 

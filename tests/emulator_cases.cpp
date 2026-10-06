@@ -80,6 +80,17 @@ struct Frame {
     return true;
 }
 
+// Whether every byte the emulator sent after wire byte `broken`, up to the `driven` bytes the
+// master clocked, is 0xFF: DATA released.
+[[nodiscard]] bool released_after( const Frame& frame, std::size_t broken, std::size_t driven ) {
+    for ( std::size_t i = broken + 1; i <= driven && i < kWireBytes; ++i ) {
+        if ( frame.sent[ i ] != ps2::kIdleByte ) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // One named case: prints its own FAIL line and returns whether it held.
 [[nodiscard]] bool expect( bool is_ok, const char* label ) {
     if ( !is_ok ) {
@@ -124,7 +135,7 @@ struct Frame {
                 is_ok;
     }
     {
-        // Not addressed: no ACK at byte 0 or after it.
+        // Not addressed: no ACK at byte 0 or after it, and DATA released from byte 1 on.
         constexpr std::uint8_t kWrongStart[] = { 0x42, 0x42, 0x00, 0x00, 0x00 };
         ps2::SgModel           model;
         const Frame            frame   = drive( model, kWrongStart );
@@ -133,6 +144,9 @@ struct Frame {
             is_none = is_none && !is_acked;
         }
         is_ok = expect( is_none, "a frame starting 0x42 gets no ACK from byte 0 on" ) && is_ok;
+        is_ok = expect( released_after( frame, 0, std::size( kWrongStart ) ),
+                        "a frame starting 0x42 gets 0xFF after byte 0" ) &&
+                is_ok;
     }
     {
         // Addressed, then a command the model does not answer: ACK at 0 only.
@@ -145,6 +159,9 @@ struct Frame {
         }
         is_ok =
             expect( frame.is_acked[ 0 ] && is_none, "01 43 gets no ACK from byte 1 on" ) && is_ok;
+        is_ok = expect( released_after( frame, 1, std::size( kWrongCommand ) ),
+                        "01 43 gets 0xFF after byte 1" ) &&
+                is_ok;
     }
     return is_ok;
 }

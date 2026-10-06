@@ -28,7 +28,7 @@ A digital poll is five bytes. Here is what each side sends:
 
 In analog mode the frame is nine bytes, with four more payload bytes for the sticks and the whammy bar.
 
-If byte 0 is not `01`, the emulator stays silent, the same way a real controller ignores a frame that is not addressed to it. It also stays silent if byte 1 is not `42`. In both cases the master gives up at that byte.
+If byte 0 is not `01`, the emulator stays silent, the same way a real controller ignores a frame that is not addressed to it. If byte 1 is not `42`, it has already sent its id on that byte (each answer goes out while the master's byte is still coming in), and it is silent from byte 2 on. In both cases the master gives up at that byte.
 
 ### Open-drain: why the emulator can never fight the master
 
