@@ -107,7 +107,7 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
    | `fault id 79` | answer as a DualShock 2 (id `79`) | every poll refused, link `absent`, fault `unknown-id`: an unsupported controller is refused, never guessed at (R-PROTO-03) |
    | `fault late 50` | acknowledge every byte 50 µs late | keep streaming with no refused poll: 50 µs is inside the 100 µs budget |
 
-   After every fault the harness sends `fault none` and checks **recovery**: within two seconds the link is `digital` again, reading `7F FE`, with no refused poll and no button change. A fault scenario prints `ok:` only if both the fault and the recovery behaved.
+   After every fault the harness sends `fault none` and checks **recovery**: it skips one summary (about one second, time for the link to come back), then for the next two summaries (about two seconds more) the link must be `digital`, reading `7F FE`, with no refused poll and no button change. A fault scenario prints `ok:` only if both the fault and the recovery behaved.
 
    Why `7F FE` and not the default `FF FF`: `7F` is `01111111` and `FE` is `11111110`. A master reading bits in the wrong order would turn each into the other and show `FE 7F`; one sampling on the wrong clock edge (R-PROTO-07) would be a bit off and show something else again. `FF FF` reads `FF FF` either way, so it would hide both mistakes.
 

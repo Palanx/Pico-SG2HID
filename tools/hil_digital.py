@@ -36,6 +36,10 @@ FAULT_WINDOW = 2
 PAYLOAD_LINE = "payload 7f fe 80 80 80 80"
 EXPECTED_PAYLOAD = "7F FE"
 
+# Everything a Port call raises: os and select raise OSError, tty.setraw( ) and
+# termios.tcdrain( ) raise termios.error, which is not an OSError.
+PORT_ERRORS = (OSError, termios.error)
+
 
 class Failure(Exception):
     pass
@@ -70,12 +74,29 @@ class Port:
         line, _, self.buf = self.buf.partition(b"\n")
         return line.decode("ascii", "replace").rstrip("\r")
 
-    def drop_complete_lines(self):
-        """Discards every complete line received so far; keeps a partial one."""
+    def take_complete_lines(self):
+        """Every complete line received so far, removed from the buffer; a partial one stays."""
         self._fill(0)
-        _, sep, rest = self.buf.rpartition(b"\n")
-        if sep:
-            self.buf = rest
+        done, sep, rest = self.buf.rpartition(b"\n")
+        if not sep:
+            return []
+        self.buf = rest
+        return [line.decode("ascii", "replace").rstrip("\r") for line in done.split(b"\n")]
+
+
+def checked_summary(line):
+    """A `hil:` line, parsed, after the checks that hold for every summary the master prints."""
+    match = SUMMARY.match(line)
+    if not match:
+        raise Failure(f"unreadable summary: {line}")
+    got = match.groupdict()
+    for key in COUNTERS:
+        got[key] = int(got[key])
+    if got["att"] != "high":
+        raise Failure(f"att={got['att']}: {line}")
+    if got["us"] > MAX_SUMMARY_US:
+        raise Failure(f"us={got['us']} over {MAX_SUMMARY_US}: {line}")
+    return got
 
 
 class Harness:
@@ -84,28 +105,18 @@ class Harness:
         self.emu = emu
 
     def summary(self):
-        """The master's next `hil:` line, parsed, after the checks that hold in every scenario."""
+        """The master's next `hil:` line, checked and parsed."""
         deadline = time.monotonic() + MASTER_SILENT_S
         while True:
             line = self.master.read_line(deadline)
             if line is None:
                 raise Failure("master silent")
-            if not line.startswith("hil:"):
-                continue
-            match = SUMMARY.match(line)
-            if not match:
-                raise Failure(f"unreadable summary: {line}")
-            got = match.groupdict()
-            for key in COUNTERS:
-                got[key] = int(got[key])
-            if got["att"] != "high":
-                raise Failure(f"att={got['att']}: {line}")
-            if got["us"] > MAX_SUMMARY_US:
-                raise Failure(f"us={got['us']} over {MAX_SUMMARY_US}: {line}")
-            return got
+            if line.startswith("hil:"):
+                return checked_summary(line)
 
     def send(self, text):
-        """Sends one emulator line and waits for its `ok:`; the master's older lines are dropped."""
+        """Sends one emulator line and waits for its `ok:`; the master's older lines are dropped,
+        but every `hil:` line among them is still checked."""
         self.emu.write_line(text)
         deadline = time.monotonic() + EMU_ANSWER_S
         while True:
@@ -116,7 +127,9 @@ class Harness:
                 break
             if line.startswith("error:"):
                 raise Failure(f"emulator refused '{text}': {line}")
-        self.master.drop_complete_lines()
+        for line in self.master.take_complete_lines():
+            if line.startswith("hil:"):
+                checked_summary(line)
 
     def window(self, k):
         """k summaries after one discarded one, and a Δ function over them."""
@@ -199,7 +212,7 @@ def main():
         for name, run in scenarios(args.seconds):
             run(h)
             print(f"ok: {name}", flush=True)
-    except (Failure, OSError) as failure:
+    except (Failure, *PORT_ERRORS) as failure:
         print(f"FAIL: {name}: {failure}")
         print("hil: FAIL")
         return 1
@@ -207,7 +220,7 @@ def main():
         if emu is not None:
             try:
                 emu.write_line("fault none")
-            except OSError:
+            except PORT_ERRORS:
                 pass
     print("hil: PASS")
     return 0

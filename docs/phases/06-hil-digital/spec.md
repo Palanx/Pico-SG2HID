@@ -96,11 +96,12 @@ Read:
   unsigned subtraction.
 - `docs/adr/0015-bus-trace-text-lines-cpu-timing.md` — the `T1` line printed on a link change.
 - `src/core/link.h`, `src/core/link.cpp` — `Link`, `LinkState`, `FaultCause` and `step( )`,
-  used unchanged.
+  used unchanged. `step( )` keeps `last_fault` when the link recovers.
 - `src/core/ps2_frame.h` — `decode( )`, `DecodeOutcome`, `Ps2Frame` and `kMaxPayloadLen`.
   `decode( )` takes the response without its first byte, and a short span yields `AckTimeout`.
 - `src/core/ps2_protocol.h` — `kFrameStart`, `kCmdPoll`, `kPadByte`, `frame_len( )` and
   `payload_len( )`. The comment at the top explains why wire byte 0's answer is dropped.
+  `kAckTimeoutUs` (100) is the longest the master waits for an `ACK`.
 - `src/core/bus_trace.h` — `WireByte` and `format_trace_line( )`.
 - `src/hal/bus_frame.h`, `src/hal/bus_port.h` — `exchange_frame( )` and `bus_init( )`, used
   unchanged.
