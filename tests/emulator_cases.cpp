@@ -61,7 +61,7 @@ struct Frame {
     Frame frame{};
     frame.sent[ 0 ] = vectors::kAddressReply;
     for ( std::size_t i = 1; i < kWireBytes; ++i ) {
-        frame.sent[ i ] = i - 1 < response.size() ? response[ i - 1 ] : ps2::kIdleByte;
+        frame.sent[ i ] = i - 1 < response.size() ? response[ i - 1 ] : vectors::kReleasedByte;
     }
     for ( std::size_t i = 0; i < response.size(); ++i ) {
         frame.is_acked[ i ] = true;
@@ -84,7 +84,7 @@ struct Frame {
 // master clocked, is 0xFF: DATA released.
 [[nodiscard]] bool released_after( const Frame& frame, std::size_t broken, std::size_t driven ) {
     for ( std::size_t i = broken + 1; i <= driven && i < kWireBytes; ++i ) {
-        if ( frame.sent[ i ] != ps2::kIdleByte ) {
+        if ( frame.sent[ i ] != vectors::kReleasedByte ) {
             return false;
         }
     }

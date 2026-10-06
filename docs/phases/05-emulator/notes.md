@@ -152,6 +152,27 @@ The broken-frame change is not visible on this bench. The master aborts at the f
     - After a break at byte 0 or 1: fixed this round.
     - The broken byte 1 itself: cannot hold, because the answer is already on the wire. Now stated in `verify.md`.
   - The other "silent" claims in `verify.md` (line 86, "stayed silent for a frame that starts wrong"; line 138, seq 1 starts `FF`) are true as written and were left unchanged.
+- **Validation round 7 fixes (2026-10-06).**
+  - **Code (tests only).** `tests/vectors/poll_exchange.h` gains `kReleasedByte = 0xFF`, hand-written. `tests/emulator_cases.cpp` uses it where it used the model's `ps2::kIdleByte`: in `faithful( )` for bytes past a frame's end, and in `released_after( )`.
+    - Proof: with `kIdleByte` temporarily set to `0xFE` in `src/emu/sg_model.h`, R-EMU-01 and R-EMU-02 both FAIL, every case included. Before this change the past-end and broken-frame `0xFF` checks would have followed the model. The header was then restored.
+    - Property enumerated, "no expected value in `tests/emulator_cases.cpp` comes from `src/`". Every `ps2::` use in the file was checked:
+      - `kIdleByte` at line 41 is `drive( )`'s stand-in for the PIO port's byte 0, an input to the harness, not an expected value. Left as is.
+      - `kAckDelayUs` is a project budget, not a protocol byte, so R-PROTO-05 does not cover it. Left as is.
+      - `kMaxLineLen` sizes a buffer. Left as is.
+  - **Spec, step 5.**
+    - "`SgModel::reset( )` starts a frame: wire byte 0's answer is `0xFF`" is cut to "starts a frame". Nothing in the model produces byte 0: `drive( )` sets it, and the firmware loads it from `pio_device.cpp`.
+    - The `poll_exchange.h` bullet now names `kReleasedByte` and says every expected `0xFF` after byte 0 comes from these literals. That rests on `faithful( )` (lines 62, 64) and `released_after( )` (line 87).
+  - **Spec, step 8.** Added: "The emulator adds no resistors: it relies on the master breadboard's 330 Ω series resistors and its 10 kΩ pull-ups on `DATA` and `ACK` (`docs/wiring.md`)." This rests on `docs/wiring.md` lines 11 and 15 and the "Why no new resistors" section of `docs/wiring-emulator.md`.
+  - **Reconciled.**
+    - The Goal's "a master byte past the frame's end is answered with `0xFF`" agrees.
+    - The step-5 R-EMU-01 sentence "every byte sent after the breaking byte is `0xFF`" agrees.
+    - R-EMU-01's Scope ("driven with `tests/vectors/poll_exchange.h`") and the `### Emulator` preamble ("expected answers are the hand-written vectors") in `docs/constraints.md` are now literally true, so neither changed.
+    - The `docs/wiring.md` Context pointer stays as is.
+    - Nothing became redundant.
+- **Validation round 8 fix (2026-10-06): the spelling `find_safety10od( )` matches.**
+  - Step 4's `find_safety10od( )` bullet gains "in the one spelling `clang-format` produces (R-STYLE-01)". The spec only, nothing else.
+  - What it rests on: R-STYLE-01 checks every `.cpp` against `.clang-format` (`sources( )` in `tests/test_style.sh`, run by `make test`), and `.clang-format` sets `SpacesInParens`. So `gpio_set_outover( pin.gpio, … )` is the only form that passes the build, and the finder's pattern matches that form.
+  - Reconciled: the Goal (line 36) and step 1 (ADR-0016) state the same call as behaviour, not as what the check matches, so they stay as they are. The R-SAFETY-10 Scope clause in `docs/constraints.md` names the call and was left unchanged. Nothing became redundant.
 - **Spec sufficiency.** None missing. Every file read was in the Context pointers or the Plan. The exceptions are the pico-sdk sources (`hardware_gpio/gpio.c`, `hardware_pio/pio.c`), read to confirm the outover ordering, and `docs/wiring.md`'s resistor values, which was a pointer.
 
 ## Debt
@@ -181,6 +202,9 @@ The broken-frame change is not visible on this bench. The master aborts at the f
 - **Validation round 4 (after re-expansion), reviewer taste (not blocking):** the un-rewrapped R-SAFETY-10 comment line in `tests/test_repo_shape.sh` (already noted in round 3); `refused_lines( )` in `tests/emulator_cases.cpp` applies each refused line to a fresh default model, so it shows "leaves the default frame", not "changes nothing" from a non-default state; one `belay-debt:` comment covers both `kAckDelayUs` and `kAckPulseUs` in `src/emu/sg_model.h`; `tests/pin_table_cases.cpp` reflow churn (already noted).
 - **Validation round 5, reviewer taste (not blocking):** `src/emu/main.cpp` uses `std::size_t` without `<cstddef>` and strips `\r` itself as well as in `SgModel::apply( )`; `Fixture::pins` in `tests/pin_table_cases.cpp` is sized from `kMasterPins` while it also holds emulator tables (correct only because both have 5 rows); `device_restart( )`'s `pio_sm_exec( … pio_encode_jmp( device_offset ) )` is not listed in step 6; the over-long R-SAFETY-10 comment line (again).
 - **Validation round 6, reviewer taste (not blocking):** the over-long R-SAFETY-10 comment line and the `tests/pin_table_cases.cpp` reflow (again); R-EMU-02 in `docs/constraints.md` takes its grammar from `docs/phases/05-emulator/spec.md` §Goal, so a standing rule rests on a phase document (`src/emu/sg_model.h` would outlive it); `gpio_set_outover` and the other pad-override setters are not in R-SAFETY-09's call-name list, so one outside `src/hal/` would not be reported.
+- **Validation round 7, reviewer taste (not blocking):** R-EMU-02 takes its grammar from a phase document (again); two over-long comment lines in `tests/test_repo_shape.sh` (`find_safety10`, `find_proto07` headers); the `ps2_device.pio` header states a 250 ns DATA settle time that nothing measured; `poll_command( )` strips `\r` a second time after `apply( )` already did.
+- **Validation round 8, reviewer taste (not blocking):** the un-reflowed `find_safety10( )` comment line and the `tests/pin_table_cases.cpp` reflow (again); two names for released DATA, `kReleasedByte` in `src/hal/pio_device.cpp` and `kIdleByte` in `src/emu/sg_model.h`, and the model never produces byte 0 itself; R-EMU-02 points at a phase document for its grammar (again); `next_word( )` splits on spaces only, so a tab is refused and `fault ack 02` is accepted, and the grammar says nothing about either.
+- **Validation round 9, reviewer taste (not blocking):** `drive( )` writes `sent[ 0 ]` from `ps2::kIdleByte`, so byte 0 is never exercised from the model; the un-reflowed `find_safety10( )` comment line (again); `src/emu/main.cpp` uses `std::size_t` without `<cstddef>`; `verify.md` step 6 calls `head -n 15` "about two seconds" when it is about 2.5 s.
 
 ## Validation — 2026-10-05
 - criteria: 13 passed / 0 failed. Manual bench re-run by the agent on the operator's still-wired two Picos (master `/dev/cu.usbmodem101`, emulator `/dev/cu.usbmodem2101`): all 7 `verify.md` rows reproduce the `## Bench readings` table (ack 8–11 µs default, 48–50 µs under `fault late 50`). Extra: `payload 7f fe 80 80 80 80` arrives as `in … 7F FE` (asymmetric bytes, so bit order holds); `fault id zz`, `fault late 10001` and `fault ack 8` answer `error: usage: …` and the next frame is unchanged.
@@ -264,3 +288,47 @@ The broken-frame change is not visible on this bench. The master aborts at the f
 - upstream: none
 - not-ours: CLAUDE.md subtracted
 - verdict: escaped to /expand-phase: spec re-expanded. Third round against the re-expanded spec, findings 1 → 2 → 1, not strictly falling. Status set to `pending`. For the re-expansion: the spec must say what `DATA` carries after a broken byte, and that decides which side changes — a spec statement that the emulator keeps shifting the frame's bytes with ACK withheld (then `verify.md`'s "stays silent" is wrong and needs rewording), or a code change that answers `0xFF` once broken (then a code-side fix plus an R-EMU-01 case on the bytes sent). `verify.md` and `src/` were outside the operator's re-expansion order, so this is the operator's call.
+
+## Validation — 2026-10-05 (round 7, first after the second re-expansion)
+- criteria: 14 passed / 0 failed, on the committed tree (9ed2fcd). The bench was re-read after the broken-frame change (see `## Bench readings`).
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- index: stale after the commit; rebuilt.
+- independent review:
+  - undecidable: `tests/emulator_cases.cpp` takes the expected `0xFF` for bytes past the frame's end (`faithful( )`, line 64) and after a break (`released_after( )`, line 87) from the model's own `ps2::kIdleByte`, not from a hand-written vector. The `### Emulator` preamble says the expected answers are the vectors under `tests/vectors/`. Also, "`SgModel::reset( )` … wire byte 0's answer is `0xFF`" cannot be observed: `drive( )` sets `sent[ 0 ]` itself, and the firmware loads byte 0 from `pio_device.cpp`'s `kReleasedByte`. No criterion. Confirmed by reading the file. A test that compares the model with its own constant would pass if `kIdleByte` changed, which is the shared-constant hazard of ADR-0004.
+  - undecidable: `docs/wiring-emulator.md` relies on "the master's 10 kΩ pull-ups", which the spec never states. They exist (`docs/wiring.md` lines 11, 15, 42), but the reviewer had no way to know. No criterion.
+  - settled: 1 — `python3 tests/test_checks_are_live.py` (`find_safety10od( )` liveness).
+- closure test: fail: the two unsettled `undecidable` findings are missing pointers.
+- findings: 2
+- spec size: 21165 (+491 since the previous validation)
+- upstream: none
+- not-ours: CLAUDE.md subtracted
+- verdict: returned to implementation. Finding 1 needs a test change: add a hand-written `0xFF` literal for released `DATA` to `tests/vectors/poll_exchange.h`, use it at `tests/emulator_cases.cpp` lines 64 and 87, and say so in spec step 5; cut "wire byte 0's answer is `0xFF`" from the step-5 `reset( )` bullet. Finding 2 is spec only: step 8 states that the wiring relies on the master breadboard's 330 Ω series resistors and 10 kΩ pull-ups on DATA and ACK (`docs/wiring.md`). Operator decision pending.
+
+## Validation — 2026-10-06 (round 8)
+- criteria: 14 passed / 0 failed. Only tests and docs changed since 9ed2fcd, so the 2026-10-05 bench re-read stands.
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- index: stale (round-7 test edits); rebuilt.
+- independent review: undecidable: `find_safety10od( )`'s outover pattern `gpio_set_outover\([[:space:]]*pin\.gpio,…` allows no space between the name and `(`, and the spec does not say whether other spellings must be tolerated — no criterion named. In fact R-STYLE-01 (`clang-format` over every `.cpp`, in `make test`) admits only `gpio_set_outover( pin.gpio, … )`, but the spec does not say so. (settled: 2 — `python3 tests/test_checks_are_live.py` for `find_safety10od( )` liveness; `make test` for the `# RULE R-EMU-0n` marker form in `tests/test_emulator.py`)
+- closure test: fail: the unsettled `undecidable` is a missing pointer.
+- findings: 1
+- spec size: 21529 (+364 since the previous validation)
+- upstream: none
+- not-ours: CLAUDE.md subtracted
+- verdict: returned to spec. Second round against this spec; findings are falling (2 → 1). Proposed fix: in step 4's `find_safety10od( )` bullet, after the call text, add "in the one spelling `clang-format` produces (R-STYLE-01)". Operator decision pending.
+
+## Validation — 2026-10-06 (round 9)
+- criteria: 14 passed / 0 failed. Only tests and docs changed since 9ed2fcd, so the 2026-10-05 bench re-read stands.
+- project gates: test pass, lint pass, typecheck pass
+- boundary sweep: clean (13 deny rules; files under `src/core/`, `src/hal/`, `src/emu/`)
+- independent review:
+  - undecidable: `verify.md` "How to read the rows" tells the operator the master waits at most 100 µs for an ACK. The spec never states the master's ACK timeout. No criterion. True in the tree: `kAckTimeoutUs = 100` in `src/core/ps2_protocol.h:49`, used by `src/hal/pio_port.cpp:32`.
+  - undecidable: whether `make test` runs `tests/test_emulator.py`. The spec does not say that `make test` finds `tests/test_*.py` on its own. The reviewer found no deciding criterion (`make test` passes either way). True in the tree: `PY_TESTS := $(wildcard tests/test_*.py)` in `Makefile:29`, run at line 37.
+  - settled: 0.
+- closure test: fail: the two unsettled `undecidable` findings are missing pointers.
+- findings: 2
+- spec size: 21594 (+65 since the previous validation)
+- upstream: `.claude/commands/validate-phase.md`. The iteration-3 escape compares raw finding counts. Over rounds 7–9 the counts were 2 → 1 → 2, and no finding recurred: each round's findings were closed and fresh reviewers surfaced different, true-in-tree gaps. The command's own `belay-debt:` names the upgrade path: compare recurring findings, not counts. /belay-feedback recommended.
+- not-ours: CLAUDE.md subtracted
+- verdict: escaped to /expand-phase: spec re-expanded. Third round against the second re-expanded spec, findings 2 → 1 → 2, not strictly falling. Status set to `pending`. Both findings are one clause each: the step-9 `fault late` rows name `kAckTimeoutUs` (100 µs, `src/core/ps2_protocol.h`) as the master's ACK wait; and the step-5 Check (or Acceptance criteria) names `make test`'s `tests/test_*.py` wildcard, which runs `tests/test_emulator.py`.

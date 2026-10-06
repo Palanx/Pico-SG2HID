@@ -160,7 +160,8 @@ Files this phase reads only:
      - `find_safety10( )` excuses a line that starts with a PIO `set` or `out` to `pindirs` and
        carries `; open-drain`. No other line is excused by the marker.
      - `find_safety10od( )` reports a `.pio` line under `src/hal/` marked `; open-drain` while no
-       `.cpp` under `src/hal/` calls `gpio_set_outover( pin.gpio, GPIO_OVERRIDE_LOW )`.
+       `.cpp` under `src/hal/` calls `gpio_set_outover( pin.gpio, GPIO_OVERRIDE_LOW )`, in the
+       one spelling `clang-format` produces (R-STYLE-01).
    - Reject cases: `out pindirs, 1 ; drives DATA` (a comment that is not the marker); a C call
      `pio_sm_set_pindirs_with_mask( pio0, 0, 0, 0 /* ; open-drain */ );` in a `.cpp`; for
      `find_safety10od( )`, a marked `.pio` line with no outover.
@@ -178,14 +179,17 @@ Files this phase reads only:
 5. **Emulator model, SDK-free** — touches `src/emu/sg_model.h`, `src/emu/sg_model.cpp`,
    `tests/emulator_cases.cpp`, `tests/test_emulator.py`, `tests/vectors/poll_exchange.h`,
    `tests/vectors/README.md` and `docs/constraints.md`.
-   - `SgModel::reset( )` starts a frame: wire byte 0's answer is `0xFF`.
+   - `SgModel::reset( )` starts a frame.
    - `step( received )` returns `ByteAnswer{ next, should_ack, ack_delay_us }`. Once byte 0 or
      byte 1 breaks the frame, `next` is `0xFF` for the rest of the frame (landed 2026-10-05).
    - `apply( std::string_view line )` returns `std::expected<void, std::string_view>` per the
      Goal's grammar.
    - It includes no SDK header, and only `ps2_protocol.h` from `core`.
    - `poll_exchange.h` holds the master's poll bytes `01 42 00 00 00 00 00 00 00` and the
-     address reply `0xFF`, hand-written (R-PROTO-05). The README gains a paragraph naming it.
+     address reply `0xFF`, plus `kReleasedByte` (`0xFF`), the byte expected past a frame's end
+     and after a break; all hand-written (R-PROTO-05). The README gains a paragraph naming it.
+     `tests/emulator_cases.cpp` takes every expected `0xFF` after byte 0 from these literals,
+     never from a `src/emu/` constant.
    - **R-EMU-01** cases: the bytes after the leading `0xFF` equal the vector for default digital
      (`kDigitalIdle`), `mode analog` (`kAnalogIdle`), and `payload` set to `kDigitalPressed`'s
      payload plus four `80` (`kDigitalPressed`); every byte but the last is ACKed with
@@ -248,6 +252,8 @@ Files this phase reads only:
 8. **Two-Pico wiring** — touches `docs/wiring-emulator.md`.
    - One table row per signal, written `| SIGNAL | … |`, joining the emulator's GPIO to the
      socket-side row of that signal's 330 Ω resistor on the master breadboard; plus GND to GND.
+   - The emulator adds no resistors: it relies on the master breadboard's 330 Ω series resistors
+     and its 10 kΩ pull-ups on `DATA` and `ACK` (`docs/wiring.md`).
    - The emulator's 3V3 and VBUS/VSYS are never connected (R-SAFETY-04).
    - Both Picos are on USB before the signal wires are connected; the doc explains back-feeding
      through the pins and the 330 Ω limit.
