@@ -31,6 +31,10 @@ MAX_SUMMARY_US = 1_100_000  # 1000 polls at 1 ms, plus 10 %
 MASTER_SILENT_S = 3.0
 EMU_ANSWER_S = 2.0
 FAULT_WINDOW = 2
+# The master and the emulator are separate ports, so lines are ordered only as they are read. The
+# first summary read after `ok:` may predate the command; the second was printed ~1 s later, after
+# it took effect. Every window discards this many before it counts (spec §Goal, window).
+DISCARDED_SUMMARIES = 2
 
 # The harness's own input, sent in `setup`; not a protocol-fixed byte (R-PROTO-05, 2026-09-17).
 PAYLOAD_LINE = "payload 7f fe 80 80 80 80"
@@ -132,8 +136,10 @@ class Harness:
                 checked_summary(line)
 
     def window(self, k):
-        """k summaries after one discarded one, and a Δ function over them."""
-        before = self.summary()
+        """k summaries after DISCARDED_SUMMARIES discarded ones, and a Δ function over them; Δ is
+        measured from the last discarded summary."""
+        for _ in range(DISCARDED_SUMMARIES):
+            before = self.summary()
         got = [self.summary() for _ in range(k)]
         return got, lambda key: got[-1][key] - before[key]
 

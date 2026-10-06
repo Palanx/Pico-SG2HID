@@ -16,7 +16,8 @@
 - `docs/constraints.md`: R-PROTO-01's `manual:` reason names `build/pico/sg2hid_loopback.uf2`. R-PROTO-06 and R-PROTO-07 each gain a dated `**Observed 2026-10-06 (`06-hil-digital`):**` sentence; R-PROTO-07's "(inferred, not yet observed)" is removed. No binding changed.
 - The flash lines in `docs/phases/24-pio-bus/verify.md:128`, `docs/phases/04-trace-mode/verify.md:155` and `docs/phases/05-emulator/verify.md:94` now copy `sg2hid_loopback.uf2`.
 - `docs/phases/06-hil-digital/verify.md` (new).
-- Acceptance: all 18 criteria pass on 2026-10-06. `make test` → `OK`, and the bench → `hil: PASS` (see `## Bench readings`). The firmware was rebuilt after the bench run with no source change.
+- Round 4 (after the round-3 re-expansion, 2026-10-06): `tools/hil_digital.py` gains `DISCARDED_SUMMARIES = 2`, and `Harness.window( )` discards that many summaries before it counts, measuring Δ from the last discarded one (spec step 5). The bench ran again with it and passed (step 6). `verify.md` now meets step 8's sourcing rule (see Deviations, round 4). All 19 acceptance criteria pass, the bench one included.
+- Acceptance (rounds 1–3): all 18 criteria pass on 2026-10-06. `make test` → `OK`, and the bench → `hil: PASS` (see `## Bench readings`). The firmware was rebuilt after the bench run with no source change.
 
 ## Deviations
 
@@ -28,6 +29,8 @@
 - Round 2: repaired `notes.md`, where the validation round's "reviewer taste" block had been spliced into the middle of the Outcome's Acceptance line; it now sits at the end of `## Validation — 2026-10-06`. No content was changed.
 - Round 3, finding §Goal `tools/hil_digital.py` (Goal: "Every summary line has `att=high` and `us` ≤ 1100000"): the operator chose to fix it in code, not to narrow the spec. `Harness.send( )` used to throw away the master lines it skipped while waiting for `ok:`. Now `Port.take_complete_lines( )` returns those lines, and `send( )` runs every `hil:` line among them through `checked_summary( )`, the same checks `summary( )` applies. Every summary line the harness reads is now checked. Lines left unread in the kernel buffer are read and checked by the next `summary( )`. The spec is not changed. Statements checked: the Goal's rule line and its window definition (a window still counts only summaries after the one it discards, and checking a line does not put it in a window); Plan step 5 (no change). None needed reconciling.
 - Round 3, finding §Plan step 8 `verify.md`: spec Context pointers amended. The `link.h`/`link.cpp` bullet now says `step( )` keeps `last_fault` when the link recovers (`src/core/link.cpp:41-43`). The `ps2_protocol.h` bullet now names `kAckTimeoutUs` (100) as the longest wait for an `ACK` (`src/core/ps2_protocol.h:45-49`). `verify.md` is not changed. Statements checked for reconciliation: Goal "`fault` is `Link::last_fault`" (consistent); Out of scope "`kAckTimeoutUs` … the bench measures them" (consistent); "the real ACK slack is about 95 µs" (24-pio-bus pointer, a different fact). None made redundant. Not covered: `verify.md:123`'s "37 µs of shifting" rests on neither pointer.
+
+- Round 4, spec step 8's sourcing rule: the property is "every number, output line, command and cause in `verify.md` comes from the spec or a Context pointer". The spec listed five owed items; all five were fixed (recovery timing, run time, the "why two" explanation, the deleted sampling-edge sentence, the 133 µs aborted byte with `SHIFT_US` + `kAckTimeoutUs`). Every other claim in `verify.md` was then checked against the same rule, and these also broke it and were fixed: the example summary line had an invented `us=1000123`, now replaced by a real bench line from §Bench readings; the example `T1` line said byte 0 took 47 µs, the bench capture says 48; "One wrong bit in a whole minute of polling would show up here" was deleted, since it was reasoning and is false for wire byte 0, whose answer is dropped; "half way through the buttons" for `fault ack 3` is now "at byte 3, the first button byte" (the bench trace's byte 3 is `7F`); the troubleshooting entry with the invented `payload=FE FD` and its causes was merged into one entry that points to the bench hazard in §For later phases; "that is phase 09's measurement" is now the spec's Out-of-scope wording ("measures, does not tune"). Checked and left as they are, because each has a source: the `make hil` usage line (`Makefile:78`), "the firmware never stops" (`docs/constraints.md` §Error handling), the `fault=` retention (`src/core/link.cpp`), the 100 µs wait (`src/core/ps2_protocol.h`), the `trace_decode.py` invocation (its docstring), the `FE 7F` bit reversal (arithmetic on the binary shown in the same sentence), the ports and the "happened once" note (§Bench readings, §For later phases). The spec is not changed.
 
 ## Debt
 
@@ -85,6 +88,22 @@ hil: polls=108000 refused=14212 changes=0 us=999953 state=digital fault=ack-time
 
 - `us` per 1000 polls: 999 953 to 1 000 049, well inside the 1 100 000 limit.
 - The run's total `refused` was 12 001. Each fault window ran for whole seconds, so those refusals come in thousands; the odd 1 fell outside every judged window. It may be the first poll after boot or a refusal inside a discarded summary. It was not traced, and no judged window saw it.
+
+Round 4 (2026-10-06), same bench and ports, firmware unchanged, harness with `DISCARDED_SUMMARIES = 2`:
+
+```
+$ make hil MASTER=/dev/cu.usbmodem101 EMU=/dev/cu.usbmodem2101
+ok: setup
+ok: sustained
+ok: fault ack 0
+ok: fault ack 3
+ok: fault late 200
+ok: fault id 79
+ok: fault late 50
+hil: PASS
+```
+
+Wall time 1 min 43 s. The spec's estimate is 2 + 62 + 5 × 8 = 104 s.
 
 ## Validation — 2026-10-06
 - criteria: 18 passed / 0 failed (bench: `make hil MASTER=/dev/cu.usbmodem101 EMU=/dev/cu.usbmodem2101` → `hil: PASS`, re-run this round)

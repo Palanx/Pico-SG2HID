@@ -167,6 +167,8 @@ match this spec (notes §Outcome). Two steps owe edits:
 Step 6 then runs again, because step 5 changes what the bench judges. Do the work in the
 order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owes an edit.
 
+**Landed 2026-10-06 (after the re-expansion):** steps 5, 6 and 8 (notes §Outcome, round 4).
+
 1. **Pure poll logic in `core`.** Touches `src/core/poll.h` and `src/core/poll.cpp`.
    - `kDigitalPollLen = frame_len( ControllerId::Digital ) + 1`.
    - `kDigitalPoll`, a `std::array<std::uint8_t, kDigitalPollLen>` holding `kFrameStart`,
@@ -246,7 +248,7 @@ order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owe
      - Arguments: `--master PORT --emu PORT [--seconds N]`.
      - It opens each port with `os.open` and puts it in raw mode with `tty`/`termios`.
      - The number of discarded summaries is one module constant, `DISCARDED_SUMMARIES = 2`,
-       used by every window (Goal §window). **Owed at this re-expansion:** today it is one.
+       used by every window (Goal §window). **Landed 2026-10-06** (was one).
      - `payload=7F FE` is the harness's own input, sent to the emulator in `setup`. It is not
        a protocol-fixed byte (R-PROTO-05's 2026-09-17 ruling).
    - `make hil` runs it with `MASTER` and `EMU`. If either is empty, it exits 1 with a usage
@@ -291,7 +293,7 @@ order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owe
 
    **Sourcing rule.** Every number, output line, command and cause that `verify.md` states must
    come from this spec or a file in Context pointers. A claim that comes from neither is
-   deleted, not argued for. **Owed at this re-expansion:**
+   deleted, not argued for. **Landed 2026-10-06** (were owed at this re-expansion):
    - Recovery timing: the harness skips two summaries (about 2 s), then judges two (about
      2 s more).
    - The run time: about 2 s for `setup`, 62 s for `sustained`, and 8 s for each of the five
