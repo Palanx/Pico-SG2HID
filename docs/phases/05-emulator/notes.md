@@ -332,3 +332,18 @@ The broken-frame change is not visible on this bench. The master aborts at the f
 - upstream: `.claude/commands/validate-phase.md`. The iteration-3 escape compares raw finding counts. Over rounds 7–9 the counts were 2 → 1 → 2, and no finding recurred: each round's findings were closed and fresh reviewers surfaced different, true-in-tree gaps. The command's own `belay-debt:` names the upgrade path: compare recurring findings, not counts. /belay-feedback recommended.
 - not-ours: CLAUDE.md subtracted
 - verdict: escaped to /expand-phase: spec re-expanded. Third round against the second re-expanded spec, findings 2 → 1 → 2, not strictly falling. Status set to `pending`. Both findings are one clause each: the step-9 `fault late` rows name `kAckTimeoutUs` (100 µs, `src/core/ps2_protocol.h`) as the master's ACK wait; and the step-5 Check (or Acceptance criteria) names `make test`'s `tests/test_*.py` wildcard, which runs `tests/test_emulator.py`.
+
+## Operator decision — 2026-10-06
+- decision: phase closed `done` by the operator, overriding the round-9 escape. No re-expansion. This is the operator's call, recorded here as such; `/validate-phase` did not pass this phase.
+- why: the escape fired twice on raw finding counts (1 → 2 → 1, then 2 → 1 → 2). No finding ever recurred, and each fresh reviewer surfaced a new, true-in-tree gap. Another re-expansion would not have changed that. The package defect is reported via /belay-feedback (`commands/validate-phase.md`, 2026-10-06); the operator fixes the package and reinstalls it separately.
+- evidence at closure (round 9, tree at 2321271 plus this record):
+  - 14/14 acceptance criteria pass.
+  - test, lint and typecheck pass.
+  - Boundary sweep clean.
+  - No `contradicts` in any round since the first re-expansion.
+  - Two-Pico bench re-read 2026-10-05 after the last firmware change: 7/7 rows match.
+- open findings accepted, both true in the tree but not stated in the spec:
+  - The master's ACK timeout that `verify.md` quotes (100 µs) is `kAckTimeoutUs` in `src/core/ps2_protocol.h:49`.
+  - `make test` runs `tests/test_emulator.py` through `PY_TESTS := $(wildcard tests/test_*.py)` (`Makefile:29`).
+- not done: the spec does not carry those two clauses. The non-blocking reviewer notes collected under `## For later phases` stand as recorded.
+
