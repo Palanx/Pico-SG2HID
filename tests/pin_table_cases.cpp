@@ -1,4 +1,5 @@
-// Assertions over the pin table in src/core/pins.h (R-SAFETY-01, R-SAFETY-02, R-SAFETY-03).
+// Assertions over the pin tables in src/core/pins.h (R-SAFETY-01, R-SAFETY-02, R-SAFETY-03 on
+// kMasterPins; R-SAFETY-06 on kEmulatorPins against kMasterPins).
 //
 // NOT named test_*.cpp on purpose: the Makefile builds and runs every tests/test_*.cpp, so that
 // name would give this file a second entry point with no driver around it.
@@ -33,6 +34,14 @@ constexpr ps2::Signal kAllSignals[] = {
 static_assert( []() consteval {
     for ( const ps2::PinAssignment& row : ps2::kMasterPins ) {
         if ( ps2::gpio_of( row.signal ) != row.gpio ) {
+            return false;
+        }
+    }
+    return true;
+}() );
+static_assert( []() consteval {
+    for ( const ps2::PinAssignment& row : ps2::kEmulatorPins ) {
+        if ( ps2::gpio_of( row.signal, ps2::kEmulatorPins ) != row.gpio ) {
             return false;
         }
     }
@@ -105,6 +114,28 @@ constexpr std::size_t kCaptureSize = 1024;
     return true;
 }
 
+// R-SAFETY-06: the emulator's table declares each signal once on a free GPIO, never drives DATA
+// or ACK push-pull, and no signal is an output on both Picos.
+[[nodiscard]] bool check_two_pico( Table master, Table emulator ) {
+    if ( !check_each_signal_once( emulator ) || !check_gpios_free_and_distinct( emulator ) ) {
+        return false;
+    }
+    for ( const ps2::PinAssignment& pin : emulator ) {
+        const bool is_bus_return =
+            pin.signal == ps2::Signal::Data || pin.signal == ps2::Signal::Ack;
+        if ( is_bus_return && pin.drive == ps2::DriveMode::PushPull ) {
+            return false;
+        }
+        for ( const ps2::PinAssignment& other : master ) {
+            if ( other.signal == pin.signal && other.direction == ps2::Direction::Output &&
+                 pin.direction == ps2::Direction::Output ) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // --- the aggregate ---------------------------------------------------------------------
 
 [[nodiscard]] bool report( std::FILE* out, bool is_ok, const char* label ) {
@@ -112,9 +143,9 @@ constexpr std::size_t kCaptureSize = 1024;
     return is_ok;
 }
 
-// One line per rule into `out`, and the verdict of all three as the return value. The real
+// One line per rule into `out`, and the verdict of all four as the return value. The real
 // run, the rejection cases and the wiring cases all come through here.
-[[nodiscard]] bool report_rules( Table table, std::FILE* out ) {
+[[nodiscard]] bool report_rules( Table table, Table emulator, std::FILE* out ) {
     bool is_ok = true;
     is_ok      = report( out,
                          check_bus_inputs_not_driven( table ),
@@ -128,6 +159,10 @@ constexpr std::size_t kCaptureSize = 1024;
                          check_gpios_free_and_distinct( table ),
                          "R-SAFETY-03 (no reserved GPIO, no GPIO shared)" ) &&
                  is_ok;
+    is_ok = report( out,
+                    check_two_pico( table, emulator ),
+                    "R-SAFETY-06 (emulator table sound, no signal an output on both Picos)" ) &&
+            is_ok;
     return is_ok;
 }
 
@@ -138,13 +173,13 @@ struct Capture {
     char text[ kCaptureSize ];
 };
 
-[[nodiscard]] Capture capture_report( Table table ) {
+[[nodiscard]] Capture capture_report( Table table, Table emulator ) {
     Capture    result{};
     std::FILE* scratch = std::tmpfile();
     if ( scratch == nullptr ) {
         return result;  // is_ok false and empty text: every case reading it fails loudly.
     }
-    result.is_ok = report_rules( table, scratch );
+    result.is_ok = report_rules( table, emulator, scratch );
     std::rewind( scratch );
     const std::size_t read = std::fread( result.text, 1, kCaptureSize - 1, scratch );
     result.text[ read ]    = '\0';
@@ -168,7 +203,7 @@ struct Capture {
 
 // --- fixtures ----------------------------------------------------------------------------
 
-// A copy of the good table that one fixture then breaks in one place.
+// A copy of a good table that one fixture then breaks in one place.
 struct Fixture {
     ps2::PinAssignment pins[ std::size( ps2::kMasterPins ) + 1 ];
     std::size_t        size;
@@ -178,9 +213,9 @@ struct Fixture {
     }
 };
 
-[[nodiscard]] Fixture good_fixture() {
+[[nodiscard]] Fixture good_fixture( Table source = ps2::kMasterPins ) {
     Fixture fixture{};
-    for ( const ps2::PinAssignment& pin : ps2::kMasterPins ) {
+    for ( const ps2::PinAssignment& pin : source ) {
         fixture.pins[ fixture.size++ ] = pin;
     }
     return fixture;
@@ -192,7 +227,7 @@ struct Fixture {
             return fixture.pins[ i ];
         }
     }
-    return fixture.pins[ 0 ];  // unreachable for the master table, which has every signal.
+    return fixture.pins[ 0 ];  // unreachable for the good tables, which have every signal.
 }
 
 void drop( Fixture& fixture, ps2::Signal signal ) {
@@ -205,10 +240,12 @@ void drop( Fixture& fixture, ps2::Signal signal ) {
     fixture.size = kept;
 }
 
+// `emulator` defaults to the real emulator table, so a master-table case breaks only the master.
 struct Rejection {
     const char* label;
     const char* rule;
     Fixture     fixture;
+    Fixture     emulator = good_fixture( ps2::kEmulatorPins );
 };
 
 [[nodiscard]] Fixture data_push_pull() {
@@ -263,34 +300,71 @@ struct Rejection {
     return fixture;
 }
 
+// --- emulator fixtures: the master table stays good, the emulator's breaks -----------------
+
+[[nodiscard]] Fixture
+emulator_with( ps2::Signal signal, ps2::Direction direction, ps2::DriveMode drive ) {
+    Fixture fixture                    = good_fixture( ps2::kEmulatorPins );
+    entry( fixture, signal ).direction = direction;
+    entry( fixture, signal ).drive     = drive;
+    return fixture;
+}
+
+[[nodiscard]] Fixture emulator_att_dropped() {
+    Fixture fixture = good_fixture( ps2::kEmulatorPins );
+    drop( fixture, ps2::Signal::Att );
+    return fixture;
+}
+
+[[nodiscard]] Fixture emulator_clk_on( std::uint8_t gpio ) {
+    Fixture fixture                         = good_fixture( ps2::kEmulatorPins );
+    entry( fixture, ps2::Signal::Clk ).gpio = gpio;
+    return fixture;
+}
+
 // --- the real run ------------------------------------------------------------------------
 
 [[nodiscard]] bool real_run() {
     for ( const ps2::PinAssignment& pin : ps2::kMasterPins ) {
         std::printf( "  pin: %s GP%d\n", signal_name( pin.signal ), static_cast<int>( pin.gpio ) );
     }
-    return report_rules( ps2::kMasterPins, stdout );
+    return report_rules( ps2::kMasterPins, ps2::kEmulatorPins, stdout );
 }
 
 // --- rejection cases: each bad table flips its own rule's line ---------------------------
 
 [[nodiscard]] bool rejection_cases() {
     const Rejection cases[] = {
-        {"DATA push-pull",          "R-SAFETY-01", data_push_pull()             },
-        {"ACK push-pull",           "R-SAFETY-01", ack_push_pull()              },
-        {"DATA as output",          "R-SAFETY-01", data_as_output()             },
-        {"ACK as output",           "R-SAFETY-01", ack_as_output()              },
-        {"CLK missing",             "R-SAFETY-02", missing_signal()             },
-        {"CMD declared twice",      "R-SAFETY-02", duplicated_signal()          },
-        {"CLK on GPIO 23",          "R-SAFETY-03", clk_on( kReservedGpios[ 0 ] )},
-        {"CLK on GPIO 24",          "R-SAFETY-03", clk_on( kReservedGpios[ 1 ] )},
-        {"CLK on GPIO 25",          "R-SAFETY-03", clk_on( kReservedGpios[ 2 ] )},
-        {"CLK on GPIO 29",          "R-SAFETY-03", clk_on( kReservedGpios[ 3 ] )},
-        {"CLK and ATT on one GPIO", "R-SAFETY-03", shared_gpio()                },
+        { "DATA push-pull", "R-SAFETY-01", data_push_pull() },
+        { "ACK push-pull", "R-SAFETY-01", ack_push_pull() },
+        { "DATA as output", "R-SAFETY-01", data_as_output() },
+        { "ACK as output", "R-SAFETY-01", ack_as_output() },
+        { "CLK missing", "R-SAFETY-02", missing_signal() },
+        { "CMD declared twice", "R-SAFETY-02", duplicated_signal() },
+        { "CLK on GPIO 23", "R-SAFETY-03", clk_on( kReservedGpios[ 0 ] ) },
+        { "CLK on GPIO 24", "R-SAFETY-03", clk_on( kReservedGpios[ 1 ] ) },
+        { "CLK on GPIO 25", "R-SAFETY-03", clk_on( kReservedGpios[ 2 ] ) },
+        { "CLK on GPIO 29", "R-SAFETY-03", clk_on( kReservedGpios[ 3 ] ) },
+        { "CLK and ATT on one GPIO", "R-SAFETY-03", shared_gpio() },
+        { "emulator CMD a push-pull output",
+         "R-SAFETY-06", good_fixture(),
+         emulator_with( ps2::Signal::Cmd, ps2::Direction::Output, ps2::DriveMode::PushPull ) },
+        { "emulator CLK an open-drain output",
+         "R-SAFETY-06", good_fixture(),
+         emulator_with(
+              ps2::Signal::Clk, ps2::Direction::Output, ps2::DriveMode::OpenDrainOutput ) },
+        { "emulator ATT dropped", "R-SAFETY-06", good_fixture(), emulator_att_dropped() },
+        { "emulator DATA push-pull",
+         "R-SAFETY-06", good_fixture(),
+         emulator_with( ps2::Signal::Data, ps2::Direction::Output, ps2::DriveMode::PushPull ) },
+        { "emulator CLK on GPIO 25",
+         "R-SAFETY-06", good_fixture(),
+         emulator_clk_on( kReservedGpios[ 2 ] ) },
     };
     int passed = 0;
     for ( const Rejection& rejection : cases ) {
-        const Capture capture = capture_report( rejection.fixture.table() );
+        const Capture capture =
+            capture_report( rejection.fixture.table(), rejection.emulator.table() );
         if ( says_fail( capture, rejection.rule ) ) {
             ++passed;
         } else {
@@ -311,13 +385,17 @@ struct Rejection {
 
 [[nodiscard]] bool wiring_cases() {
     const Rejection cases[] = {
-        {"DATA push-pull", "R-SAFETY-01", data_push_pull()             },
-        {"CLK missing",    "R-SAFETY-02", missing_signal()             },
-        {"CLK on GPIO 25", "R-SAFETY-03", clk_on( kReservedGpios[ 2 ] )},
+        { "DATA push-pull", "R-SAFETY-01", data_push_pull() },
+        { "CLK missing", "R-SAFETY-02", missing_signal() },
+        { "CLK on GPIO 25", "R-SAFETY-03", clk_on( kReservedGpios[ 2 ] ) },
+        { "emulator CMD a push-pull output",
+         "R-SAFETY-06", good_fixture(),
+         emulator_with( ps2::Signal::Cmd, ps2::Direction::Output, ps2::DriveMode::PushPull ) },
     };
     int passed = 0;
     for ( const Rejection& rejection : cases ) {
-        const Capture capture = capture_report( rejection.fixture.table() );
+        const Capture capture =
+            capture_report( rejection.fixture.table(), rejection.emulator.table() );
         if ( !capture.is_ok && says_fail( capture, rejection.rule ) ) {
             ++passed;
         } else {

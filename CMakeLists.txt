@@ -27,7 +27,14 @@ if( NOT PICO_SDK_VERSION_STRING STREQUAL SG2HID_PICO_SDK_VERSION )
                          "but this firmware is pinned to ${SG2HID_PICO_SDK_VERSION} (ADR-0014)" )
 endif( )
 
-file( GLOB SG2HID_SOURCES CONFIGURE_DEPENDS src/core/*.cpp src/hal/*.cpp src/app/*.cpp )
+# Two firmwares, each from an explicit list: a glob over src/hal/ would link the master's and the
+# emulator's PIO ports into both, and each claims the bus pins from its own table.
+file( GLOB SG2HID_CORE_SOURCES CONFIGURE_DEPENDS src/core/*.cpp )
+file( GLOB SG2HID_APP_SOURCES CONFIGURE_DEPENDS src/app/*.cpp )
+file( GLOB SG2HID_EMU_SOURCES CONFIGURE_DEPENDS src/emu/*.cpp )
+
+# The master: build/pico/sg2hid.uf2.
+set( SG2HID_SOURCES ${SG2HID_CORE_SOURCES} src/hal/bus_frame.cpp src/hal/pio_port.cpp ${SG2HID_APP_SOURCES} )
 add_executable( sg2hid ${SG2HID_SOURCES} )
 target_include_directories( sg2hid PRIVATE src )
 # Our sources only. The SDK's libraries are INTERFACE libraries, so their .c files compile
@@ -41,3 +48,17 @@ target_link_libraries( sg2hid pico_stdlib hardware_pio )
 pico_enable_stdio_usb( sg2hid 1 )
 pico_enable_stdio_uart( sg2hid 0 )
 pico_add_extra_outputs( sg2hid )
+
+# The emulator, flashed to a second Pico (ADR-0004): build/pico/sg2hid_emu.uf2.
+set( SG2HID_EMU_ALL_SOURCES ${SG2HID_CORE_SOURCES} src/hal/pio_device.cpp ${SG2HID_EMU_SOURCES} )
+add_executable( sg2hid_emu ${SG2HID_EMU_ALL_SOURCES} )
+target_include_directories( sg2hid_emu PRIVATE src )
+set_source_files_properties( ${SG2HID_EMU_ALL_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror" )
+# The emulator's PIO program, assembled into build/pico/ps2_device.pio.h.
+pico_generate_pio_header( sg2hid_emu ${CMAKE_CURRENT_LIST_DIR}/src/hal/ps2_device.pio )
+target_link_libraries( sg2hid_emu pico_stdlib hardware_pio )
+
+# The command port is USB; UART stdio would claim GP0 and GP1, as above.
+pico_enable_stdio_usb( sg2hid_emu 1 )
+pico_enable_stdio_uart( sg2hid_emu 0 )
+pico_add_extra_outputs( sg2hid_emu )

@@ -8,7 +8,8 @@
 #                  then, when PICO_SDK_PATH is set, runs `make firmware` as the
 #                  typecheck of the SDK layers (skipped with a `skip:` line when it is
 #                  not). Not part of `make test`.
-#   make firmware  Builds build/pico/sg2hid.uf2. Needs cmake, arm-none-eabi-gcc and
+#   make firmware  Builds build/pico/sg2hid.uf2 (the master) and build/pico/sg2hid_emu.uf2
+#                  (the emulator, 05-emulator). Needs cmake, arm-none-eabi-gcc and
 #                  PICO_SDK_PATH pointing at pico-sdk 2.3.1 (ADR-0014). Also writes
 #                  build/pico/compile_commands.json, which `make lint` reads for
 #                  src/hal, src/usb, src/app and src/emu. Not required for `make test`.

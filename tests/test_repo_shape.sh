@@ -15,7 +15,7 @@
 # RULE R-SAFETY-09 — docs/constraints.md §Invariants — no pin-configuring SDK call under src/
 #                   outside src/hal/
 # RULE R-SAFETY-10 — docs/constraints.md §Invariants — src/hal/ configures pins only by
-#                   iterating kMasterPins
+#                   iterating a src/core/pins.h table
 # RULE R-PROTO-07  — docs/constraints.md §Invariants — the bus master's PIO program is SPI
 #                   mode 3
 #
@@ -183,19 +183,27 @@ find_err02( ){ hits '^[[:space:]]*(constexpr[[:space:]]+)?(std::expected<[^;]*>[
 find_safety09( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' '' "$( src_files "$1" | grep -vF "$1/src/hal/" )"; }
 
 # R-SAFETY-10: inside src/hal/, every pin-configuring call names `pin.gpio`, the loop variable
-# over kMasterPins, on the call's own line, and no .pio program sets pindirs at all. The same
-# alternation as find_safety09( ), written out again so each finder's alternatives are mutated
-# on their own. A grep: it does not prove `pin` is that loop's variable, and a direct register
+# over a src/core/pins.h table, on the call's own line, and a .pio program sets pindirs only on
+# a line marked `; open-drain` (ADR-0016). The excuse is anchored to a line that starts with a
+# PIO `set` or `out` to `pindirs`, so a C call carrying the marker in a comment is still reported. The same alternation as find_safety09( ), written
+# out again so each finder's alternatives are mutated on their own. A grep: it does not prove
+# `pin` is that loop's variable, that a marked pin really is open-drain, and a direct register
 # write is not seen (R-SAFETY-10's Scope clause).
-find_safety10( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' 'pin\.gpio' "$( src_files "$1" | grep -F "$1/src/hal/" )"; }
+find_safety10( ){ hits '(\b(gpio_init[a-z0-9_]*|gpio_set_dir[a-z0-9_]*|gpio_set_function[a-z0-9_]*|gpio_set_pulls|gpio_pull_up|gpio_pull_down|gpio_disable_pulls|gpio_set_oeover|pio_gpio_init|pio_sm_set_pindirs_with_mask[a-z0-9_]*|pio_sm_set_consecutive_pindirs)[[:space:]]*\(|\b(set|out|mov)[[:space:]]+pindirs)' 'pin\.gpio|^[0-9]+:[[:space:]]*(set|out)[[:space:]]+pindirs[^;]*;[[:space:]]*open-drain' "$( src_files "$1" | grep -F "$1/src/hal/" )"; }
 
-# R-PROTO-07: in a .pio under src/hal/, `CLK` is the side-set, so every `pull` (where the
+# R-SAFETY-10's other half: a `; open-drain` pindirs line is only excused while some .cpp under
+# src/hal/ forces a pad output low on the table's loop variable. Presence, not per pin: which
+# pins the override reaches is not read (R-SAFETY-10's Scope clause).
+find_safety10od( ){ [ -n "$( hits 'pindirs[^;]*;[[:space:]]*open-drain' '' "$( src_files "$1" | grep -F "$1/src/hal/" | grep -E "\.pio$" )" )" ] && [ -z "$( hits 'gpio_set_outover\([[:space:]]*pin\.gpio,[[:space:]]*GPIO_OVERRIDE_LOW[[:space:]]*\)' '' "$( src_files "$1" | grep -F "$1/src/hal/" | grep -E "\.cpp$" )" )" ] && echo "src/hal/: a pindirs line is marked ; open-drain, but no .cpp calls gpio_set_outover( pin.gpio, GPIO_OVERRIDE_LOW )"; return 0; }
+
+# R-PROTO-07: in src/hal/ps2_master.pio, the master's program, `CLK` is the side-set, so every `pull` (where the
 # program idles) must carry `side 1`, every `out pins` `side 0` (CMD changes while CLK is low)
 # and every `in pins` `side 1` (DATA is sampled as CLK rises). The pattern is anchored at the
 # line's start so `;` comments are not read; the exclusion stops at `;` so a `side` inside a
 # comment does not excuse the line. Reads the program's text, not the wire (R-PROTO-07's
-# Scope clause).
-find_proto07( ){ hits '^[[:space:]]*(in[[:space:]]+pins|out[[:space:]]+pins|pull)\b' '^[0-9]+:[^;]*(\bin[[:space:]]+pins[^;]*side[[:space:]]+1\b|\bout[[:space:]]+pins[^;]*side[[:space:]]+0\b|\bpull\b[^;]*side[[:space:]]+1\b)' "$( src_files "$1" | grep -F "$1/src/hal/" | grep -E "\.pio$" )"; }
+# Scope clause). Only that file: the emulator's src/hal/ps2_device.pio pulls and samples with
+# no side-set, because it does not drive CLK.
+find_proto07( ){ hits '^[[:space:]]*(in[[:space:]]+pins|out[[:space:]]+pins|pull)\b' '^[0-9]+:[^;]*(\bin[[:space:]]+pins[^;]*side[[:space:]]+1\b|\bout[[:space:]]+pins[^;]*side[[:space:]]+0\b|\bpull\b[^;]*side[[:space:]]+1\b)' "$( src_files "$1" | grep -F "$1/src/hal/ps2_master.pio" )"; }
 
 run_all( ) {
     report R-ARCH-01  "$( find_arch01  "$1" )" || fail=1
@@ -209,7 +217,7 @@ run_all( ) {
     report R-ERR-01   "$( find_err01   "$1" )" || fail=1
     report R-ERR-02   "$( find_err02   "$1" )" || fail=1
     report R-SAFETY-09 "$( find_safety09 "$1" )" || fail=1
-    report R-SAFETY-10 "$( find_safety10 "$1" )" || fail=1
+    report R-SAFETY-10 "$( find_safety10 "$1" )$( find_safety10od "$1" )" || fail=1
     report R-PROTO-07 "$( find_proto07 "$1" )" || fail=1
 }
 
@@ -406,12 +414,18 @@ reject find_safety10 src/hal/x.cpp  'gpio_init ( 2 );'
 reject find_safety10 src/hal/x.pio  'set pindirs, 1'
 reject find_safety10 src/hal/x.pio  'out pindirs, 1'
 reject find_safety10 src/hal/x.pio  'mov pindirs, x'
+# A comment that is not the open-drain marker excuses nothing.
+reject find_safety10 src/hal/x.pio  'out pindirs, 1 ; drives DATA'
+# The marker excuses a PIO instruction only, never a C call that carries it in a comment.
+reject find_safety10 src/hal/x.cpp  'pio_sm_set_pindirs_with_mask( pio0, 0, 0, 0 /* ; open-drain */ );'
+# The marker with no outover anywhere under src/hal/.
+reject find_safety10od src/hal/x.pio 'out pindirs, 1 ; open-drain'
 # R-PROTO-07: one per alternative of the pattern, each on the wrong side-set.
-reject find_proto07 src/hal/x.pio  '    in pins, 1          side 0'
-reject find_proto07 src/hal/x.pio  '    out pins, 1         side 1 [1]'
-reject find_proto07 src/hal/x.pio  '    pull block          side 0'
+reject find_proto07 src/hal/ps2_master.pio '    in pins, 1          side 0'
+reject find_proto07 src/hal/ps2_master.pio '    out pins, 1         side 1 [1]'
+reject find_proto07 src/hal/ps2_master.pio '    pull block          side 0'
 # A `side` in a trailing comment does not excuse the line.
-reject find_proto07 src/hal/x.pio  '    in pins, 1    ; side 1'
+reject find_proto07 src/hal/ps2_master.pio '    in pins, 1    ; side 1'
 # No floor. A count next to "every alternative is covered" is the round-8 defect: the two
 # drift and the number is the one that stops being true. Sufficiency is asserted by
 # tests/test_checks_are_live.py, which derives what is needed from the patterns themselves.
@@ -436,6 +450,21 @@ accept( ) {
         accepted=$(( accepted + 1 ))
     else
         echo "  FAIL: $1 false-positive case fired on: $3"
+        fail=1
+    fi
+}
+
+# accept_pair <finder> <path> <content> <path2> <content2> — the same, for a finder whose
+# verdict depends on two files at once.
+accept_pair( ) {
+    rm -rf "$case_tmp/src"
+    mkdir -p "$case_tmp/$( dirname "$2" )" "$case_tmp/$( dirname "$4" )"
+    printf '%s\n' "$3" > "$case_tmp/$2"
+    printf '%s\n' "$5" > "$case_tmp/$4"
+    if report "$1" "$( $1 "$case_tmp" )" >/dev/null 2>&1; then
+        accepted=$(( accepted + 1 ))
+    else
+        echo "  FAIL: $1 false-positive case fired on: $3 / $5"
         fail=1
     fi
 }
@@ -519,17 +548,25 @@ accept find_safety10 src/hal/x.cpp 'gpio_init( pin.gpio );'
 accept find_safety10 src/app/x.cpp 'gpio_init( 2 );'
 # R-PROTO-07: one per alternative of the exclusion — the three correct side-sets
 # in pins on the rising edge
-accept find_proto07 src/hal/x.pio  '    in pins, 1          side 1      ; CLK rises'
+accept find_proto07 src/hal/ps2_master.pio '    in pins, 1          side 1      ; CLK rises'
 # out pins while CLK is low
-accept find_proto07 src/hal/x.pio  '    out pins, 1         side 0 [1]'
+accept find_proto07 src/hal/ps2_master.pio '    out pins, 1         side 0 [1]'
 # pull idles CLK high
-accept find_proto07 src/hal/x.pio  '    pull block          side 1'
+accept find_proto07 src/hal/ps2_master.pio '    pull block          side 1'
 # a comment mentioning the instructions is not an instruction
-accept find_proto07 src/hal/x.pio  ';   pull + set          2 cycles, CLK high'
-if [ "$accepted" -ge 34 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 34)"
+accept find_proto07 src/hal/ps2_master.pio ';   pull + set          2 cycles, CLK high'
+# R-PROTO-07 reads the master's program only: the emulator's pulls with no side-set
+accept find_proto07 src/hal/ps2_device.pio '    pull block'
+# R-SAFETY-10: a pindirs line marked open-drain is excused by the call-site finder
+accept find_safety10 src/hal/x.pio 'out pindirs, 1 ; open-drain'
+accept find_safety10 src/hal/x.pio '    set pindirs, 1 ; open-drain'
+# R-SAFETY-10: the marked line is accepted while a .cpp under src/hal/ forces the pad low
+accept_pair find_safety10od src/hal/x.pio 'out pindirs, 1 ; open-drain' \
+    src/hal/x.cpp 'gpio_set_outover( pin.gpio, GPIO_OVERRIDE_LOW );'
+if [ "$accepted" -ge 38 ]; then
+    echo "  ok:   false-positive cases: $accepted (floor 38)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 34)"
+    echo "  FAIL: false-positive cases: $accepted (floor 38)"
     fail=1
 fi
 
@@ -568,11 +605,13 @@ wiring R-ERR-01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p 
 wiring R-ERR-02   src/core/x.h   'LinkState step( Link& link );'
 wiring R-SAFETY-09 src/app/x.cpp 'gpio_init( 2 );'
 wiring R-SAFETY-10 src/hal/x.cpp 'gpio_init( 2 );'
-wiring R-PROTO-07 src/hal/x.pio  '    in pins, 1 side 0'
-if [ "$wired" -eq 13 ]; then
-    echo "  ok:   wiring cases: $wired/13 (each rule's verdict reaches the exit code)"
+wiring R-PROTO-07 src/hal/ps2_master.pio '    in pins, 1 side 0'
+# The outover half of R-SAFETY-10 reaches the exit code through the same report line.
+wiring R-SAFETY-10 src/hal/x.pio 'out pindirs, 1 ; open-drain'
+if [ "$wired" -eq 14 ]; then
+    echo "  ok:   wiring cases: $wired/14 (each rule's verdict reaches the exit code)"
 else
-    echo "  FAIL: wiring cases: $wired/13"
+    echo "  FAIL: wiring cases: $wired/14"
     fail=1
 fi
 
