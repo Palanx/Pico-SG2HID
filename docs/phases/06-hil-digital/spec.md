@@ -55,11 +55,17 @@ sends `fault none` to the emulator before it exits. Its last line is `hil: PASS`
 
 Rules that hold in every scenario:
 
-- Every summary line has `att=high` and `us` ≤ 1100000.
+- Every summary line the harness reads has `att=high` and `us` ≤ 1100000. That includes the
+  lines it reads while it waits for an emulator `ok:`, which belong to no window.
 - If no summary line arrives for 3 s, the scenario fails with the reason `master silent`.
-- A **window** of k summaries is the k summaries that follow one discarded summary after the
-  emulator's `ok:`. **Δ** is a counter's value on the window's last summary minus its value on
-  the summary just before the window.
+- A **window** of k summaries is the k summaries that follow **two** discarded summaries, both
+  read after the emulator's `ok:`. **Δ** is a counter's value on the window's last summary minus
+  its value on the second discarded summary.
+  - Why two: the master and the emulator are separate serial ports, so the harness can order
+    lines only as it reads them, not as they were printed. The first summary read after `ok:`
+    may have been printed before the command took effect. The second was printed about
+    `kPollsPerSummary` × `kPollPeriodUs` (1 s) after the first, so it was printed after the
+    command took effect. Every poll a window counts therefore ran under the new command.
 
 The scenarios, in order:
 
@@ -88,7 +94,7 @@ Read:
 - `CLAUDE.md` — layering, the error model, hardware-safety rules and conventions.
 - `docs/constraints.md`
   - §Invariants: R-SAFETY-07, R-SAFETY-08, R-SAFETY-09, R-SAFETY-10, R-PROTO-01, R-PROTO-02,
-    R-PROTO-05, R-PROTO-06, R-PROTO-07, R-EMU-01, R-EMU-02, R-ERR-01..04, R-CLEAN-02,
+    R-PROTO-03, R-PROTO-05, R-PROTO-06, R-PROTO-07, R-EMU-01, R-EMU-02, R-ERR-01..04, R-CLEAN-02,
     R-CLEAN-04 and R-PROC-04.
   - §Error handling ("the firmware never stops").
   - §Testing (HIL suites are separate targets).
@@ -105,7 +111,13 @@ Read:
 - `src/core/bus_trace.h` — `WireByte` and `format_trace_line( )`.
 - `src/hal/bus_frame.h`, `src/hal/bus_port.h` — `exchange_frame( )` and `bus_init( )`, used
   unchanged.
-- `src/app/main.cpp` — today's loopback program. It moves to `src/app/loopback.cpp`.
+- `src/app/main.cpp` — before this phase, the loopback program; it moves to
+  `src/app/loopback.cpp`, whose `loopback: seq=… bytes=<done>/<n> …` line is what `verify.md`'s
+  wiring check reads.
+- `tools/trace_decode.py` — the module docstring gives its invocation
+  (`trace_decode.py [FILE ...]`; a serial port works as a FILE) and says it echoes every
+  non-`T1` line unchanged. The `SHIFT_US` comment gives the 37 µs a byte spends shifting
+  before the `ACK` wait starts.
 - `src/emu/main.cpp`, `src/emu/sg_model.h` — the emulator reads command lines only while
   `ATT` is high and answers each one with `ok: <line>` or `error: <reason>`.
 - `docs/phases/05-emulator/spec.md` §Goal — the command grammar: `mode`, `payload` (six hex
@@ -113,6 +125,10 @@ Read:
 - `docs/phases/05-emulator/notes.md` §For later phases (06 entries) and §Bench readings — the
   ports, and the ACK delays measured per fault.
 - `docs/phases/24-pio-bus/notes.md` §For later phases — the real ACK slack is about 95 µs.
+- `docs/phases/06-hil-digital/notes.md` — a re-expansion's ground truth: §Outcome (what
+  landed), §Deviations (rounds 2 and 3), §For later phases (the bench hazard and its
+  loopback check), §Bench readings (the measured `us` values and the 133 µs aborted byte), and
+  the three §Validation records.
 - `docs/phases/04-trace-mode/notes.md` §For later phases — link polling can trace with
   `format_trace_line( )` unchanged.
 - `docs/wiring-emulator.md` — the two-Pico bench, and the power order.
@@ -141,6 +157,16 @@ Written by this phase:
 
 ## Plan
 
+**State at this re-expansion (round 3 escape, 2026-10-06).** Steps 1–4 and 7 have landed and
+match this spec (notes §Outcome). Two steps owe edits:
+
+- Step 5: the harness discards one summary per window. It must discard two, as the Goal now
+  defines the window.
+- Step 8: `verify.md` must meet step 8's sourcing rule.
+
+Step 6 then runs again, because step 5 changes what the bench judges. Do the work in the
+order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owes an edit.
+
 1. **Pure poll logic in `core`.** Touches `src/core/poll.h` and `src/core/poll.cpp`.
    - `kDigitalPollLen = frame_len( ControllerId::Digital ) + 1`.
    - `kDigitalPoll`, a `std::array<std::uint8_t, kDigitalPollLen>` holding `kFrameStart`,
@@ -162,8 +188,15 @@ Written by this phase:
 
 2. **Host test.** Touches `tests/test_poll.cpp`, which is picked up by `make test`'s
    `tests/test_*.cpp` wildcard. Its wire bytes are built only from the vectors named in Context
-   pointers. Wire byte 0's `in` is always `kAddressReply`. One `FAIL: <case>` line is printed
-   per failed case, and the exit is 0 only if every case passes. The cases:
+   pointers. Wire byte 0's `in` is always `kAddressReply`.
+   - **Filler.** The test's wire can be longer than the answer, up to the analog poll length.
+     Entries past the answer are filler: they are not protocol bytes, and R-PROTO-05 does not
+     cover them. Their value is arbitrary (zero is fine). Only the `completed = 9` case reaches
+     them, and that case exists to prove the decode ignores them.
+   - One `FAIL: <case>` line is printed per failed case. On success the last line is
+     `test_poll: ok`. The exit is 0 only if every case passes.
+
+   The cases:
    - `kAddressReply` + `kDigitalIdle`, `completed = 5` → has a value, with id `Digital` and
      payload bytes 0–1 equal to `kDigitalIdle[ 2 ]` and `kDigitalIdle[ 3 ]`.
    - The same wire with `completed` = 0, 1, 3 and 4 → `AckTimeout` each time.
@@ -212,6 +245,8 @@ Written by this phase:
      Goal describes.
      - Arguments: `--master PORT --emu PORT [--seconds N]`.
      - It opens each port with `os.open` and puts it in raw mode with `tty`/`termios`.
+     - The number of discarded summaries is one module constant, `DISCARDED_SUMMARIES = 2`,
+       used by every window (Goal §window). **Owed at this re-expansion:** today it is one.
      - `payload=7F FE` is the harness's own input, sent to the emulator in `setup`. It is not
        a protocol-fixed byte (R-PROTO-05's 2026-09-17 ruling).
    - `make hil` runs it with `MASTER` and `EMU`. If either is empty, it exits 1 with a usage
@@ -254,7 +289,21 @@ Written by this phase:
    - what each fault scenario shows, in plain words;
    - how to read a `link:` line with `tools/trace_decode.py`.
 
-   Check: `sh tests/test_phase_docs.sh` → exit 0.
+   **Sourcing rule.** Every number, output line, command and cause that `verify.md` states must
+   come from this spec or a file in Context pointers. A claim that comes from neither is
+   deleted, not argued for. **Owed at this re-expansion:**
+   - Recovery timing: the harness skips two summaries (about 2 s), then judges two (about
+     2 s more).
+   - The run time: about 2 s for `setup`, 62 s for `sustained`, and 8 s for each of the five
+     fault scenarios, so under two minutes.
+   - The "skips the first summary" explanation. It becomes the Goal's "why two".
+   - The sentence claiming a wrong sampling edge "would be a bit off". It is reasoning that no
+     pointer supports, so it is deleted.
+   - The aborted byte's `us`: state the 133 µs from notes §Bench readings. It may be explained
+     as `SHIFT_US` (37) plus `kAckTimeoutUs` (100), both pointed to above.
+
+   Check: `sh tests/test_phase_docs.sh` → exit 0, and
+   `grep -c 'skips two summaries' docs/phases/06-hil-digital/verify.md` → ≥ 1.
 
 ## Acceptance criteria
 
@@ -269,6 +318,8 @@ make build/host/test_poll && build/host/test_poll                # expect: exit 
 grep -c 'decode_poll\|count_poll' src/app/main.cpp               # expect: >= 2
 grep -c 'probe_wire_bits' src/app/loopback.cpp                   # expect: >= 1
 python3 tools/hil_digital.py --help >/dev/null                   # expect: exit 0
+grep -c '^DISCARDED_SUMMARIES = 2$' tools/hil_digital.py         # expect: 1
+grep -c 'skips two summaries' docs/phases/06-hil-digital/verify.md   # expect: >= 1
 make hil >/dev/null 2>&1; test $? -ne 0                          # expect: exit 0 (no ports → refused)
 git diff --quiet main -- src/hal src/emu src/core/link.h src/core/link.cpp src/core/ps2_frame.h src/core/ps2_frame.cpp src/core/ps2_protocol.h tests/vectors tools/trace_decode.py   # expect: exit 0
 grep -c 'sg2hid_loopback.uf2' docs/constraints.md                # expect: >= 1
