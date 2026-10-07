@@ -59,11 +59,6 @@ Rules that hold in every scenario:
   lines it reads while it waits for an emulator `ok:`, which belong to no window.
 - If the harness waits 3 s for a summary line and none arrives, the scenario fails with the reason
   `master silent`.
-- The harness does not flush either port when it opens it. A line already queued counts as if it
-  had arrived during the run, so a queued `ok: <line>` may satisfy a `setup` line. This is
-  accepted. A queued answer can only come from an earlier run against the same emulator. That
-  run's `setup` set `mode digital` and `payload 7f fe`, and its exit sent `fault none`, so it
-  left the emulator in exactly the state this run's `setup` asks for.
 - A **window** of k summaries is the k summaries that follow **at least two** discarded summaries,
   all read after the emulator's `ok:`. **Δ** is a counter's value on the window's last summary
   minus its value on the last discarded summary.
@@ -178,10 +173,12 @@ Written by this phase:
 **State at the second re-expansion (2026-10-07, after validation round 3 escaped again).**
 Steps 1–7 have landed and match this spec (notes §Outcome, rounds 1–6). This re-expansion
 changed no behaviour. It added pointers (`Ps2Frame`'s fields, the `absent -> digital`
-transition, the 05-emulator procedures) and a ruling on queued input (Goal, rules). Step 8 was
+transition, the 05-emulator procedures). Step 8 was
 rewritten as a closed list. Only step 8 owes an edit: `verify.md` must match the list exactly.
 That means two deletions, both named in step 8. The bench does not run again, because nothing
 the bench judges has changed. Re-run every other step's Check unchanged.
+**Round 8 (2026-10-07): landed.** `verify.md` swept against V1–V30's row text (notes
+§Deviations, round 8). **Round 9 (2026-10-07): landed** (notes §Deviations, round 9).
 
 1. **Pure poll logic in `core`.** Touches `src/core/poll.h` and `src/core/poll.cpp`.
    - `kDigitalPollLen = frame_len( ControllerId::Digital ) + 1`.
@@ -261,7 +258,8 @@ the bench judges has changed. Re-run every other step's Check unchanged.
    - `tools/hil_digital.py` is executable, uses only the standard library, and does what the
      Goal describes.
      - Arguments: `--master PORT --emu PORT [--seconds N]`, with N ≥ 1.
-     - It opens each port with `os.open` and puts it in raw mode with `tty`/`termios`.
+     - It opens each port with `os.open` and puts it in raw mode with `tty.setraw( )`, whose
+       default `TCSAFLUSH` discards input already queued.
      - The number of discarded summaries is one module constant, `DISCARDED_SUMMARIES = 2`,
        used by every window (Goal §window). **Landed 2026-10-06** (was one).
      - `payload=7F FE` is the harness's own input, sent to the emulator in `setup`. It is not
@@ -397,3 +395,5 @@ make hil MASTER=<master port> EMU=<emulator port> | tail -n 1     # expect: hil:
 - Hotplug, meaning pulling a signal wire mid-run. It cannot be automated from a serial port.
   It belongs to 10-guitar-full (R4).
 - A new rule id. The phase observes existing rules (R-PROTO-06, R-PROTO-07) and binds none.
+- Counter wrap. `PollTally`'s `std::uint32_t` counters wrap after 2^32 polls, about 49.7 days
+  at 1 ms per poll. The counts and the summary cadence at the wrap are not specified.
