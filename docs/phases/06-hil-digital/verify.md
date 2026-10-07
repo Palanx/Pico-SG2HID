@@ -8,7 +8,7 @@ This page is for someone who does not write firmware. Part 1 is commands on the 
 
 ### The poller (`build/pico/sg2hid.uf2`)
 
-Every millisecond the master sends one digital poll, the five bytes `01 42 00 00 00` you met in phases 24 and 05. What comes back is checked by the same decoder the host tests check (`src/core/`): either it is a proper frame ("digital controller, ready, these buttons"), or it is **refused**, with a reason.
+Every millisecond the master sends one digital poll, the five bytes `01 42 00 00 00`. What comes back is checked by the same decoder the host tests check (`src/core/`): either it is a proper frame ("digital controller, ready, these buttons"), or it is **refused**, with a reason.
 
 Each answer moves the **link**, the master's opinion of what is on the other end of the cable:
 
@@ -57,21 +57,23 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
 | `make build/host/test_poll && build/host/test_poll` | `test_poll: ok` |
 | `make hil` | `usage: make hil MASTER=<master port> EMU=<emulator port>` and an error: without the two ports it refuses to run |
 
-`test_poll` feeds the new poll decoder hand-written answers from `tests/vectors/`: a good idle frame, the same frame stopped after 0, 1, 3 or 4 of the poll's bytes (each must be refused as `AckTimeout`), and a frame with an unsupported id. It also checks the counters: an idle frame twice is not a change, a refused poll does not reset the comparison, and a pressed button is one change.
+`test_poll` feeds the new poll decoder hand-written answers from `tests/vectors/`: a good idle frame, the same frame cut short (each cut must be refused as `AckTimeout`), and a frame with an unsupported id. It also checks the counters: an idle frame twice is not a change, a refused poll does not reset the comparison, and a pressed button is one change.
 
 ### 2. The bench: two Picos, no guitar
 
 **Before anything: the guitar is unplugged and not on the bench.**
 
 1. **Signal wires out.** If the bench from phase 05 is still wired, take it apart first: signal wires out, then USB (`docs/wiring-emulator.md`, "To take the bench apart").
-2. **Flash the master** with the poller. Hold its **BOOTSEL** button, plug its USB in, release, then `cp build/pico/sg2hid.uf2 /Volumes/RPI-RP2/`.
-3. **Flash the emulator** the same way with `cp build/pico/sg2hid_emu.uf2 /Volumes/RPI-RP2/`.
-4. **Find the ports.** With only the master plugged in, `ls /dev/cu.usbmodem*` shows the master's name. Plug in the emulator and run it again; the new name is the emulator's. On the bench this was written on they were:
+2. **Flash the master** with the poller. Hold its **BOOTSEL** button, plug its USB in, release, then `cp build/pico/sg2hid.uf2 /Volumes/RPI-RP2/`. Wait for the volume to disappear, then unplug it.
+3. **Flash the emulator** the same way with `cp build/pico/sg2hid_emu.uf2 /Volumes/RPI-RP2/`, then unplug it.
+4. **Find the ports, one board at a time.** Plug in only the master (no BOOTSEL this time) and run `ls /dev/cu.usbmodem*`: the name shown is the master's. Plug in the emulator and run it again; the new name is the emulator's. Write them down as two lines like these, which are the names on the bench this was written on:
 
    ```
    MASTER=/dev/cu.usbmodem101
    EMU=/dev/cu.usbmodem2101
    ```
+
+   Set both in every Terminal window you use: paste the two lines, with your own names, into each window before anything else. The commands below read `$MASTER` and `$EMU`, and a window where they are not set passes an empty name.
 
 5. **Check the emulator answers** before wiring, the same way as phase 05 (`docs/phases/05-emulator/verify.md`, §2 step 5). In a second Terminal window run `cat $EMU`, then in the first: `printf 'fault none\n' > $EMU`. The second window must show `ok: fault none`. Then close the `cat` with Ctrl-C.
 6. **Wire the bench** per `docs/wiring-emulator.md`. Both Picos are already on USB, which is the order that page asks for: power first, signal wires second.
@@ -81,7 +83,7 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
    make hil MASTER=$MASTER EMU=$EMU
    ```
 
-   It takes under two minutes: about 2 seconds for `setup`, 62 for `sustained` and 8 for each of the five fault scenarios. Expected output, one line per scenario:
+   It takes under two minutes: about 2 seconds for `setup`, 62 for `sustained` and 8 for each fault scenario. Expected output, one line per scenario:
 
    ```
    ok: setup
@@ -94,17 +96,24 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
    hil: PASS
    ```
 
-   What each scenario shows, in plain words:
+   The scenarios, as the spec states them:
 
-   | scenario | what the emulator is told | what the master must do |
+   | scenario | emulator lines sent | passes when |
    |---|---|---|
-   | `setup` | `fault none`, `mode digital`, `payload 7f fe 80 80 80 80` | print a summary |
-   | `sustained` | nothing new | 60 seconds (60 000 polls) of `state=digital` and `payload=7F FE`, with **zero** refused polls and **zero** button changes: no desync |
-   | `fault ack 0` | `fault ack 0` | every poll refused, link `absent`, fault `ack-timeout` |
-   | `fault ack 3` | stop acknowledging at byte 3, the first button byte | the same: a frame cut short is refused whole, never half-read (R-PROTO-02) |
-   | `fault late 200` | `fault late 200` | the same: the master waits at most 100 µs (`kAckTimeoutUs`), so a late answer counts as no answer |
-   | `fault id 79` | answer as a DualShock 2 (id `79`) | every poll refused, link `absent`, fault `unknown-id`: an unsupported controller is refused, never guessed at (R-PROTO-03) |
-   | `fault late 50` | `fault late 50` | keep streaming with no refused poll: 50 µs is inside the 100 µs budget |
+   | `setup` | `fault none`, `mode digital`, `payload 7f fe 80 80 80 80` | each line is answered `ok: <line>` within 2 s, and a master `hil:` line arrives |
+   | `sustained` | none | over a window lasting `--seconds` (default 60) summaries: every summary has `state=digital` and `payload=7F FE`, Δrefused = 0 and Δchanges = 0 |
+   | `fault ack 0` | `fault ack 0` | over a 2-summary window: `state=absent`, `fault=ack-timeout`, Δrefused = Δpolls |
+   | `fault ack 3` | `fault ack 3` | as `fault ack 0` |
+   | `fault late 200` | `fault late 200` | as `fault ack 0` |
+   | `fault id 79` | `fault id 79` | over a 2-summary window: `state=absent`, `fault=unknown-id`, Δrefused = Δpolls |
+   | `fault late 50` | `fault late 50` | over a 2-summary window: `state=digital`, Δrefused = 0 |
+
+   Δ means how much a counter grew over the judged summaries. In plain words:
+
+   - `sustained` is the no-desync test: a minute of polling with zero refused polls and zero button changes.
+   - `fault ack 3` stops acknowledging at byte 3, the first button byte. A frame cut short is refused whole, never half-read (R-PROTO-02).
+   - The master waits at most 100 µs for an `ACK` (`kAckTimeoutUs`), so 200 µs late counts as no answer and 50 µs late does not.
+   - Id `79` is a DualShock 2. An unsupported controller is refused, never guessed at (R-PROTO-03).
 
    After every fault the harness sends `fault none` and checks **recovery**: it skips two summaries or more (about two seconds, for the reason given above), then for the next two summaries (about two seconds more) the link must be `digital`, reading `7F FE`, with no refused poll and no button change. A fault scenario prints `ok:` only if both the fault and the recovery behaved.
 
@@ -119,12 +128,31 @@ Of the master's lines, the harness reads only the summaries. To see what one fai
 
 1. Window 1: `python3 tools/trace_decode.py $MASTER`. Summary lines scroll past once a second.
 2. Window 2: `printf 'fault ack 3\n' > $EMU`, wait two seconds, then `printf 'fault none\n' > $EMU`.
-3. Window 1 shows `link: digital -> absent fault=ack-timeout`, then a decoded block for that poll: bytes 0–2 completed, byte 3 waited for an ACK that never came (its `us` was 133 on the bench: about 37 µs to shift the byte out, `SHIFT_US` in `tools/trace_decode.py`, plus the 100 µs the master waits for an ACK, `kAckTimeoutUs`), byte 4 was never sent. Then, after `fault none`, `link: absent -> digital fault=ack-timeout` and a block where all five bytes completed. `fault=` on that line is why the link *last* dropped; it is kept on purpose so the reason survives recovery.
+3. Window 1 shows these lines, with summary lines in between (bench recording, `notes.md` §Bench readings):
+
+   ```
+   link: digital -> absent fault=ack-timeout
+   frame: 3/5 bytes, aborted at byte 3: no ACK after 133 us
+     byte 0: out 01 in FF 48 us ack 11 us
+     byte 1: out 42 in 41 47 us ack 10 us
+     byte 2: out 00 in 5A 47 us ack 10 us
+     byte 3: out 00 in -- 133 us
+     byte 4: out 00 in -- not sent
+   link: absent -> digital fault=ack-timeout
+   frame: 5/5 bytes, complete
+     byte 0: out 01 in FF 47 us ack 10 us
+     byte 1: out 42 in 41 46 us ack 9 us
+     byte 2: out 00 in 5A 46 us ack 9 us
+     byte 3: out 00 in 7F 46 us ack 9 us
+     byte 4: out 00 in FE 36 us
+   ```
+
+   The 133 us of the aborted byte is 37 µs to shift the byte out (`SHIFT_US` in `tools/trace_decode.py`) plus the 100 µs the master waits for an ACK (`kAckTimeoutUs`). `fault=` is kept when the link recovers, so on the second `link:` line it names why the link last dropped.
 
 ### If something looks wrong
 
 - **`FAIL: setup: emulator did not answer 'fault none'`.** `EMU` is the wrong port.
 - **`FAIL: setup: master silent`.** `MASTER` is the wrong port, or the master still runs the loopback firmware, which prints `loopback:` lines, not `hil:`.
 - **`FAIL: sustained: state=absent payload=--`.** A wiring mistake looks exactly like this. To isolate it, flash the master with `sg2hid_loopback.uf2` and read its `seq=0` line: `bytes=0/5` points to the wiring, `bytes=5/5` does not. This happened once while this phase was built.
-- **`FAIL: sustained: Δrefused=…`** or **`FAIL: sustained: state=digital payload=…`** with anything other than `7F FE`. Recheck every wire against `docs/wiring-emulator.md`, run the loopback check above, and record the output in `notes.md`.
+- **`FAIL: sustained: state=<state> payload=<payload>`** (any other than `state=absent payload=--`) or **`FAIL: sustained: Δrefused=<n> Δchanges=<n>`**. Recheck every wire against `docs/wiring-emulator.md`, run the loopback check above, and record the output in `notes.md`.
 - **`FAIL: fault late 50: …`.** Record the output, and do not change the timeout.

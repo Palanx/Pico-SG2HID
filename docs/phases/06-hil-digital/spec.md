@@ -120,6 +120,9 @@ Read:
 - `src/app/main.cpp` — before this phase, the loopback program; it moves to
   `src/app/loopback.cpp`, whose `loopback: seq=… bytes=<done>/<n> …` line is what `verify.md`'s
   wiring check reads.
+- `tools/hil_digital.py` — `Harness`'s check methods. In `sustained` and every recovery
+  check, a failing summary gives the reason `state=<state> payload=<payload>`, and a failing
+  window gives `Δrefused=<n> Δchanges=<n>` (`tools/hil_digital.py:151,153`).
 - `tools/trace_decode.py` — the module docstring gives its invocation
   (`trace_decode.py [FILE ...]`; a serial port works as a FILE) and says it echoes every
   non-`T1` line unchanged. The `SHIFT_US` comment gives the 37 µs a byte spends shifting
@@ -170,15 +173,15 @@ Written by this phase:
 
 ## Plan
 
-**State at the second re-expansion (2026-10-07, after validation round 3 escaped again).**
-Steps 1–7 have landed and match this spec (notes §Outcome, rounds 1–6). This re-expansion
-changed no behaviour. It added pointers (`Ps2Frame`'s fields, the `absent -> digital`
-transition, the 05-emulator procedures). Step 8 was
-rewritten as a closed list. Only step 8 owes an edit: `verify.md` must match the list exactly.
-That means two deletions, both named in step 8. The bench does not run again, because nothing
-the bench judges has changed. Re-run every other step's Check unchanged.
-**Round 8 (2026-10-07): landed.** `verify.md` swept against V1–V30's row text (notes
-§Deviations, round 8). **Round 9 (2026-10-07): landed** (notes §Deviations, round 9).
+**State at the third re-expansion (2026-10-07, after validation round 3 escaped on
+`§Plan … verify.md` for the third time).** Steps 1–7 have landed and match this spec (notes
+§Outcome). Every code gate and the bench have passed in every round since the first
+re-expansion; every open finding is in `verify.md`. This re-expansion changes no behaviour.
+It narrows step 8's closed list to the claims a validator can match by text (operator's
+decision, 2026-10-07: "cut + narrow"), adds a pointer to the harness's `sustained` failure
+reasons, and names the `verify.md` edits that are owed. Only step 8 owes an edit. The bench
+does not run again, because nothing it judges changes. Re-run every other step's Check
+unchanged.
 
 1. **Pure poll logic in `core`.** Touches `src/core/poll.h` and `src/core/poll.cpp`.
    - `kDigitalPollLen = frame_len( ControllerId::Digital ) + 1`.
@@ -304,12 +307,26 @@ the bench judges has changed. Re-run every other step's Check unchanged.
    - what each fault scenario shows, in plain words;
    - how to read a `link:` line with `tools/trace_decode.py`.
 
-   **Closed list.** `verify.md` states only the numbers, output lines, commands and causes
-   listed in the table below, each with the source named in its row. Anything not in the
-   table is deleted, not sourced after the fact; extending the table is a spec amendment
-   with a Deviations entry. Prose that states none of these four kinds of claim, such as
-   framing, analogies or headings, is free. A validator checks `verify.md` against this
-   table and nothing else.
+   **Closed list, three kinds of claim.** The list binds only what a validator can match by
+   text:
+   - a **number**: a decimal value, with or without a unit;
+   - a **command**: anything shown for the operator to type, including a variable
+     assignment;
+   - an **expected output line**: a line shown as what a command, the master, the emulator
+     or the harness prints.
+
+   Every number, command and expected output line in `verify.md` appears in a row's text
+   below: a command or output line as the same string, with `<…>` and `…` matching any
+   text, and a number as the same value. Anything else of these three kinds is deleted.
+   Extending the table is a spec amendment with a Deviations entry.
+
+   Everything else is outside the list. That covers framing, causes, remedies, paraphrases of a
+   row, design rationale, and the order of procedure steps. The operator judges it on the
+   bench (R-PROC-02). A reviewer finding about it is recorded as taste, and is neither a
+   `contradicts` nor an `undecidable`.
+   The list was narrowed on 2026-10-07: under the earlier rule (every claim stated by a
+   row's *text*), three validation rounds in a row each found new instances of the same
+   kind.
 
    | # | claim `verify.md` may state | source |
    |---|---|---|
@@ -333,27 +350,40 @@ the bench judges has changed. Re-run every other step's Check unchanged.
    | V18 | what `test_poll` checks: step 2's cases in plain words | step 2 |
    | V19 | no guitar on the bench | R-SAFETY-08 |
    | V20 | flashing each Pico (BOOTSEL, `cp <uf2> /Volumes/RPI-RP2/`), and which UF2 goes on which Pico | `docs/phases/05-emulator/verify.md` §2 steps 1–2; step 6 |
-   | V21 | finding the ports with `ls /dev/cu.usbmodem*`; the bench's ports `/dev/cu.usbmodem101` (master) and `/dev/cu.usbmodem2101` (emulator) | `docs/phases/05-emulator/verify.md` §2 step 3; notes §Bench readings |
+   | V21 | finding the ports one board at a time with `ls /dev/cu.usbmodem*`; the bench's ports as the assignments `MASTER=/dev/cu.usbmodem101` and `EMU=/dev/cu.usbmodem2101`, set in every Terminal window used | `docs/phases/05-emulator/verify.md` §2 step 3; notes §Bench readings |
    | V22 | the emulator check before wiring: `cat $EMU`, `printf 'fault none\n' > $EMU`, expect `ok: fault none`, close the `cat` with Ctrl-C | `docs/phases/05-emulator/verify.md` §2 step 5 |
    | V23 | power order (both on USB, then signal wires), and teardown (signal wires out first, then USB) | `docs/wiring-emulator.md` |
    | V24 | `make hil MASTER=$MASTER EMU=$EMU` and its eight expected lines | Goal; step 6; notes §Bench readings |
    | V25 | record the output in `notes.md` §Bench readings | step 6 |
-   | V26 | reading a link change: `python3 tools/trace_decode.py $MASTER`; `printf 'fault ack 3\n'`, then, after a pause of about two seconds, `printf 'fault none\n'` to `$EMU` (any pause works: the next poll, 1 ms later, already shows the change) | `tools/trace_decode.py` docstring; 05-emulator command grammar |
-   | V27 | the two `link:` lines and the two decoded blocks, with their per-byte `us` and `ack` values | notes §Bench readings |
+   | V26 | reading a link change: `python3 tools/trace_decode.py $MASTER`; `printf 'fault ack 3\n' > $EMU`, then, after a pause of about two seconds, `printf 'fault none\n' > $EMU` (any pause works: the next poll, 1 ms later, already shows the change) | `tools/trace_decode.py` docstring; 05-emulator command grammar |
+   | V27 | the two `link:` lines, the two `frame:` lines (`frame: 3/5 bytes, aborted at byte 3: no ACK after 133 us`, `frame: 5/5 bytes, complete`) and the per-byte lines of the two decoded blocks, each copied verbatim | notes §Bench readings |
    | V28 | the aborted byte's 133 µs = 37 µs shifting (`SHIFT_US`) + 100 µs (`kAckTimeoutUs`) | notes §Bench readings; `tools/trace_decode.py`; `src/core/ps2_protocol.h` |
    | V29 | `fault=` is kept when the link recovers, so it names why the link last dropped | `src/core/link.cpp` (`step( )`) |
-   | V30 | troubleshooting, these five entries with only these causes: `FAIL: setup: emulator did not answer 'fault none'` → `EMU` is the wrong port; `FAIL: setup: master silent` → `MASTER` is the wrong port, or the master still runs the loopback firmware (it prints `loopback:` lines, not `hil:`); `FAIL: sustained: state=absent payload=--` → a wiring mistake looks exactly like this, isolated by the loopback check (`seq=0` reading `bytes=0/5` vs `bytes=5/5`), and it happened once; `FAIL: sustained: Δrefused=…` or a payload other than `7F FE` → recheck the wiring, run the loopback check, record the output; `FAIL: fault late 50: …` → record the output and do not change the timeout | 05-emulator verify.md troubleshooting; Goal (`master silent`); `src/app/loopback.cpp`; notes §For later phases (bench hazard); Out of scope (`kAckTimeoutUs` is measured, not tuned) |
+   | V30 | troubleshooting, these five entries with only these causes: `FAIL: setup: emulator did not answer 'fault none'` → `EMU` is the wrong port; `FAIL: setup: master silent` → `MASTER` is the wrong port, or the master still runs the loopback firmware (it prints `loopback:` lines, not `hil:`); `FAIL: sustained: state=absent payload=--` → a wiring mistake looks exactly like this, isolated by the loopback check (`seq=0` reading `bytes=0/5` vs `bytes=5/5`), and it happened once; `FAIL: sustained: state=<state> payload=<payload>` other than `state=absent payload=--`, or `FAIL: sustained: Δrefused=<n> Δchanges=<n>` → recheck the wiring, run the loopback check, record the output; `FAIL: fault late 50: …` → record the output and do not change the timeout | 05-emulator verify.md troubleshooting; Goal (`master silent`); `src/app/loopback.cpp`; notes §For later phases (bench hazard); Out of scope (`kAckTimeoutUs` is measured, not tuned) |
 
-   Owed at this re-expansion (the only `verify.md` edits). **Landed 2026-10-07.**
-   - Delete the raw `T1 n=5 k=3 …` example line under "a **link line**". No row lists it; V27
-     already shows that poll decoded. Say "followed by that poll's `T1` trace line (ADR-0015)"
-     with no example.
-   - Delete "or another program (a `cat` left running) has it open" from the
-     `emulator did not answer` entry. V30 lists only the wrong port.
+   Owed at the third re-expansion (the only `verify.md` edits). **Landed 2026-10-07 (round 10).**
+   - **Procedure order (§2 steps 2–4).** After each flash, the board is unplugged ("then
+     unplug it"). Step 4 plugs in the master alone, runs `ls /dev/cu.usbmodem*`, then plugs in
+     the emulator and runs it again. Under the assignment lines it says "Set both in every
+     Terminal window you use", because §2 step 5 and §3 read `$MASTER` and `$EMU`.
+   - **Troubleshooting `sustained` entry.** It shows the two harness lines of V30, with
+     `<…>` placeholders, in place of "`FAIL: sustained: state=digital payload=…` with
+     anything other than `7F FE`".
+   - **§3, cut.** Step 3's narrative becomes the expected lines of V27, copied from notes
+     §Bench readings: at least the two `link:` lines and the two `frame:` lines. It is followed
+     by one sentence giving V28's sum and one giving V29. The clause "it is kept on purpose so
+     the reason survives recovery" is deleted.
+   - **Scenario table, cut.** Its columns are the Goal table's three, copied verbatim (V9).
+     Each one-sentence reason (R-PROTO-02, R-PROTO-03, `kAckTimeoutUs`) goes in a list under
+     the table.
+   - Delete the aside "you met in phases 24 and 05" (validation round 3, taste).
+   - Then check every number, command and expected output line left in `verify.md` against
+     the table, and delete any that no row's text gives.
 
    Check: `sh tests/test_phase_docs.sh` → exit 0;
    `grep -c 'skips two summaries' docs/phases/06-hil-digital/verify.md` → ≥ 1;
-   `grep -c 'T1 n=\|left running' docs/phases/06-hil-digital/verify.md` → 0.
+   `grep -c 'T1 n=\|left running\|on purpose\|you met in phases' docs/phases/06-hil-digital/verify.md` → 0;
+   `for p in 'then unplug it' 'Set both in every Terminal window you use' 'Δchanges=<n>'; do grep -qF "$p" docs/phases/06-hil-digital/verify.md || echo "missing: $p"; done` → no output.
 
 ## Acceptance criteria
 
@@ -370,7 +400,8 @@ grep -c 'probe_wire_bits' src/app/loopback.cpp                   # expect: >= 1
 python3 tools/hil_digital.py --help >/dev/null                   # expect: exit 0
 grep -c '^DISCARDED_SUMMARIES = 2$' tools/hil_digital.py         # expect: 1
 grep -c 'skips two summaries' docs/phases/06-hil-digital/verify.md   # expect: >= 1
-grep -c 'T1 n=\|left running' docs/phases/06-hil-digital/verify.md   # expect: 0
+grep -c 'T1 n=\|left running\|on purpose\|you met in phases' docs/phases/06-hil-digital/verify.md   # expect: 0
+for p in 'then unplug it' 'Set both in every Terminal window you use' 'Δchanges=<n>'; do grep -qF "$p" docs/phases/06-hil-digital/verify.md || echo "missing: $p"; done   # expect: no output
 make hil >/dev/null 2>&1; test $? -ne 0                          # expect: exit 0 (no ports → refused)
 git diff --quiet main -- src/hal src/emu src/core/link.h src/core/link.cpp src/core/ps2_frame.h src/core/ps2_frame.cpp src/core/ps2_protocol.h tests/vectors tools/trace_decode.py   # expect: exit 0
 grep -c 'sg2hid_loopback.uf2' docs/constraints.md                # expect: >= 1
