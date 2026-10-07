@@ -59,6 +59,11 @@ Rules that hold in every scenario:
   lines it reads while it waits for an emulator `ok:`, which belong to no window.
 - If the harness waits 3 s for a summary line and none arrives, the scenario fails with the reason
   `master silent`.
+- The harness does not flush either port when it opens it. A line already queued counts as if it
+  had arrived during the run, so a queued `ok: <line>` may satisfy a `setup` line. This is
+  accepted. A queued answer can only come from an earlier run against the same emulator. That
+  run's `setup` set `mode digital` and `payload 7f fe`, and its exit sent `fault none`, so it
+  left the emulator in exactly the state this run's `setup` asks for.
 - A **window** of k summaries is the k summaries that follow **at least two** discarded summaries,
   all read after the emulator's `ok:`. **Δ** is a counter's value on the window's last summary
   minus its value on the last discarded summary.
@@ -103,9 +108,14 @@ Read:
   unsigned subtraction.
 - `docs/adr/0015-bus-trace-text-lines-cpu-timing.md` — the `T1` line printed on a link change.
 - `src/core/link.h`, `src/core/link.cpp` — `Link`, `LinkState`, `FaultCause` and `step( )`,
-  used unchanged. `step( )` keeps `last_fault` when the link recovers.
+  used unchanged. `step( )` keeps `last_fault` when the link recovers. A good digital frame
+  moves the link from `Absent` straight to `DigitalStreaming`, with no `negotiating` in
+  between: only a `Config` header leads to `Negotiating` (`state_for( )`). §Bench readings
+  records that line, `link: absent -> digital fault=ack-timeout`.
 - `src/core/ps2_frame.h` — `decode( )`, `DecodeOutcome`, `Ps2Frame` and `kMaxPayloadLen`.
   `decode( )` takes the response without its first byte, and a short span yields `AckTimeout`.
+  `Ps2Frame` has exactly two fields, `id` and `payload`. Two frames are equal when both fields
+  are equal.
 - `src/core/ps2_protocol.h` — `kFrameStart`, `kCmdPoll`, `kPadByte`, `frame_len( )` and
   `payload_len( )`. The comment at the top explains why wire byte 0's answer is dropped.
   `kAckTimeoutUs` (100) is the longest the master waits for an `ACK`.
@@ -123,15 +133,20 @@ Read:
   `ATT` is high and answers each one with `ok: <line>` or `error: <reason>`.
 - `docs/phases/05-emulator/spec.md` §Goal — the command grammar: `mode`, `payload` (six hex
   bytes), and `fault none|ack <n>|late <us>|id <hh>`.
-- `docs/phases/05-emulator/verify.md` §2 step 5 — sending the emulator a command by hand: `cat $EMU`
-  in one window, `printf 'fault none\n' > $EMU` in another, and the `ok: fault none` it answers.
+- `docs/phases/05-emulator/verify.md`:
+  - §2 steps 1–2: flashing a Pico (hold BOOTSEL, plug in, `cp <uf2> /Volumes/RPI-RP2/`).
+  - §2 step 3: finding the two ports with `ls /dev/cu.usbmodem*`.
+  - §2 step 5: sending the emulator a command by hand. Run `cat $EMU` in one window and
+    `printf 'fault none\n' > $EMU` in another; the emulator answers `ok: fault none`.
+  - Its troubleshooting entry "No `ok:` replies in the emulator window": the emulator port is
+    the wrong one.
 - `docs/phases/05-emulator/notes.md` §For later phases (06 entries) and §Bench readings — the
   ports, and the ACK delays measured per fault.
 - `docs/phases/24-pio-bus/notes.md` §For later phases — the real ACK slack is about 95 µs.
 - `docs/phases/06-hil-digital/notes.md` — a re-expansion's ground truth: §Outcome (what
   landed), §Deviations (rounds 2 and 3), §For later phases (the bench hazard and its
   loopback check), §Bench readings (the measured `us` values and the 133 µs aborted byte), and
-  the three §Validation records.
+  every §Validation record.
 - `docs/phases/04-trace-mode/notes.md` §For later phases — link polling can trace with
   `format_trace_line( )` unchanged.
 - `docs/wiring-emulator.md` — the two-Pico bench, and the power order.
@@ -160,17 +175,13 @@ Written by this phase:
 
 ## Plan
 
-**State at this re-expansion (round 3 escape, 2026-10-06).** Steps 1–4 and 7 have landed and
-match this spec (notes §Outcome). Two steps owe edits:
-
-- Step 5: the harness discards one summary per window. It must discard two, as the Goal now
-  defines the window.
-- Step 8: `verify.md` must meet step 8's sourcing rule.
-
-Step 6 then runs again, because step 5 changes what the bench judges. Do the work in the
-order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owes an edit.
-
-**Landed 2026-10-06 (after the re-expansion):** steps 5, 6 and 8 (notes §Outcome, round 4).
+**State at the second re-expansion (2026-10-07, after validation round 3 escaped again).**
+Steps 1–7 have landed and match this spec (notes §Outcome, rounds 1–6). This re-expansion
+changed no behaviour. It added pointers (`Ps2Frame`'s fields, the `absent -> digital`
+transition, the 05-emulator procedures) and a ruling on queued input (Goal, rules). Step 8 was
+rewritten as a closed list. Only step 8 owes an edit: `verify.md` must match the list exactly.
+That means two deletions, both named in step 8. The bench does not run again, because nothing
+the bench judges has changed. Re-run every other step's Check unchanged.
 
 1. **Pure poll logic in `core`.** Touches `src/core/poll.h` and `src/core/poll.cpp`.
    - `kDigitalPollLen = frame_len( ControllerId::Digital ) + 1`.
@@ -205,7 +216,8 @@ order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owe
    - `kAddressReply` + `kDigitalIdle`, `completed = 5` → has a value, with id `Digital` and
      payload bytes 0–1 equal to `kDigitalIdle[ 2 ]` and `kDigitalIdle[ 3 ]`.
    - The same wire with `completed` = 0, 1, 3 and 4 → `AckTimeout` each time.
-   - The same wire with `completed = 9` → it equals the `completed = 5` result.
+   - The same wire with `completed = 9` → it equals the `completed = 5` result: it has a value,
+     and its `id` and `payload` (the only two `Ps2Frame` fields) are equal to that result's.
    - `kAddressReply` + the first four bytes of `kUnknownId`, `completed = 5` → `UnknownId`.
    - Tally, starting from a default `PollTally`:
      - idle, then idle again → `payload_changes` 0;
@@ -294,21 +306,56 @@ order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owe
    - what each fault scenario shows, in plain words;
    - how to read a `link:` line with `tools/trace_decode.py`.
 
-   **Sourcing rule.** Every number, output line, command and cause that `verify.md` states must
-   come from this spec or a file in Context pointers. A claim that comes from neither is
-   deleted, not argued for. **Landed 2026-10-06** (were owed at this re-expansion):
-   - Recovery timing: the harness skips two summaries (about 2 s), then judges two (about
-     2 s more).
-   - The run time: about 2 s for `setup`, 62 s for `sustained`, and 8 s for each of the five
-     fault scenarios, so under two minutes.
-   - The "skips the first summary" explanation. It becomes the Goal's "why two".
-   - The sentence claiming a wrong sampling edge "would be a bit off". It is reasoning that no
-     pointer supports, so it is deleted.
-   - The aborted byte's `us`: state the 133 µs from notes §Bench readings. It may be explained
-     as `SHIFT_US` (37) plus `kAckTimeoutUs` (100), both pointed to above.
+   **Closed list.** `verify.md` states only the numbers, output lines, commands and causes
+   listed in the table below, each with the source named in its row. Anything not in the
+   table is deleted, not sourced after the fact; extending the table is a spec amendment
+   with a Deviations entry. Prose that states none of these four kinds of claim, such as
+   framing, analogies or headings, is free. A validator checks `verify.md` against this
+   table and nothing else.
 
-   Check: `sh tests/test_phase_docs.sh` → exit 0, and
-   `grep -c 'skips two summaries' docs/phases/06-hil-digital/verify.md` → ≥ 1.
+   | # | claim `verify.md` may state | source |
+   |---|---|---|
+   | V1 | one poll `01 42 00 00 00` every 1 ms; a summary every 1000 polls, about once a second | Goal |
+   | V2 | the meaning of each summary field, `us` being about 1 000 000 | Goal, summary bullet |
+   | V3 | the example summary line `hil: polls=108000 refused=14212 changes=0 us=999953 state=digital fault=ack-timeout att=high payload=7F FE`, copied verbatim | notes §Bench readings |
+   | V4 | `att=high` means `ATT` was released at the end of the poll | R-SAFETY-07 |
+   | V5 | link states `digital` and `absent`; faults `ack-timeout` and `unknown-id` and what each means | Goal; `src/core/link.h` |
+   | V6 | "A hang is a worse failure than a wrong report.", quoted verbatim | `docs/constraints.md` §Error handling |
+   | V7 | the definition of a desync, and that both counts stay at zero against an emulator with no fault | Goal, definitions |
+   | V8 | the window: skips two summaries or more (about 2 s), then judges (about 2 s more for a 2-summary window); the "why two" reasoning, and "1000 polls of 1 ms" | Goal, window bullet; V1 |
+   | V9 | the seven scenarios, in order, with each one's emulator lines and pass condition; `sustained` lasting 60 s (60 000 polls) | Goal, scenario table; V1 |
+   | V10 | `fault ack 3` stops at byte 3, the first button byte | notes §Bench readings (in the recovery block, byte 3 reads `7F`) |
+   | V11 | a frame cut short is refused whole (R-PROTO-02); an unsupported id is refused (R-PROTO-03); id `79` is a DualShock 2 | R-PROTO-02, R-PROTO-03, `tests/vectors/unknown_id.h` |
+   | V12 | the master waits at most 100 µs for an `ACK` (`kAckTimeoutUs`), so 200 µs late counts as no answer and 50 µs late does not | `src/core/ps2_protocol.h` |
+   | V13 | the recovery check: `fault none`, then the window's conditions | Goal, recovery check |
+   | V14 | run time: about 2 s for `setup`, 62 s for `sustained` and 8 s for each fault scenario, so under two minutes | this row (2 + 62 + 5 × 8 = 104 s; §Bench readings measured 1 min 43 s) |
+   | V15 | why `7F FE` and not the emulator's default `FF FF`: `01111111` and `11111110` reversed bit for bit turn into each other (`FE 7F`), while `FF FF` reads the same either way | the binary in the same sentence; R-PROTO-05's ruling that `7F FE` is harness input; the default from `docs/phases/05-emulator/spec.md` §Goal |
+   | V16 | the loopback firmware `build/pico/sg2hid_loopback.uf2` still exists because its probe is how R-PROTO-01 is checked by hand; phases 24, 04 and 05 now flash it | Goal; R-PROTO-01's `manual:` reason; step 7 |
+   | V17 | Part 1 commands and outputs: `make test 2>&1 \| tail -n 1` → `OK`; `make firmware && ls build/pico/*.uf2` → the three UF2s; `make build/host/test_poll && build/host/test_poll` → `test_poll: ok`; `make hil` → `usage: make hil MASTER=<master port> EMU=<emulator port>` and an error | Acceptance criteria; step 2; `Makefile`'s `hil` recipe |
+   | V18 | what `test_poll` checks: step 2's cases in plain words | step 2 |
+   | V19 | no guitar on the bench | R-SAFETY-08 |
+   | V20 | flashing each Pico (BOOTSEL, `cp <uf2> /Volumes/RPI-RP2/`), and which UF2 goes on which Pico | `docs/phases/05-emulator/verify.md` §2 steps 1–2; step 6 |
+   | V21 | finding the ports with `ls /dev/cu.usbmodem*`; the bench's ports `/dev/cu.usbmodem101` (master) and `/dev/cu.usbmodem2101` (emulator) | `docs/phases/05-emulator/verify.md` §2 step 3; notes §Bench readings |
+   | V22 | the emulator check before wiring: `cat $EMU`, `printf 'fault none\n' > $EMU`, expect `ok: fault none`, close the `cat` with Ctrl-C | `docs/phases/05-emulator/verify.md` §2 step 5 |
+   | V23 | power order (both on USB, then signal wires), and teardown (signal wires out first, then USB) | `docs/wiring-emulator.md` |
+   | V24 | `make hil MASTER=$MASTER EMU=$EMU` and its eight expected lines | Goal; step 6; notes §Bench readings |
+   | V25 | record the output in `notes.md` §Bench readings | step 6 |
+   | V26 | reading a link change: `python3 tools/trace_decode.py $MASTER`; `printf 'fault ack 3\n'`, then, after a pause of about two seconds, `printf 'fault none\n'` to `$EMU` (any pause works: the next poll, 1 ms later, already shows the change) | `tools/trace_decode.py` docstring; 05-emulator command grammar |
+   | V27 | the two `link:` lines and the two decoded blocks, with their per-byte `us` and `ack` values | notes §Bench readings |
+   | V28 | the aborted byte's 133 µs = 37 µs shifting (`SHIFT_US`) + 100 µs (`kAckTimeoutUs`) | notes §Bench readings; `tools/trace_decode.py`; `src/core/ps2_protocol.h` |
+   | V29 | `fault=` is kept when the link recovers, so it names why the link last dropped | `src/core/link.cpp` (`step( )`) |
+   | V30 | troubleshooting, these five entries with only these causes: `FAIL: setup: emulator did not answer 'fault none'` → `EMU` is the wrong port; `FAIL: setup: master silent` → `MASTER` is the wrong port, or the master still runs the loopback firmware (it prints `loopback:` lines, not `hil:`); `FAIL: sustained: state=absent payload=--` → a wiring mistake looks exactly like this, isolated by the loopback check (`seq=0` reading `bytes=0/5` vs `bytes=5/5`), and it happened once; `FAIL: sustained: Δrefused=…` or a payload other than `7F FE` → recheck the wiring, run the loopback check, record the output; `FAIL: fault late 50: …` → record the output and do not change the timeout | 05-emulator verify.md troubleshooting; Goal (`master silent`); `src/app/loopback.cpp`; notes §For later phases (bench hazard); Out of scope (`kAckTimeoutUs` is measured, not tuned) |
+
+   Owed at this re-expansion (the only `verify.md` edits). **Landed 2026-10-07.**
+   - Delete the raw `T1 n=5 k=3 …` example line under "a **link line**". No row lists it; V27
+     already shows that poll decoded. Say "followed by that poll's `T1` trace line (ADR-0015)"
+     with no example.
+   - Delete "or another program (a `cat` left running) has it open" from the
+     `emulator did not answer` entry. V30 lists only the wrong port.
+
+   Check: `sh tests/test_phase_docs.sh` → exit 0;
+   `grep -c 'skips two summaries' docs/phases/06-hil-digital/verify.md` → ≥ 1;
+   `grep -c 'T1 n=\|left running' docs/phases/06-hil-digital/verify.md` → 0.
 
 ## Acceptance criteria
 
@@ -325,6 +372,7 @@ grep -c 'probe_wire_bits' src/app/loopback.cpp                   # expect: >= 1
 python3 tools/hil_digital.py --help >/dev/null                   # expect: exit 0
 grep -c '^DISCARDED_SUMMARIES = 2$' tools/hil_digital.py         # expect: 1
 grep -c 'skips two summaries' docs/phases/06-hil-digital/verify.md   # expect: >= 1
+grep -c 'T1 n=\|left running' docs/phases/06-hil-digital/verify.md   # expect: 0
 make hil >/dev/null 2>&1; test $? -ne 0                          # expect: exit 0 (no ports → refused)
 git diff --quiet main -- src/hal src/emu src/core/link.h src/core/link.cpp src/core/ps2_frame.h src/core/ps2_frame.cpp src/core/ps2_protocol.h tests/vectors tools/trace_decode.py   # expect: exit 0
 grep -c 'sg2hid_loopback.uf2' docs/constraints.md                # expect: >= 1

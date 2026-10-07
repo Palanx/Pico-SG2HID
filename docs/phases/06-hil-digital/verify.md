@@ -26,11 +26,10 @@ The master prints two kinds of line on its USB serial port:
   ```
 
   (A real line from the bench run, printed right after a fault scenario: see `## Bench readings` in `notes.md`.) `polls`, `refused` and `changes` count since the master booted. `us` is how long the last 1000 polls took, so about 1 000 000 (one second). `att=high` means the master let go of the controller at the end of the poll, as it must (R-SAFETY-07). `payload` is the two button bytes of the last good frame.
-- Whenever the link changes, a **link line**, followed by that poll's `T1` trace line from phase 04:
+- Whenever the link changes, a **link line**, followed by that poll's `T1` trace line (ADR-0015):
 
   ```
   link: digital -> absent fault=ack-timeout
-  T1 n=5 k=3 out=01,42,00,00,00 in=FF,41,5A,--,-- us=48,47,47,133,-
   ```
 
 ### What a desync is
@@ -45,7 +44,7 @@ After each command it skips two summaries, sometimes more, then judges the ones 
 
 ### The old loopback program
 
-It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order probe is the only way to check R-PROTO-01 by hand. Phases 24, 04 and 05's instructions now flash that file instead of `sg2hid.uf2`.
+It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order probe is how R-PROTO-01 is checked by hand. Phases 24, 04 and 05's instructions now flash that file instead of `sg2hid.uf2`.
 
 ## Check it yourself
 
@@ -124,7 +123,7 @@ The harness only reads summaries. To see what one failing poll looked like on th
 
 ### If something looks wrong
 
-- **`FAIL: setup: emulator did not answer 'fault none'`.** `EMU` is the wrong port, or another program (a `cat` left running) has it open.
+- **`FAIL: setup: emulator did not answer 'fault none'`.** `EMU` is the wrong port.
 - **`FAIL: setup: master silent`.** `MASTER` is the wrong port, or the master still runs the loopback firmware: flash `sg2hid.uf2` again.
 - **`FAIL: sustained: state=absent payload=--`.** The master never got one good frame: every poll stops at byte 0, while the emulator still answers commands. A wiring mistake looks exactly like this. To be sure, flash the master with `sg2hid_loopback.uf2`. If its `seq=0` line also shows `bytes=0/5`, it is the wiring. Fix it until `seq=0` shows `bytes=5/5`, then flash `sg2hid.uf2` again. This happened once while this phase was built.
 - **`FAIL: sustained: Δrefused=…`** or **`FAIL: sustained: state=digital payload=…`** with anything other than `7F FE`. The master misread some polls. A wiring mistake looks exactly like a firmware fault, so recheck every wire against `docs/wiring-emulator.md` and run the loopback check above. Record the output in `notes.md` either way.
