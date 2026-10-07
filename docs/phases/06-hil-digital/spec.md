@@ -49,18 +49,19 @@ A new host harness, `tools/hil_digital.py` (Python standard library only), drive
 through their USB serial ports. It sends command lines to the emulator, using the 05-emulator
 grammar, and reads the master's summary lines. It prints one line per scenario,
 `ok: <scenario>` or `FAIL: <scenario>: <reason>`. It stops at the first `FAIL`, and it always
-sends `fault none` to the emulator before it exits. Its last line is `hil: PASS` (exit 0) or
-`hil: FAIL` (exit 1). `make hil MASTER=<port> EMU=<port>` runs it. That target is not part of
+sends `fault none` to the emulator before it exits. Once its arguments are accepted, its last
+line is `hil: PASS` (exit 0) or `hil: FAIL` (exit 1). `make hil MASTER=<port> EMU=<port>` runs it. That target is not part of
 `make test`.
 
 Rules that hold in every scenario:
 
 - Every summary line the harness reads has `att=high` and `us` ≤ 1100000. That includes the
   lines it reads while it waits for an emulator `ok:`, which belong to no window.
-- If no summary line arrives for 3 s, the scenario fails with the reason `master silent`.
-- A **window** of k summaries is the k summaries that follow **two** discarded summaries, both
-  read after the emulator's `ok:`. **Δ** is a counter's value on the window's last summary minus
-  its value on the second discarded summary.
+- If the harness waits 3 s for a summary line and none arrives, the scenario fails with the reason
+  `master silent`.
+- A **window** of k summaries is the k summaries that follow **at least two** discarded summaries,
+  all read after the emulator's `ok:`. **Δ** is a counter's value on the window's last summary
+  minus its value on the last discarded summary.
   - Why two: the master and the emulator are separate serial ports, so the harness can order
     lines only as it reads them, not as they were printed. The first summary read after `ok:`
     may have been printed before the command took effect. The second was printed about
@@ -71,7 +72,7 @@ The scenarios, in order:
 
 | scenario | emulator lines sent | passes when |
 |---|---|---|
-| `setup` | `fault none`, `mode digital`, `payload 7f fe 80 80 80 80` | each line is answered `ok: <line>` within 2 s, and a master `hil:` line arrives within 3 s |
+| `setup` | `fault none`, `mode digital`, `payload 7f fe 80 80 80 80` | each line is answered `ok: <line>` within 2 s, and a master `hil:` line arrives |
 | `sustained` | none | over a window lasting `--seconds` (default 60) summaries: every summary has `state=digital` and `payload=7F FE`, Δrefused = 0 and Δchanges = 0 |
 | `fault ack 0` | `fault ack 0` | over a 2-summary window: `state=absent`, `fault=ack-timeout`, Δrefused = Δpolls |
 | `fault ack 3` | `fault ack 3` | as `fault ack 0` |
@@ -122,6 +123,8 @@ Read:
   `ATT` is high and answers each one with `ok: <line>` or `error: <reason>`.
 - `docs/phases/05-emulator/spec.md` §Goal — the command grammar: `mode`, `payload` (six hex
   bytes), and `fault none|ack <n>|late <us>|id <hh>`.
+- `docs/phases/05-emulator/verify.md` §2 step 5 — sending the emulator a command by hand: `cat $EMU`
+  in one window, `printf 'fault none\n' > $EMU` in another, and the `ok: fault none` it answers.
 - `docs/phases/05-emulator/notes.md` §For later phases (06 entries) and §Bench readings — the
   ports, and the ACK delays measured per fault.
 - `docs/phases/24-pio-bus/notes.md` §For later phases — the real ACK slack is about 95 µs.
@@ -245,7 +248,7 @@ order 5 → 6 → 8. Re-run every other step's Check unchanged; none of them owe
 5. **The harness.** Touches `tools/hil_digital.py` and `Makefile`.
    - `tools/hil_digital.py` is executable, uses only the standard library, and does what the
      Goal describes.
-     - Arguments: `--master PORT --emu PORT [--seconds N]`.
+     - Arguments: `--master PORT --emu PORT [--seconds N]`, with N ≥ 1.
      - It opens each port with `os.open` and puts it in raw mode with `tty`/`termios`.
      - The number of discarded summaries is one module constant, `DISCARDED_SUMMARIES = 2`,
        used by every window (Goal §window). **Landed 2026-10-06** (was one).

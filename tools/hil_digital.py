@@ -202,11 +202,18 @@ def scenarios(seconds):
     ]
 
 
+def at_least_one(text):
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1: {text}")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--master", required=True, help="the master Pico's serial port")
     parser.add_argument("--emu", required=True, help="the emulator Pico's serial port")
-    parser.add_argument("--seconds", type=int, default=60,
+    parser.add_argument("--seconds", type=at_least_one, default=60,
                         help="summaries in the sustained window (default 60)")
     args = parser.parse_args()
 

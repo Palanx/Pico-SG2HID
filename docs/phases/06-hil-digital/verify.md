@@ -15,7 +15,7 @@ Each answer moves the **link**, the master's opinion of what is on the other end
 - `digital`: a controller is answering with good digital frames.
 - `absent`: the last poll was refused. The reason is kept as the **fault**: `ack-timeout` (the controller stopped acknowledging bytes, or acknowledged too late) or `unknown-id` (it answered as a kind of controller this project does not support).
 
-A refused poll never stops the master. The next poll goes out one millisecond later anyway, and as soon as a good frame arrives the link is `digital` again. That is the "the firmware never stops" rule (`docs/constraints.md` §Error handling): a USB gamepad that silently freezes is worse than one that briefly reports nothing pressed.
+A refused poll never stops the master. The next poll goes out one millisecond later anyway, and as soon as a good frame arrives the link is `digital` again. That is the "the firmware never stops" rule (`docs/constraints.md` §Error handling): "A hang is a worse failure than a wrong report."
 
 The master prints two kinds of line on its USB serial port:
 
@@ -41,7 +41,7 @@ A **desync** is the master misreading a controller that is answering correctly: 
 
 The script talks to both Picos at once. It tells the emulator what to do (the `mode`, `payload` and `fault` commands from phase 05), then reads the master's summaries and judges them. It runs seven **scenarios** in order, prints `ok: <scenario>` for each that passes, and stops at the first `FAIL: <scenario>: <reason>`. Whatever happens, it tells the emulator `fault none` before it exits, so the bench is left answering normally.
 
-After each command it skips two summaries, then judges the ones after them. Why two: the master and the emulator are two separate serial ports, so the script can only put their lines in the order it reads them, not the order they were printed. The first summary it reads after the emulator's `ok:` may have been printed before the command took effect. The second was printed about a second later (1000 polls of 1 ms), so it comes after the command. Every poll the script then judges ran under the new command.
+After each command it skips two summaries, sometimes more, then judges the ones after them. Why two: the master and the emulator are two separate serial ports, so the script can only put their lines in the order it reads them, not the order they were printed. The first summary it reads after the emulator's `ok:` may have been printed before the command took effect. The second was printed about a second later (1000 polls of 1 ms), so it comes after the command. Every poll the script then judges ran under the new command.
 
 ### The old loopback program
 
@@ -66,7 +66,7 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
 
 1. **Signal wires out.** If the bench from phase 05 is still wired, pull the five signal wires and the GND wire between the boards first (`docs/wiring-emulator.md`, "To take the bench apart").
 2. **Flash the master** with the poller. Hold its **BOOTSEL** button, plug its USB in, release, then `cp build/pico/sg2hid.uf2 /Volumes/RPI-RP2/`.
-3. **Flash the emulator** the same way with `cp build/pico/sg2hid_emu.uf2 /Volumes/RPI-RP2/`. If it already runs the phase-05 emulator, you can skip this: the file has not changed.
+3. **Flash the emulator** the same way with `cp build/pico/sg2hid_emu.uf2 /Volumes/RPI-RP2/`.
 4. **Find the ports.** With only the master plugged in, `ls /dev/cu.usbmodem*` shows the master's name. Plug in the emulator and run it again; the new name is the emulator's. On the bench this was written on they were:
 
    ```
@@ -74,7 +74,7 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
    EMU=/dev/cu.usbmodem2101
    ```
 
-5. **Check the emulator answers** before wiring. In a second Terminal window run `cat $EMU`, then in the first: `printf 'fault none\n' > $EMU`. The second window must show `ok: fault none`. Close the `cat` with Ctrl-C: the harness needs the port to itself.
+5. **Check the emulator answers** before wiring, the same way as phase 05 (`docs/phases/05-emulator/verify.md`, §2 step 5). In a second Terminal window run `cat $EMU`, then in the first: `printf 'fault none\n' > $EMU`. The second window must show `ok: fault none`. Then close the `cat` with Ctrl-C.
 6. **Wire the bench** per `docs/wiring-emulator.md`. Both Picos are already on USB, which is the order that page asks for: power first, signal wires second.
 7. **Run it:**
 
@@ -99,7 +99,7 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
 
    | scenario | what the emulator is told | what the master must do |
    |---|---|---|
-   | `setup` | answer normally, digital mode, buttons `7F FE` | print a summary within 3 seconds |
+   | `setup` | answer normally, digital mode, buttons `7F FE` | print a summary |
    | `sustained` | nothing new | 60 seconds (60 000 polls) of `state=digital` and `payload=7F FE`, with **zero** refused polls and **zero** button changes: no desync |
    | `fault ack 0` | never acknowledge byte 0 | every poll refused, link `absent`, fault `ack-timeout` |
    | `fault ack 3` | stop acknowledging at byte 3, the first button byte | the same: a frame cut short is refused whole, never half-read (R-PROTO-02) |
@@ -107,7 +107,7 @@ It still exists, as `build/pico/sg2hid_loopback.uf2`, because its bit-order prob
    | `fault id 79` | answer as a DualShock 2 (id `79`) | every poll refused, link `absent`, fault `unknown-id`: an unsupported controller is refused, never guessed at (R-PROTO-03) |
    | `fault late 50` | acknowledge every byte 50 µs late | keep streaming with no refused poll: 50 µs is inside the 100 µs budget |
 
-   After every fault the harness sends `fault none` and checks **recovery**: it skips two summaries (about two seconds, for the reason given above), then for the next two summaries (about two seconds more) the link must be `digital`, reading `7F FE`, with no refused poll and no button change. A fault scenario prints `ok:` only if both the fault and the recovery behaved.
+   After every fault the harness sends `fault none` and checks **recovery**: it skips two summaries or more (about two seconds, for the reason given above), then for the next two summaries (about two seconds more) the link must be `digital`, reading `7F FE`, with no refused poll and no button change. A fault scenario prints `ok:` only if both the fault and the recovery behaved.
 
    Why `7F FE` and not the default `FF FF`: `7F` is `01111111` and `FE` is `11111110`. A master reading bits in the wrong order would turn each into the other and show `FE 7F`. `FF FF` reads `FF FF` either way, so it would hide that mistake.
 
@@ -126,6 +126,6 @@ The harness only reads summaries. To see what one failing poll looked like on th
 
 - **`FAIL: setup: emulator did not answer 'fault none'`.** `EMU` is the wrong port, or another program (a `cat` left running) has it open.
 - **`FAIL: setup: master silent`.** `MASTER` is the wrong port, or the master still runs the loopback firmware: flash `sg2hid.uf2` again.
-- **`FAIL: sustained: state=absent payload=--`.** The master never got one good frame: every poll stops at byte 0, while the emulator still answers commands. This is almost always the wiring, usually GND or one signal wire in the wrong row. To be sure, flash the master with `sg2hid_loopback.uf2`. If its `seq=0` line also shows `bytes=0/5`, it is the wiring. Fix it until `seq=0` shows `bytes=5/5`, then flash `sg2hid.uf2` again. This happened once while this phase was built.
+- **`FAIL: sustained: state=absent payload=--`.** The master never got one good frame: every poll stops at byte 0, while the emulator still answers commands. A wiring mistake looks exactly like this. To be sure, flash the master with `sg2hid_loopback.uf2`. If its `seq=0` line also shows `bytes=0/5`, it is the wiring. Fix it until `seq=0` shows `bytes=5/5`, then flash `sg2hid.uf2` again. This happened once while this phase was built.
 - **`FAIL: sustained: Δrefused=…`** or **`FAIL: sustained: state=digital payload=…`** with anything other than `7F FE`. The master misread some polls. A wiring mistake looks exactly like a firmware fault, so recheck every wire against `docs/wiring-emulator.md` and run the loopback check above. Record the output in `notes.md` either way.
-- **`FAIL: fault late 50: …`.** The ACK budget is tighter than the emulator's 50 µs delay. Record the output; do not change the timeout: this phase measures it, it does not tune it.
+- **`FAIL: fault late 50: …`.** Record the output; do not change the timeout: this phase measures it, it does not tune it.

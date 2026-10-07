@@ -18,8 +18,9 @@
 
 namespace {
 
-// Longer than any poll, so `completed` past the frame's end can be asked for.
-constexpr std::size_t kWireLen = 10;
+// The analog poll length (spec step 2's bound), so `completed` past a digital frame's end can be
+// asked for.
+constexpr std::size_t kWireLen = ps2::frame_len( ps2::ControllerId::Analog ) + 1;
 
 using Wire = std::array<ps2::WireByte, kWireLen>;
 
