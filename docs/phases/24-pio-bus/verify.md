@@ -125,7 +125,7 @@ a few milliamps.
    (DATA)**, and one from the row of **socket pin 6 (ATT)** to the row of **socket pin 9
    (ACK)**. Pin numbers are in `docs/wiring.md`.
 3. Build and flash as in phase 23: `make firmware`, then hold **BOOTSEL**, plug USB in,
-   release, and `cp build/pico/sg2hid.uf2 /Volumes/RPI-RP2/`.
+   release, and `cp build/pico/sg2hid_loopback.uf2 /Volumes/RPI-RP2/`.
 4. Record 40 lines from the Pico (the first line may be cut in half, so it is dropped):
 
    ```

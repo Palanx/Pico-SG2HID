@@ -27,27 +27,35 @@ if( NOT PICO_SDK_VERSION_STRING STREQUAL SG2HID_PICO_SDK_VERSION )
                          "but this firmware is pinned to ${SG2HID_PICO_SDK_VERSION} (ADR-0014)" )
 endif( )
 
-# Two firmwares, each from an explicit list: a glob over src/hal/ would link the master's and the
-# emulator's PIO ports into both, and each claims the bus pins from its own table.
+# Three firmwares, each from an explicit list: a glob over src/hal/ would link the master's and the
+# emulator's PIO ports into both, and each claims the bus pins from its own table; a glob over
+# src/app/ would give the master two main( )s.
 file( GLOB SG2HID_CORE_SOURCES CONFIGURE_DEPENDS src/core/*.cpp )
-file( GLOB SG2HID_APP_SOURCES CONFIGURE_DEPENDS src/app/*.cpp )
 file( GLOB SG2HID_EMU_SOURCES CONFIGURE_DEPENDS src/emu/*.cpp )
 
-# The master: build/pico/sg2hid.uf2.
-set( SG2HID_SOURCES ${SG2HID_CORE_SOURCES} src/hal/bus_frame.cpp src/hal/pio_port.cpp ${SG2HID_APP_SOURCES} )
-add_executable( sg2hid ${SG2HID_SOURCES} )
-target_include_directories( sg2hid PRIVATE src )
-# Our sources only. The SDK's libraries are INTERFACE libraries, so their .c files compile
-# inside this target too, and target_compile_options would put -Werror on them.
-set_source_files_properties( ${SG2HID_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror" )
-# The PS2 bus master's PIO program, assembled into build/pico/ps2_master.pio.h.
-pico_generate_pio_header( sg2hid ${CMAKE_CURRENT_LIST_DIR}/src/hal/ps2_master.pio )
-target_link_libraries( sg2hid pico_stdlib hardware_pio )
+# The two master firmwares share everything but their main( ).
+set( SG2HID_MASTER_SOURCES ${SG2HID_CORE_SOURCES} src/hal/bus_frame.cpp src/hal/pio_port.cpp )
+function( add_master_firmware target main_source )
+    set( target_sources ${SG2HID_MASTER_SOURCES} ${main_source} )
+    add_executable( ${target} ${target_sources} )
+    target_include_directories( ${target} PRIVATE src )
+    # Our sources only. The SDK's libraries are INTERFACE libraries, so their .c files compile
+    # inside this target too, and target_compile_options would put -Werror on them.
+    set_source_files_properties( ${target_sources} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror" )
+    # The PS2 bus master's PIO program, assembled into build/pico/ps2_master.pio.h.
+    pico_generate_pio_header( ${target} ${CMAKE_CURRENT_LIST_DIR}/src/hal/ps2_master.pio )
+    target_link_libraries( ${target} pico_stdlib hardware_pio )
 
-# UART stdio would claim GP0 and GP1, which src/core/pins.h does not declare (R-SAFETY-02).
-pico_enable_stdio_usb( sg2hid 1 )
-pico_enable_stdio_uart( sg2hid 0 )
-pico_add_extra_outputs( sg2hid )
+    # UART stdio would claim GP0 and GP1, which src/core/pins.h does not declare (R-SAFETY-02).
+    pico_enable_stdio_usb( ${target} 1 )
+    pico_enable_stdio_uart( ${target} 0 )
+    pico_add_extra_outputs( ${target} )
+endfunction( )
+
+# The master, the link poller (06-hil-digital): build/pico/sg2hid.uf2.
+add_master_firmware( sg2hid src/app/main.cpp )
+# The loopback that carries R-PROTO-01's bit-order probe (24-pio-bus): build/pico/sg2hid_loopback.uf2.
+add_master_firmware( sg2hid_loopback src/app/loopback.cpp )
 
 # The emulator, flashed to a second Pico (ADR-0004): build/pico/sg2hid_emu.uf2.
 set( SG2HID_EMU_ALL_SOURCES ${SG2HID_CORE_SOURCES} src/hal/pio_device.cpp ${SG2HID_EMU_SOURCES} )

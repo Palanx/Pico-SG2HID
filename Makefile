@@ -8,11 +8,17 @@
 #                  then, when PICO_SDK_PATH is set, runs `make firmware` as the
 #                  typecheck of the SDK layers (skipped with a `skip:` line when it is
 #                  not). Not part of `make test`.
-#   make firmware  Builds build/pico/sg2hid.uf2 (the master) and build/pico/sg2hid_emu.uf2
-#                  (the emulator, 05-emulator). Needs cmake, arm-none-eabi-gcc and
+#   make firmware  Builds build/pico/sg2hid.uf2 (the master, a link poller since 06-hil-digital),
+#                  build/pico/sg2hid_loopback.uf2 (the 24-pio-bus loopback and bit-order
+#                  probe) and build/pico/sg2hid_emu.uf2 (the emulator, 05-emulator). Needs
+#                  cmake, arm-none-eabi-gcc and
 #                  PICO_SDK_PATH pointing at pico-sdk 2.3.1 (ADR-0014). Also writes
 #                  build/pico/compile_commands.json, which `make lint` reads for
 #                  src/hal, src/usb, src/app and src/emu. Not required for `make test`.
+#   make hil MASTER=<port> EMU=<port>
+#                  The two-Pico hardware-in-the-loop run (06-hil-digital): tools/hil_digital.py
+#                  against a master flashed with sg2hid.uf2 and an emulator with sg2hid_emu.uf2.
+#                  Needs the bench; never part of `make test`.
 #   make clean
 #
 # CMake is never invoked directly; this file is the seam between the two builds.
@@ -28,7 +34,7 @@ CPP_BINS  := $(patsubst tests/%.cpp,$(BUILD)/%,$(CPP_TESTS))
 SH_TESTS  := $(wildcard tests/test_*.sh)
 PY_TESTS  := $(wildcard tests/test_*.py)
 
-.PHONY: test lint typecheck firmware clean
+.PHONY: test lint typecheck firmware hil clean
 
 test: $(CPP_BINS)
 	@fail=0; \
@@ -67,6 +73,10 @@ firmware:
 	@[ -n "$$PICO_SDK_PATH" ] || { echo "firmware: PICO_SDK_PATH is unset."; exit 1; }
 	cmake -S . -B build/pico -DPICO_BOARD=pico
 	cmake --build build/pico
+
+hil:
+	@[ -n "$(MASTER)" ] && [ -n "$(EMU)" ] || { echo "usage: make hil MASTER=<master port> EMU=<emulator port>"; exit 1; }
+	python3 tools/hil_digital.py --master "$(MASTER)" --emu "$(EMU)"
 
 clean:
 	rm -rf build
