@@ -44,6 +44,8 @@ After this phase:
   docstring, one `ok:`/`FAIL:` line for the real run, mutations that assert their anchor
   matched, and a `rejection cases: n/n` line. Its R-PROTO-08 check keeps the decoder's
   output byte-identical to `tests/vectors/trace_session.rendered`.
+- `Makefile:35` — `PY_TESTS := $(wildcard tests/test_*.py)`: `make test` runs every
+  `tests/test_*.py`, so the new check needs no runner edit.
 - `tests/test_checks_are_live.py` — holds every `tests/test_*.py` to its accounting
   property. A declared `RULE` id must appear on a real-run result line. A line containing
   `rejection`, `accept` or `false-positive` followed by `case(s)` counts as a case line,
@@ -54,10 +56,17 @@ After this phase:
   and the file's `RULE` marker.
 - `docs/phases/04-trace-mode/notes.md` — the bench measured 36–38 µs per byte, so 37 holds
   on the hardware.
+- `docs/phases/06-hil-digital/notes.md` §Bench readings — the decoded line
+  `byte 0: out 01 in FF 48 us ack 11 us` that `verify.md` quotes as its example.
 - `docs/phases/25-scaffold-bash-floor/verify.md` — the shape of a `verify.md` for a
   host-only phase (R-PROC-02 headings).
 
 ## Plan
+
+Re-expansion after the round-3 escape (`notes.md` §Validation, round 3). Steps 1 and 3
+landed and stand. Step 2 owes two edits to `tests/test_trace_shift.py`: the exactly-once
+anchor check in `mutated( )`, and case 2's label losing "in the bit loop". Step 4 owes
+`verify.md`'s non-whole remedy. Everything else in steps 2 and 4 already matches the code.
 
 1. **Split the constant.** In `tools/trace_decode.py`, replace `SHIFT_US = 37` with
    `SHIFT_NOMINAL_US = 37`, `SHIFT_CALIBRATION_US = 0` and
@@ -88,30 +97,42 @@ After this phase:
        decrements x. `jmp !y <label>` jumps when y is 0.
      - Any other mnemonic only costs its cycles.
 
-     It raises an error, which the check reports as a `FAIL`, in three cases: a `jmp` with
-     any other condition is reached, the walk exceeds 10 000 instructions, or `.wrap_target`
-     or `.wrap` is missing.
+     - `.wrap_target` and `.wrap` are position markers, not instructions. Any other
+       directive on the path counts as an instruction.
+
+     It raises an error, which the check reports as a `FAIL`, in four cases: a `jmp` with
+     any other condition is reached, a `jmp` names a label the program does not define,
+     `.wrap_target` or `.wrap` is missing, or the walk does not reach `.wrap` within
+     `MAX_STEPS` = 10 000 instructions. A walk that reaches `.wrap` after exactly 10 000
+     instructions passes; one that needs 10 001 fails.
    - `constant( text, name )`. It reads `constexpr std::uint32_t <name> = <n>;` (any spaces
      around `=`) and returns n, or raises the same error when no such line exists.
-   - `check( texts )`. It takes the four file texts (`.pio`, `pio_port.cpp`,
+   - `check( texts, is_verbose )`. It takes the four file texts (`.pio`, `pio_port.cpp`,
      `ps2_protocol.h`, decoder) and computes nominal µs as a `fractions.Fraction`. It reads
-     `^SHIFT_NOMINAL_US = (\d+)$` from the decoder, prints
+     `^SHIFT_NOMINAL_US = (\d+)$` from the decoder and returns whether they match. When
+     `is_verbose` (the real run; the cases pass `False`), it prints
      `  ok:   R-PROTO-09 (SHIFT_NOMINAL_US equals ps2_master.pio's no-ACK cycles at kCyclesPerBit and kBusClockHz)`
-     or the same label after `FAIL:`, and returns whether they match. On a `FAIL` the
-     reason (computed value or error) follows on an indented line.
-   - Cases, which run `check( )` on mutated in-memory texts. Each case asserts that its
-     anchor matched. The rejection cases must each turn the check to `FAIL`:
+     or the same label after `FAIL:`, with the reason (computed value or error) on an
+     indented line after a `FAIL`.
+   - `mutated( texts, mutation )`. It applies one mutation and requires its anchor to occur
+     exactly once in its file. Otherwise it prints
+     `  FAIL: <label>: the anchor <anchor> occurs <n> times in <file>, not once` and returns
+     `None`, and the case counts as failed. Every anchor below occurs exactly once in
+     today's tree.
+   - Cases, which run `check( texts, False )` on mutated in-memory texts. The labels name
+     the change only, never where in the file it lands. The rejection cases must each turn
+     the check to `FAIL`:
 
-     | # | file | anchor → replacement | fails because |
+     | # | file | label | anchor → replacement |
      |---|---|---|---|
-     | 1 | `.pio` | `set x, 7` → `set x, 7\n    nop` | one instruction added (38 cycles) |
-     | 2 | `.pio` | `side 0 [1]` → `side 0 [2]` | a delay changed inside the bit loop (45 cycles) |
-     | 3 | `ps2_protocol.h` | `kBusClockHz = 250000` → `kBusClockHz = 125000` | the bus clock changed (74 µs) |
-     | 4 | `pio_port.cpp` | `kCyclesPerBit  = 4` → `kCyclesPerBit  = 8` | the divider changed (18.5 µs, not whole) |
-     | 5 | decoder | `SHIFT_NOMINAL_US = 37` → `SHIFT_NOMINAL_US = 38` | the copy drifted |
+     | 1 | `.pio` | one instruction added | `set x, 7` → `set x, 7\n    nop` |
+     | 2 | `.pio` | a delay changed | `side 0 [1]` → `side 0 [2]` |
+     | 3 | `ps2_protocol.h` | the bus clock changed | `kBusClockHz = 250000` → `kBusClockHz = 125000` |
+     | 4 | `pio_port.cpp` | the divider changed | `kCyclesPerBit  = 4` → `kCyclesPerBit  = 8` |
+     | 5 | decoder | the copy drifted | `SHIFT_NOMINAL_US = 37` → `SHIFT_NOMINAL_US = 38` |
 
      It prints `  ok:   rejection cases: 5/5 …` or `  FAIL: rejection cases: n/5`. There
-     is one accept case, which must stay `ok`: the decoder's `SHIFT_CALIBRATION_US = 0` →
+     is one accept case, labelled `the calibration knob moved`, which must stay `ok`: the decoder's `SHIFT_CALIBRATION_US = 0` →
      `SHIFT_CALIBRATION_US = 2`. It prints `  ok:   accept case: …` or `  FAIL: accept case: …`.
    - It exits 1 if anything failed, 0 otherwise.
 
@@ -133,7 +154,18 @@ After this phase:
    covers:
    - why the 37 µs matters (the `ack` column of a decoded trace);
    - running `python3 tests/test_trace_shift.py` and reading its three `ok:` lines;
-   - where to put a bench-measured correction (`SHIFT_CALIBRATION_US`).
+   - where to put a bench-measured correction (`SHIFT_CALIBRATION_US`);
+   - what to do when the R-PROTO-09 line is `FAIL` because the program or the clock
+     changed on purpose. If the message's computed value is a whole number, set
+     `SHIFT_NOMINAL_US` to it. If it is not a whole number (the message prints a fraction,
+     e.g. `37/2 us`), stop: the decoder subtracts whole microseconds, so how to round is a
+     decision for the phase that changed the program or the clock. The guide uses the
+     phrase `not a whole number` for this case.
+
+   Every place the guide tells the operator to change `SHIFT_NOMINAL_US` or
+   `SHIFT_CALIBRATION_US` and keep the change says that the 9 `ack` rows of
+   `tests/vectors/trace_session.rendered` must then be rewritten by hand, or `make test`
+   fails on R-PROTO-08. A change made and reverted within one step needs no rewrite.
 
    Touches `docs/phases/26-trace-shift-derived/verify.md`.
    Check: `grep -cE '^#+ (What was built|.*[Cc]heck it)' docs/phases/26-trace-shift-derived/verify.md` → 2.
@@ -158,6 +190,9 @@ git diff --quiet main -- src tests/vectors                       # expect: exit 
 python3 tests/test_rule_traceability.py                          # expect: exit 0
 python3 tests/test_checks_are_live.py                            # expect: exit 0
 sh tests/test_phase_docs.sh                                      # expect: exit 0
+grep -c 'bit loop' tests/test_trace_shift.py                     # expect: 0
+python3 -c "import sys; sys.path.insert(0, 'tests'); import test_trace_shift as t; sys.exit(t.mutated({t.PIO: 'ab ab'}, t.Mutation(t.PIO, 'twice', 'ab', 'cd')) is not None)"   # expect: exit 0, one FAIL line naming 2 occurrences
+grep -c 'not a whole number' docs/phases/26-trace-shift-derived/verify.md   # expect: 1
 ```
 
 ## Out of scope
