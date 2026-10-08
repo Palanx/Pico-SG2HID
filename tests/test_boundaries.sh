@@ -204,7 +204,7 @@ wiring_txt=$( fail=0; run_all "$tmp" 2>&1 )
 if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-ARCH-02'; then
     echo "  ok:   R-ARCH-02 wiring case (the verdict reaches the exit code)"
 else
-    echo "  FAIL: R-ARCH-02 is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    echo "  FAIL: R-ARCH-02 wiring case: reported but never reaches the exit code (run_all left fail=$wiring_flag)"
     fail=1
 fi
 rm -rf "$tmp"

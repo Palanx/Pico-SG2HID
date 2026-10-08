@@ -155,7 +155,7 @@ if scan dir "$tmp" "$out"; then
     echo "  ok:   R-SEC-01 false-positive case (working tree)"
     accepted=$(( accepted + 1 ))
 else
-    echo "  FAIL: false positive — a plain file was reported as a secret"
+    echo "  FAIL: false-positive case: a plain file was reported as a secret"
     fail=1
 fi
 rm -rf "$tmp"
@@ -172,7 +172,7 @@ if scan git "$tmp" "$out"; then
     echo "  ok:   R-SEC-01 false-positive case (history)"
     accepted=$(( accepted + 1 ))
 else
-    echo "  FAIL: false positive — a clean history was reported as carrying a secret"
+    echo "  FAIL: false-positive case: a clean history was reported as carrying a secret"
     fail=1
 fi
 rm -rf "$tmp"
@@ -208,7 +208,7 @@ wiring_txt=$( fail=0; run_all "$tmp" 2>&1 )
 if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-SEC-01: gitleaks found secrets in the tree'; then
     echo "  ok:   R-SEC-01 wiring case (working tree: the verdict reaches the exit code)"
 else
-    echo "  FAIL: R-SEC-01 (working tree) is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    echo "  FAIL: R-SEC-01 (working tree) wiring case: reported but never reaches the exit code (run_all left fail=$wiring_flag)"
     fail=1
 fi
 rm -rf "$tmp"
@@ -230,7 +230,7 @@ wiring_txt=$( fail=0; run_all "$tmp" 2>&1 )
 if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-SEC-01: gitleaks found secrets in the commit history'; then
     echo "  ok:   R-SEC-01 wiring case (history: the verdict reaches the exit code)"
 else
-    echo "  FAIL: R-SEC-01 (history) is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    echo "  FAIL: R-SEC-01 (history) wiring case: reported but never reaches the exit code (run_all left fail=$wiring_flag)"
     fail=1
 fi
 rm -rf "$tmp"

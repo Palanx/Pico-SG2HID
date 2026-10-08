@@ -262,7 +262,7 @@ wiring_txt=$( fail=0; PATH="$stub_dir:$PATH" run_all 2>&1 )
 if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-TOOL-01'; then
     echo "  ok:   R-TOOL-01 wiring case (the verdict reaches the exit code)"
 else
-    echo "  FAIL: R-TOOL-01 is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    echo "  FAIL: R-TOOL-01 wiring case: reported but never reaches the exit code (run_all left fail=$wiring_flag)"
     fail=1
 fi
 
@@ -282,7 +282,7 @@ wiring_txt=$( fail=0; PATH="$stub_dir:$PATH" run_all 2>&1 )
 if [ "$wiring_flag" = "1" ] && printf '%s' "$wiring_txt" | grep -q 'FAIL: R-TOOL-02'; then
     echo "  ok:   R-TOOL-02 wiring case (the verdict reaches the exit code)"
 else
-    echo "  FAIL: R-TOOL-02 is reported but never reaches the exit code (run_all left fail=$wiring_flag)"
+    echo "  FAIL: R-TOOL-02 wiring case: reported but never reaches the exit code (run_all left fail=$wiring_flag)"
     fail=1
 fi
 

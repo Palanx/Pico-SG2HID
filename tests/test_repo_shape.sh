@@ -587,7 +587,7 @@ wiring( ) { # wiring <rule-id> <relative-path> <content>
     if [ "$wiring_out" = "1" ] && printf '%s' "$wiring_txt" | grep -q "FAIL: $1"; then
         wired=$(( wired + 1 ))
     else
-        echo "  FAIL: $1 is reported but never reaches the exit code (run_all left fail=$wiring_out)"
+        echo "  FAIL: $1 wiring case: reported but never reaches the exit code (run_all left fail=$wiring_out)"
         fail=1
     fi
 }
