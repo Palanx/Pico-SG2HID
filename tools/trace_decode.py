@@ -24,16 +24,22 @@ DECIMAL = re.compile(r"[0-9]+")
 ABSENT_IN = "--"
 ABSENT_US = "-"
 
-# The microseconds a byte spends on the wire before the master starts waiting for ACK:
-# src/hal/ps2_master.pio's cycle budget is 37 PIO cycles per byte without the ACK wait, at
-# 4 PIO cycles per bus bit and a 250 kHz bus clock, so one cycle per microsecond.
+# The microseconds a byte spends on the wire before the master starts waiting for ACK, in two
+# parts.
 #
-# A calibration knob, not a measurement: the firmware's clock runs on the CPU, so every elapsed
-# time also carries a few us of polling overhead. To check it, capture a loopback trace with
-# ATT jumpered to ACK (ACK already low, so the true delay is zero): the last byte of each frame,
-# which waits for no ACK, shows the shift time plus overhead, and every `ack` delay should read
-# 0 to a few us. Delays that all sit well above zero mean this is too small.
-SHIFT_US = 37
+# SHIFT_NOMINAL_US is src/hal/ps2_master.pio's cycle count for a byte that waits for no ACK,
+# converted at kCyclesPerBit cycles per bus bit and kBusClockHz. tests/test_trace_shift.py
+# computes it from those sources and fails when this copy differs (R-PROTO-09).
+#
+# SHIFT_CALIBRATION_US is the calibration knob (ADR-0015), set by hand: the firmware's clock
+# runs on the CPU, so every elapsed time also carries a few us of polling overhead. To set it,
+# capture a loopback trace with ATT jumpered to ACK (ACK already low, so the true delay is
+# zero): the last byte of each frame, which waits for no ACK, shows the shift time plus
+# overhead, and every `ack` delay should read 0 to a few us. Delays that all sit well above
+# zero mean the sum is too small.
+SHIFT_NOMINAL_US = 37
+SHIFT_CALIBRATION_US = 0
+SHIFT_US = SHIFT_NOMINAL_US + SHIFT_CALIBRATION_US
 
 
 class Unreadable(Exception):

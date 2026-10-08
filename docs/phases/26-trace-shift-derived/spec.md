@@ -66,7 +66,9 @@ After this phase:
 Re-expansion after the round-3 escape (`notes.md` §Validation, round 3). Steps 1 and 3
 landed and stand. Step 2 owes two edits to `tests/test_trace_shift.py`: the exactly-once
 anchor check in `mutated( )`, and case 2's label losing "in the bit loop". Step 4 owes
-`verify.md`'s non-whole remedy. Everything else in steps 2 and 4 already matches the code.
+`verify.md`'s non-whole remedy. Validation round 5 added one more owed edit to step 2:
+`pio_cycles( )`'s error cases 2–4. Everything else in steps 2 and 4 already matches the
+code.
 
 1. **Split the constant.** In `tools/trace_decode.py`, replace `SHIFT_US = 37` with
    `SHIFT_NOMINAL_US = 37`, `SHIFT_CALIBRATION_US = 0` and
@@ -79,8 +81,7 @@ anchor check in `mutated( )`, and case 2's label losing "in the bit loop". Step 
 
    `render( )` is unchanged.
    Touches `tools/trace_decode.py`.
-   Check: `python3 tests/test_bus_trace.py` → exit 0 (output unchanged, all four R-PROTO-08
-   mutations still bite).
+   Check: `python3 tests/test_bus_trace.py` → exit 0.
 
 2. **Write the check.** Create `tests/test_trace_shift.py`, standard library only, in the
    shape of `tests/test_bus_trace.py`. Its docstring carries
@@ -88,10 +89,11 @@ anchor check in `mutated( )`, and case 2's label losing "in the bit loop". Step 
    - `pio_cycles( text )`. It walks the `.pio` program from `.wrap_target` to `.wrap`, with
      the `ACK` flag read by `out y, …` as 0, and returns the cycles executed. Lines are
      handled as follows:
-     - Ignored: comments (from `;`), blank lines, labels (`name:`), `.program` and
-       `.side_set`.
-     - Every instruction executed costs 1 cycle plus its `[n]` delay. A `side` operand
-       costs nothing.
+     - Ignored: comments (from `;`), blank lines, `.program` and `.side_set`.
+     - A label `name:` marks the position of the next instruction. An instruction after it
+       on the same line (`name: out pins, 1`) is that instruction.
+     - Every instruction executed costs 1 cycle plus its `[n]` delay, read only as the
+       line's last token. A `side` operand costs nothing.
      - `set x, <n>` sets x. `out y, <n>` sets y to 0.
      - `jmp <label>` always jumps. `jmp x-- <label>` jumps while x is non-zero, then
        decrements x. `jmp !y <label>` jumps when y is 0.
@@ -100,10 +102,17 @@ anchor check in `mutated( )`, and case 2's label losing "in the bit loop". Step 
      - `.wrap_target` and `.wrap` are position markers, not instructions. Any other
        directive on the path counts as an instruction.
 
-     It raises an error, which the check reports as a `FAIL`, in four cases: a `jmp` with
-     any other condition is reached, a `jmp` names a label the program does not define,
-     `.wrap_target` or `.wrap` is missing, or the walk does not reach `.wrap` within
-     `MAX_STEPS` = 10 000 instructions. A walk that reaches `.wrap` after exactly 10 000
+     It raises an error, which the check reports as a `FAIL`, in these seven cases:
+     1. `.wrap_target` or `.wrap` is missing;
+     2. the walk leaves the program (its next instruction is past the last one) before
+        reaching `.wrap`;
+     3. an instruction it reaches holds a `[` that is not a last-token `[n]` delay;
+     4. an instruction it reaches lacks an operand its mnemonic needs (`set x`, `out y`,
+        `jmp`), or its `set x` operand is not a decimal number;
+     5. a `jmp` it reaches has a condition other than none, `x--` or `!y`;
+     6. a `jmp` it reaches names a label the program does not define (a `jmp` the walk
+        never reaches is not read);
+     7. the walk does not reach `.wrap` within `MAX_STEPS` = 10 000 instructions. A walk that reaches `.wrap` after exactly 10 000
      instructions passes; one that needs 10 001 fails.
    - `constant( text, name )`. It reads `constexpr std::uint32_t <name> = <n>;` (any spaces
      around `=`) and returns n, or raises the same error when no such line exists.
@@ -162,10 +171,11 @@ anchor check in `mutated( )`, and case 2's label losing "in the bit loop". Step 
      decision for the phase that changed the program or the clock. The guide uses the
      phrase `not a whole number` for this case.
 
-   Every place the guide tells the operator to change `SHIFT_NOMINAL_US` or
-   `SHIFT_CALIBRATION_US` and keep the change says that the 9 `ack` rows of
+   Three places in the guide say that the 9 `ack` rows of
    `tests/vectors/trace_session.rendered` must then be rewritten by hand, or `make test`
-   fails on R-PROTO-08. A change made and reverted within one step needs no rewrite.
+   fails on R-PROTO-08: the `SHIFT_CALIBRATION_US` bullet under What was built, the
+   whole-number remedy, and the loopback-capture entry. Step 3's temporary 38 is reverted
+   in the same step and needs no rewrite.
 
    Touches `docs/phases/26-trace-shift-derived/verify.md`.
    Check: `grep -cE '^#+ (What was built|.*[Cc]heck it)' docs/phases/26-trace-shift-derived/verify.md` → 2.
@@ -193,6 +203,7 @@ sh tests/test_phase_docs.sh                                      # expect: exit 
 grep -c 'bit loop' tests/test_trace_shift.py                     # expect: 0
 python3 -c "import sys; sys.path.insert(0, 'tests'); import test_trace_shift as t; sys.exit(t.mutated({t.PIO: 'ab ab'}, t.Mutation(t.PIO, 'twice', 'ab', 'cd')) is not None)"   # expect: exit 0, one FAIL line naming 2 occurrences
 grep -c 'not a whole number' docs/phases/26-trace-shift-derived/verify.md   # expect: 1
+python3 -c "import sys; sys.path.insert(0, 'tests'); import test_trace_shift as t; p = t.read(t.PIO); q = p.replace('bitloop:\n    out pins, 1', 'bitloop: out pins, 1'); sys.exit(q == p or t.pio_cycles(q) != 37)"   # expect: exit 0
 ```
 
 ## Out of scope
