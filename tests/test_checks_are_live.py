@@ -302,6 +302,12 @@ def property_accounting(names):
     real reason. Unproven is stated, never silent (the `unproven:` notes at the end).
     """
     ok, unproven = 0, set()
+    # Every real run at once, judged below in name order: run serially this was ~43 s, the
+    # whole suite a second time. Safe because every check works in a temp dir outside the
+    # tree, and the .py suites' tree copies skip .git, build and mut_*.
+    workers = min(len(names), (os.cpu_count() or 2) * 2) or 1
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        runs = {name: pool.submit(run, os.path.join(TESTS, name)) for name in names}
     for name in names:
         path = os.path.join(TESTS, name)
         text = open(path).read()
@@ -311,7 +317,7 @@ def property_accounting(names):
         if not rules:
             fail("%s declares no rule in its header" % name)
             continue
-        rc, out = run(path)
+        rc, out = runs[name].result()
         if rc != 0:
             fail("%s does not pass on the real tree (rc=%d)" % (name, rc))
             continue
