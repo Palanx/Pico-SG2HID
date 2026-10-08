@@ -1,0 +1,14 @@
+# Files /validate-phase's carry-over guard may ignore: each names a phase path but never reads a
+# phase's spec.md or notes.md (read and confirmed 2026-10-08). Re-check a line when its file changes.
+# error message naming 00-scaffold/verify.md; reads nothing
+Makefile
+# comment
+src/emu/main.cpp
+# comment
+tests/ps2_codec_cases.cpp
+# reads PHASES.md and <id>/verify.md only, both inside the carry-over fingerprint
+tests/test_phase_docs.sh
+# comment
+tests/test_ps2_codec.py
+# docstring
+tools/hil_digital.py
