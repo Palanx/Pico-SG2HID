@@ -4,10 +4,6 @@ paths:
   - "docs/constraints.md"
   - "Makefile"
   - ".claude/workflow/toolchain.manual.json"
-  - "src/core/**"
-  - "tools/trace_decode.py"
-  - "src/hal/ps2_master.pio"
-  - "tests/vectors/trace_session.rendered"
   - "tests/test_checks_are_live.py"
   - "tests/test_ps2_codec.py"
   - "tests/test_bus_frame.py"
@@ -22,45 +18,6 @@ paths:
 
 # Tech debt log
 
-## `SHIFT_US` is a hand copy of the PIO cycle budget (reviewed 2026-10-02)
-
-Files: `tools/trace_decode.py`, `src/hal/ps2_master.pio`, `src/core/ps2_protocol.h`,
-`tests/vectors/trace_session.rendered`
-
-`tools/trace_decode.py` subtracts `SHIFT_US = 37` from each byte's elapsed time to get the `ack`
-delay. The 37 is copied by hand from two sources: the cycle-budget comment in
-`src/hal/ps2_master.pio` ("37 cycles per byte without the ACK wait") and the one cycle per µs
-that `kBusClockHz = 250000` in `src/core/ps2_protocol.h` gives at 4 PIO cycles per bit. Nothing
-ties these values together. If the PIO program gains or loses an instruction, or the bus clock
-changes, every `ack` delay the decoder prints shifts silently, and `make test` stays green.
-`trace_session.rendered` is computed from the same 37, so it moves with the copy and cannot
-catch the drift.
-
-Nothing breaks today. `ps2_master.pio` has not changed since 24-pio-bus, and 04-trace-mode's
-acceptance criteria check it with `git diff --quiet main -- src/hal/ps2_master.pio`. The ATT→ACK
-bench capture (firmware 51f1291, 2026-10-01) measured 36–38 µs per byte and `ack` delays of
-0–1 µs, so 37 matches the hardware. The point where this stops holding is the first edit to
-`ps2_master.pio` or to `kBusClockHz`.
-
-Fixes, cheapest first:
-- A host check, in `tests/test_bus_trace.py`, that reads the "So <n> cycles per byte"
-  sentence from the `.pio` comment and `kBusClockHz` from the header, and asserts
-  `SHIFT_US == n * 1e6 / (4 * kBusClockHz)`. It is a few lines, but it trusts the comment
-  to match the instructions.
-- Count the instructions on the no-ACK path of the `.pio` program itself. This is exact, but
-  it is a small parser for PIO assembly.
-- Re-measure on the bench whenever either file changes, reading the 1-byte frame's `us` in an
-  ATT→ACK capture (`docs/phases/04-trace-mode/verify.md` explains how). This costs no code, but
-  it relies on someone remembering to do it.
-
-What already works: the bench `awk` criterion in `docs/phases/04-trace-mode/spec.md` counts
-`ack` delays above 5 µs in a decoded ATT→ACK capture. A non-zero count means `SHIFT_US` is too
-small. A count of zero does not prove `SHIFT_US` is not too large, because the delay is clamped
-with `max(0, …)`.
-
-Where it was found: 04-trace-mode, validation round 2. The independent reviewer could not
-check 37 from the spec and the diff alone.
-
 ## Every mutant runs on every `make test` (reviewed 2026-10-08)
 
 Files: `tests/test_checks_are_live.py`, `tests/test_ps2_codec.py`, `tests/test_bus_frame.py`,
@@ -71,9 +28,12 @@ The `Makefile` collects every `tests/test_*.py` into `PY_TESTS`, so `make test` 
 mutation suite every time, whether or not anything they cover changed:
 - `test_checks_are_live.py` generates a mutant for every check function (neutering) and every
   pattern alternative (alternation), writes each one to `tests/mut_*.sh`, and runs it.
-- `test_ps2_codec.py`, `test_bus_frame.py`, `test_bus_trace.py`, `test_pin_table.py`,
-  `test_emulator.py` and `test_trace_shift.py` each carry a hand-written `MUTATIONS` list.
-  Each mutation is applied to a copy of the source, rebuilt and run.
+- `test_ps2_codec.py`, `test_bus_frame.py`, `test_bus_trace.py`, `test_pin_table.py` and
+  `test_emulator.py` each carry a hand-written `MUTATIONS` list. Each mutation is applied to a
+  copy of the source, rebuilt and run.
+- `test_trace_shift.py` carries hand-written rejection and accept cases instead. They mutate
+  four source texts in memory and re-run the check function: no copy on disk, no build, no
+  subprocess.
 
 Nothing about correctness breaks. The cost grows with every check, rule and mutation added, and
 it is paid at every call: each Plan step check that runs `make test` (06-hil-digital's spec has
@@ -87,8 +47,9 @@ Fix (the scope of a dedicated phase): run each mutant only when something it dep
 - Keep a per-mutant result cache keyed on a content hash of the mutant's inputs. For
   `test_checks_are_live.py`: the mutated check text, every helper it sources, the fixtures its
   rejection cases read, and `test_checks_are_live.py` itself. For a `MUTATIONS` list: the
-  mutated source file, the test file, and the build flags. A hit with a "killed" result skips the
-  mutant; a miss runs it and records the result. Never cache a survivor.
+  mutated source file, the test file, and the build flags. `test_trace_shift.py`'s in-memory
+  cases need no key: they cost no build and no subprocess. A hit with a "killed" result skips
+  the mutant; a miss runs it and records the result. Never cache a survivor.
 - The cache is per-clone and gitignored, never committed.
 - Always run, uncached: property 1 (accounting), which reads the whole repo and is cheap, and
   `bootstrap( )`, the harness's own floor.
