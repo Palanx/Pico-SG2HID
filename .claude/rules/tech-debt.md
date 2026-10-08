@@ -11,9 +11,6 @@ paths:
   - "tests/test_pin_table.py"
   - "tests/test_emulator.py"
   - "tests/test_trace_shift.py"
-  - "tests/test_phase_docs.sh"
-  - "tests/test_rule_traceability.py"
-  - ".claude/commands/validate-phase.md"
 ---
 
 # Tech debt log
@@ -38,12 +35,11 @@ mutation suite every time, whether or not anything they cover changed:
 Nothing about correctness breaks. The cost grows with every check, rule and mutation added, and
 it is paid at every call: each Plan step check that runs `make test` (06-hil-digital's spec has
 six), each `/validate-phase` round, and every manual run. One edited check re-runs every mutant
-of every unrelated check. A SIGTERM mid-run also leaves `tests/mut_*.sh` orphans, because the
-unlink is in a `finally` and `sweep_orphans( )` only runs at the next start. Not measured yet:
-the wall time of `make test`, and the share of it that the mutation suites take. Measure both
-before cutting anything.
+of every unrelated check. Measured 2026-10-08 at `62b412a` (warm build): `make test` takes
+403 s, and `test_checks_are_live.py` alone 355.7 s (89 %); the five `MUTATIONS` suites together
+about 20 s.
 
-Fix (the scope of a dedicated phase): run each mutant only when something it depends on changed.
+Fix (scheduled as `27-live-mutant-cache`, which narrows it to `test_checks_are_live.py`): run each mutant only when something it depends on changed.
 - Keep a per-mutant result cache keyed on a content hash of the mutant's inputs. For
   `test_checks_are_live.py`: the mutated check text, every helper it sources, the fixtures its
   rejection cases read, and `test_checks_are_live.py` itself. For a `MUTATIONS` list: the
@@ -62,36 +58,3 @@ Fix (the scope of a dedicated phase): run each mutant only when something it dep
 
 Cost: one cache layer shared by seven files, plus a key definition per mutation kind. A key
 that misses a dependency trusts a stale "killed" between full runs.
-
-## belay's gate carry-over never fires here (reviewed 2026-10-08)
-
-Files: `.claude/commands/validate-phase.md`, `tests/test_phase_docs.sh`,
-`tests/test_rule_traceability.py`, `tests/test_ps2_codec.py`
-
-Since belay `7025e5b`, `/validate-phase` step 2 skips `scripts/check.sh` when the tree
-fingerprint, which leaves out only the phase's `spec.md` and `notes.md`, matches the previous
-passing round. The skip is guarded: if `git grep -lE 'spec\.md|notes\.md|docs/phases' -- ':!*.md'`
-prints anything, the gates run anyway. Here it prints three files:
-- `tests/test_phase_docs.sh`, which really reads `docs/phases/*/verify.md` and `PHASES.md`
-  (R-PROC-02).
-- `tests/test_rule_traceability.py`, which really reads `PHASES.md`.
-- `tests/test_ps2_codec.py:121`, where the match is only a comment ("see spec.md §Out of scope").
-
-So every round runs the full suite, mutants included. A round that only amended the spec pays
-the same as one that changed code.
-
-Nothing breaks: the guard errs toward running.
-
-Fix, cheapest first:
-- Reword the comment in `test_ps2_codec.py`. That removes the false hit but saves nothing,
-  because the two real readers still trip the guard. They read `PHASES.md` and `verify.md`,
-  never `spec.md` or `notes.md`, but belay has no way for a project to declare that. Do not hide
-  the paths from the grep to get past the guard: the guard exists because such a gate may read
-  the excluded files.
-- The saving that is actually available is the mutant cache in the entry above. With it, a
-  spec-only round re-runs the cheap tests and hits the cache for every mutant.
-- If belay later lets a project declare which workflow files its gates read, declare these two
-  gates and the carry-over starts firing. That is belay's to add, not this project's.
-
-Where it was found: designing belay's carry-over against this repo's validation rounds.
-
