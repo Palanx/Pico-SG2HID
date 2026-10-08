@@ -22,11 +22,13 @@ text of the broken copy, and every repository file the check mentions. Next time
 fingerprint is the same, the mutant is skipped. If anything in it changed, even one character,
 the fingerprint is different and the mutant runs again.
 
-Three things are never remembered:
+Four things are never remembered:
 
 - a survivor (it must be reported every time);
 - a mutant killed only by the check looking at the real repository, because that depends on
   files the fingerprint does not cover;
+- a mutant that failed without printing any case `FAIL:` line (for example, one that crashed),
+  because nothing says a case caught it;
 - the harness's own self-test (`bootstrap`) and its first property (`accounting`). These are
   cheap and always run.
 
@@ -50,8 +52,8 @@ Three things are never remembered:
 
 3. Optional, to see it re-run only what changed: add a blank comment line at the end of
    `tests/test_phase_docs.sh` (for example `# probe`), save, and run
-   `python3 tests/test_checks_are_live.py`. The `test_phase_docs.sh` line now shows `0/4` (or
-   `0/<its total>`), and every other line still shows equal numbers. Remove the line you added
+   `OPTIONAL_TOOLS=1 python3 tests/test_checks_are_live.py`. The `test_phase_docs.sh` line now
+   shows `0/4` (or `0/<its total>`), and every other line still shows equal numbers. Remove the line you added
    and save.
 
 4. Run `make test FULL=1`. It takes the full 6–7 minutes and ends with `OK`. Instead of the

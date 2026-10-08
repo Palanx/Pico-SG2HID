@@ -58,3 +58,17 @@
   `false-positive case` or `wiring case` (what `CASE_LINE` reads); otherwise its kills are not
   cached and its lines are classified as real-run lines by the accounting property. Any phase
   adding a check file or a case cares.
+
+## Validation — 2026-10-08
+- criteria: 23 passed / 0 failed
+- project gates: test pass, lint pass, typecheck pass
+- gates tree: 57ab62e3ddb94ee771ea7a0f63262697621bb0cf
+- boundary sweep: not swept: no file in the set is under a declared layer
+- independent review: clean (settled: 1 — `awk '/cache: test_/ { split( $4, a, "/" ); if ( a[1] != a[2] ) n++ } END { print n + 0 }' build/run2.log` settles whether hashing untracked files under named directories breaks key stability) (unstated: 10 — run_jobs( ) split out of run_mutants( ); nested SHA-256 layout memoised per file; normpath only on named files; cache_stats keyed by basename; stale-cache suffix keyed on file existence; FULL value printed with %r; FULL passed to every PY_TESTS entry; verify.md claims outside the spec (make clean, mutant count, 0/4, timing, step 3 without OPTIONAL_TOOLS=1, three of four never-recorded cases, build/ vs build/live-mutant-cache); check-file edits match Deviation 1; docs/index and PHASES.md workflow-written)
+- closure test: pass
+- findings: 0
+- finding keys: none
+- spec size: 12359 (first)
+- upstream: none
+- not-ours: none
+- verdict: done
