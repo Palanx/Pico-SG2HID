@@ -51,13 +51,13 @@ between full runs.
 Files: `tests/test_rule_traceability.py`, `tests/test_checks_are_live.py`
 
 The liveness harness mutates `.sh` check files only (`property_neutering( )` and
-`property_alternation( )` skip every name that does not end in `.sh`). Its `belay-debt:` docstring
-(lines 29–31) records this: it named `01-ps2-codec` as the owner and "a rule whose check is not a
-grep" as the trigger. That trigger has fired since then (R-PROTO-02..09 and the pin-table and
-emulator rules are checked by `.py` files). On 2026-09-14 `01-ps2-codec` explicitly released the
-debt to no phase (its `notes.md` §Debt), so the comment names an owner that gave it up.
+`property_alternation( )` skip every name that does not end in `.sh`); its `belay-debt:`
+docstring points here. The upgrade was once owned by `01-ps2-codec`, triggered by "a rule whose
+check is not a grep". That trigger has fired since (R-PROTO-02..09 and the pin-table and emulator
+rules are checked by `.py` files), and on 2026-09-14 `01-ps2-codec` explicitly released the debt to
+no phase (its `notes.md` §Debt).
 
-The gap is narrower than the comment reads. Of the eight `tests/test_*.py` files, six prove
+The gap is narrow. Of the eight `tests/test_*.py` files, six prove
 themselves live by mutating the code they check. `test_ps2_codec.py`, `test_bus_frame.py`,
 `test_bus_trace.py`, `test_pin_table.py` and `test_emulator.py` do it through their `MUTATIONS`
 lists, and `test_trace_shift.py` through in-memory rejection cases. One is the harness itself.
@@ -72,8 +72,6 @@ stronger form: a dropped branch inside `check( )` that no case exercises would n
 which is exactly the gap neutering and alternation close for the `.sh` checks.
 
 Fix, cheapest first:
-- Point the docstring's owner at this entry instead of `01-ps2-codec`. It costs one comment edit
-  and buys only honesty.
 - Give `test_rule_traceability.py` a hand-written in-memory mutation list over its own `check( )`
   source, the `test_trace_shift.py` shape: no build, no subprocess. It costs one list to maintain
   by hand, and it covers what the list names, not what it forgets.

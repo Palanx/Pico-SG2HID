@@ -26,9 +26,10 @@ it covered one check function out of eight.
 Properties 2 and 3 catch a gutted shared helper for free: break report()'s failure branch
 and EVERY generated mutant survives, so this file fails on all of them at once.
 
-belay-debt: the .py check under tests/ is covered by property 1 only — its internals are not
-mutated, and its thirteen failure modes rest on thirteen hand-written rejection cases, which
-is the weaker form. Upgrade when a rule arrives whose check is not a grep; owner 01-ps2-codec.
+belay-debt: .py checks are covered by property 1 only — their internals are not mutated. Every
+one but test_rule_traceability.py proves itself live through its own mutations; that one rests
+on hand-written rejection cases, the weaker form. No phase owns the upgrade: tech-debt log entry
+"`test_rule_traceability.py`'s own logic is never mutated".
 """
 
 import concurrent.futures
