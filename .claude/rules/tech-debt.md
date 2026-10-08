@@ -1,9 +1,6 @@
 ---
 paths:
-  - "tests/test_repo_shape.sh"
-  - "docs/constraints.md"
   - "Makefile"
-  - ".claude/workflow/toolchain.manual.json"
   - "tests/test_ps2_codec.py"
   - "tests/test_bus_frame.py"
   - "tests/test_bus_trace.py"
