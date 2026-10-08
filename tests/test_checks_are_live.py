@@ -32,7 +32,10 @@ is the weaker form. Upgrade when a rule arrives whose check is not a grep; owner
 """
 
 import concurrent.futures
+import fnmatch
+import functools
 import glob
+import hashlib
 import os
 import re
 import signal
@@ -76,8 +79,17 @@ SKIP_LINE = re.compile(r"^\s*skip:\s*(.*)$", re.M)
 # says which case it is. Stated over the output, so it holds for a check written tomorrow.
 CASE_LINE = re.compile(r"(rejection|false-positive|accept|wiring)\s+cases?", re.I)
 
+# A killed mutant whose inputs have not changed is not run again (27-live-mutant-cache). Its
+# key covers the harness, the mutant's whole text and every repo path the check file names;
+# only a kill by one of the file's own cases is recorded, because a kill by the real run
+# depends on repo content outside the key. Never committed: build/ is gitignored.
+CACHE_DIR = os.path.join(ROOT, "build", "live-mutant-cache")
+NAMED_PATH = re.compile(r"(?:\.claude|docs|scripts|src|tests|tools)/[A-Za-z0-9_./-]+")
+FULL = False  # set by main() from the FULL environment variable; True bypasses the lookup
+
 failures = []
 notes = []
+cache_stats = {}  # check file name -> [hits, total]
 
 
 def sweep_orphans():
@@ -350,18 +362,27 @@ def property_accounting(names):
 def mutate_and_run(path, mutant, label):
     """Write a mutant beside the original and require the file to reject it.
 
-    Returns (label, survived). Nothing is printed here: these run in a pool, and a gate
-    whose output order changes between runs is a gate nobody can diff.
+    Returns (label, survived, output). Nothing is printed here: these run in a pool, and a
+    gate whose output order changes between runs is a gate nobody can diff.
     """
     with tempfile.NamedTemporaryFile("w", dir=os.path.dirname(path), prefix="mut_",
                                      suffix=".sh", delete=False) as fh:
         fh.write(mutant)
         tmp = fh.name
     try:
-        rc, _out = run(tmp)
+        rc, out = run(tmp)
     finally:
         os.unlink(tmp)
-    return label, rc == 0
+    return label, rc == 0, out
+
+
+def run_jobs(jobs):
+    """Run the mutants in parallel; [(label, survived, output)] in submission order."""
+    if not jobs:
+        return []
+    workers = min(len(jobs), (os.cpu_count() or 2) * 2)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(lambda j: mutate_and_run(j[0], j[1], j[2]), jobs))
 
 
 def run_mutants(jobs):
@@ -375,21 +396,68 @@ def run_mutants(jobs):
     expected result for bootstrap(), which is what lets the fixture run through this exact
     code path instead of a copy of it.
     """
-    if not jobs:
-        return []
-    workers = min(len(jobs), (os.cpu_count() or 2) * 2)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(lambda j: mutate_and_run(j[0], j[1], j[2]), jobs))
-    return [(label, meta) for (label, survived), (_p, _m, _l, meta)
-            in zip(results, jobs) if survived]
+    return [(label, job[3]) for (label, survived, _out), job
+            in zip(run_jobs(jobs), jobs) if survived]
+
+
+def killed_by_case(output):
+    """True when one of the check file's own cases, not its real run, reported the kill."""
+    return any(kind == "FAIL" and CASE_LINE.search(rest) for kind, rest in RESULT.findall(output))
+
+
+def named_paths(text):
+    """Sorted repo-relative files a check file names: named files, and files under named dirs."""
+    out = set()
+    for token in NAMED_PATH.findall(text):
+        rel = token.rstrip(".")
+        full = os.path.join(ROOT, rel)
+        if os.path.isfile(full):
+            out.add(os.path.normpath(rel))
+        elif os.path.isdir(full):
+            for d, _subdirs, files in os.walk(full):
+                out.update(os.path.relpath(os.path.join(d, f), ROOT)
+                           for f in files if not fnmatch.fnmatch(f, "mut_*.sh"))
+    return sorted(out)
+
+
+@functools.lru_cache(maxsize=None)
+def _inputs_digest(path):
+    """Hash of everything a mutant of `path` depends on except its own text; once per file."""
+    h = hashlib.sha256()
+    with open(os.path.abspath(__file__), "rb") as fh:
+        h.update(fh.read() + b"\0")
+    for rel in named_paths(open(path).read()):
+        with open(os.path.join(ROOT, rel), "rb") as fh:
+            h.update(rel.encode() + b"\0" + fh.read() + b"\0")
+    return h.digest()
+
+
+def mutant_key(path, mutant):
+    return hashlib.sha256(_inputs_digest(path) + mutant.encode()).hexdigest()
 
 
 def mutation_score(jobs):
-    """Run the mutants; every survivor is a mutation nothing demonstrates."""
-    survivors = run_mutants(jobs)
-    for label, _meta in survivors:
-        fail("%s — the mutant passes, so nothing demonstrates it" % label)
-    return len(jobs) - len(survivors), len(jobs), [m for _l, m in survivors]
+    """Run the mutants not served from the cache; every survivor is a mutation nothing
+    demonstrates. bootstrap() never comes through here: its floor is always run."""
+    pending = []
+    for job in jobs:
+        key = os.path.join(CACHE_DIR, mutant_key(job[0], job[1]))
+        stats = cache_stats.setdefault(os.path.basename(job[0]), [0, 0])
+        stats[1] += 1
+        if not FULL and os.path.exists(key):
+            stats[0] += 1
+            continue
+        pending.append((job, key))
+    survivors = []
+    for (job, key), (label, survived, out) in zip(pending, run_jobs([j for j, _k in pending])):
+        if survived:
+            stale = " (cached as killed: a key misses a dependency)" if os.path.exists(key) else ""
+            fail("%s — the mutant passes, so nothing demonstrates it%s" % (label, stale))
+            survivors.append(job[3])
+        elif killed_by_case(out):
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            open(key, "w").close()
+    return len(jobs) - len(survivors), len(jobs), survivors
 
 
 def property_neutering(names, unproven):
@@ -485,6 +553,13 @@ def bootstrap():
 
 
 def main():
+    global FULL
+    full = os.environ.get("FULL", "")
+    if full not in ("", "1"):
+        fail("FULL must be unset, empty or 1, not %r" % full)
+        return 1
+    FULL = full == "1"
+
     sweep_orphans()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, _on_signal)
@@ -510,6 +585,12 @@ def main():
              % (caught, total, "; ".join("%s/%s '%s'" % g for g in gaps)))
 
     bootstrap()
+
+    if FULL:
+        print("  ok:   cache: bypassed (FULL=1)")
+    else:
+        for name, (hits, total) in sorted(cache_stats.items()):
+            print("  ok:   cache: %s %d/%d served from cache" % (name, hits, total))
 
     for note in notes:
         print("  " + note)

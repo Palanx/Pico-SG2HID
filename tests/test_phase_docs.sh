@@ -116,7 +116,7 @@ printf '## What was built\nx\n## Check it yourself\ny\n' > "$tmp/phases/03-somet
 if run_all "$tmp/PHASES.md" "$tmp/phases" >/dev/null 2>&1; then
     echo "  ok:   R-PROC-02 false-positive case"
 else
-    echo "  FAIL: false positive — a done phase with both verify.md headings was reported"
+    echo "  FAIL: false-positive case: a done phase with both verify.md headings was reported"
     fail=1
 fi
 rm -rf "$tmp"
