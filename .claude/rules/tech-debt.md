@@ -7,6 +7,13 @@ paths:
   - "tests/test_pin_table.py"
   - "tests/test_emulator.py"
   - "tests/test_trace_shift.py"
+  - "tests/test_rule_traceability.py"
+  - "tests/test_checks_are_live.py"
+  - "tests/test_repo_shape.sh"
+  - "src/core/ps2_frame.cpp"
+  - "src/core/link.cpp"
+  - "tests/ps2_codec_cases.cpp"
+  - "docs/constraints.md"
 ---
 
 # Tech debt log
@@ -38,3 +45,124 @@ never cache a survivor; keep it under the gitignored `build/`; let `make test FU
 
 Cost: a key definition per suite, and a key that misses a dependency trusts a stale "killed"
 between full runs.
+
+## `test_rule_traceability.py`'s own logic is never mutated (reviewed 2026-10-08)
+
+Files: `tests/test_rule_traceability.py`, `tests/test_checks_are_live.py`
+
+The liveness harness mutates `.sh` check files only (`property_neutering( )` and
+`property_alternation( )` skip every name that does not end in `.sh`). Its `belay-debt:` docstring
+(lines 29–31) records this: it named `01-ps2-codec` as the owner and "a rule whose check is not a
+grep" as the trigger. That trigger has fired since then (R-PROTO-02..09 and the pin-table and
+emulator rules are checked by `.py` files). On 2026-09-14 `01-ps2-codec` explicitly released the
+debt to no phase (its `notes.md` §Debt), so the comment names an owner that gave it up.
+
+The gap is narrower than the comment reads. Of the eight `tests/test_*.py` files, six prove
+themselves live by mutating the code they check. `test_ps2_codec.py`, `test_bus_frame.py`,
+`test_bus_trace.py`, `test_pin_table.py` and `test_emulator.py` do it through their `MUTATIONS`
+lists, and `test_trace_shift.py` through in-memory rejection cases. One is the harness itself.
+That leaves `test_rule_traceability.py` (R-PROC-01, nine functions) as the only check whose
+internals nothing mutates.
+
+Nothing breaks today. Each of its failure modes has a rejection case on a generated fixture repo
+(`CASES`, 13 entries, a `floor 13` the file enforces). A wiring case proves through `run_all( )`
+that a reported problem reaches the exit code. The harness's accounting property proves the real
+run reports R-PROC-01. The file last changed on 2026-09-24 (`f2d82ad`). What is missing is the
+stronger form: a dropped branch inside `check( )` that no case exercises would not be caught,
+which is exactly the gap neutering and alternation close for the `.sh` checks.
+
+Fix, cheapest first:
+- Point the docstring's owner at this entry instead of `01-ps2-codec`. It costs one comment edit
+  and buys only honesty.
+- Give `test_rule_traceability.py` a hand-written in-memory mutation list over its own `check( )`
+  source, the `test_trace_shift.py` shape: no build, no subprocess. It costs one list to maintain
+  by hand, and it covers what the list names, not what it forgets.
+- Teach the harness to neuter Python functions (stdlib `ast`: replace a `def`'s body with
+  `return` of an empty value) for `.py` checks without a `MUTATIONS` list. This is derived rather
+  than listed, like the `.sh` properties, and its mutants go through the
+  `27-live-mutant-cache` cache. It costs a second extractor in the harness, and a first run where
+  the neutered helpers that no case reaches will surface as survivors to triage.
+
+Where it was found: the debt sweep after `27-live-mutant-cache` closed, 2026-10-08.
+
+## Grep checks have no type information (reviewed 2026-10-08)
+
+Files: `tests/test_repo_shape.sh`, `docs/constraints.md` (R-ERR-01, R-ERR-02)
+
+`tests/test_repo_shape.sh` checks C++ with line-anchored `grep`s, after stripping `//` comments.
+Its two `belay-debt:` comments and the scope clauses of R-ERR-01 and R-ERR-02 record what that
+misses:
+- block comments and string literals are never stripped, which produces false positives;
+- `'` read as a quote can hide code after a `//` inside a string, which produces a miss;
+- a return type spelled other than at the start of the line (`static`, qualified, trailing
+  `->`, on its own line) is not seen;
+- a fallible return other than the three recognised spellings is not seen (`id_from_byte`
+  returns `std::optional` and is not reached);
+- a function declared only in an anonymous namespace is outside R-ERR-02.
+
+All of these named `03-pio-bus` as owner. That phase was superseded by `23-firmware-build` and
+`24-pio-bus`, and both closed saying the upgrade is still unowned (23's and 24's `notes.md`).
+
+Nothing breaks today. The constraints text measured each blind form one fixture at a time, and none
+of them occurs in `src/core/` now. The false positives fail loudly instead of passing quietly. The
+risk is a future `src/core/` edit written in one of the unseen forms.
+
+The input the fix needs now exists. `make firmware` writes `build/pico/compile_commands.json` (since
+`23-firmware-build`), and `clang-query` ships with the Homebrew LLVM that `make lint` already
+requires (`/opt/homebrew/opt/llvm/bin/clang-query`).
+
+Fix, cheapest first:
+- Leave the greps and keep the scope clauses. This costs nothing, and the clauses already state
+  every gap.
+- Replace R-ERR-01 and R-ERR-02's greps with `clang-query` matchers over the host compile of
+  `src/core/` (`make test` compiles it, but no database is written for it). This costs a host
+  compile database or explicit flags, a new tool in `make test` (R-TOOL-01 floor, `skip:` when
+  absent), and rewriting their rejection cases and scope clauses. It buys type-aware matching,
+  which closes the last three gaps listed above.
+- Port every `test_repo_shape.sh` finder to `clang-query`. This is the same cost multiplied by
+  every rule, and it also closes the comment and string gaps. It is a phase, through
+  `/plan-feature`.
+
+## Test drivers copy the `Makefile`'s `CXXFLAGS` by hand (reviewed 2026-10-08)
+
+Files: `tests/test_ps2_codec.py`, `tests/test_bus_frame.py`, `tests/test_bus_trace.py`,
+`tests/test_pin_table.py`, `tests/test_emulator.py`, `Makefile`
+
+Each of the five drivers builds its mutated copies with its own `CXXFLAGS` list. That list is a hand
+copy of the `Makefile`'s `CXXFLAGS ?= -std=c++23 -Wall -Wextra -Werror -Og -g -UNDEBUG -Isrc`.
+Nothing ties the copies to the original. If the `Makefile` gains a flag, the drivers keep building
+their mutants without it.
+
+Nothing breaks today: all five lists equal the `Makefile`'s line (checked 2026-10-08). The
+consequence of drift is mild. A mutant is compiled under different warnings than the real build,
+so a mutation that only a new flag would reject passes in the driver. `04-trace-mode` and
+`24-pio-bus` recorded this and did not schedule it.
+
+Fix, cheapest first:
+- One shared constant in a small `tests/` module that the five drivers import. This costs five
+  edits, and the copy still exists, just once.
+- Ask `make` for the value (`make -s print-CXXFLAGS` with a one-line target). This costs one
+  `Makefile` target and a subprocess per driver, and it removes the copy. It is also the
+  "build flags" input the `MUTATIONS`-cache fix above would hash.
+
+## Two `decode` / `step` contracts are specified and asserted by nothing (reviewed 2026-10-08)
+
+Files: `src/core/ps2_frame.cpp`, `src/core/link.cpp`, `tests/ps2_codec_cases.cpp`
+
+`01-ps2-codec` left two contracts with no case. It named `03-pio-bus` as the owner, and that phase
+was superseded without taking them.
+- `decode( )` in `src/core/ps2_frame.cpp` accepts a buffer longer than the frame and ignores the
+  extra bytes. No case passes a longer buffer. The obstacle was R-PROTO-05: expected bytes must be
+  literals under `tests/vectors/`, so the input would be a vector plus padding while the expected
+  bytes still come from the vector.
+- `add_saturating( )` in `src/core/link.cpp` makes `us_in_state` saturate at `UINT32_MAX` instead
+  of wrapping. No case reaches the boundary, which needs a caller that stops polling for over
+  71.6 minutes.
+
+Nothing breaks today. The 06-hil-digital poller always hands `decode( )` the exact frame length,
+and no caller pauses for 71 minutes. A wrap would turn a stuck `Negotiating` link into one that
+times out 71 minutes late, not never.
+
+Fix: two cases in `tests/ps2_codec_cases.cpp`. The first is a vector plus one padding byte,
+expecting the vector's frame. The second calls `step` twice with `elapsed_us = UINT32_MAX` and
+asserts `us_in_state` did not roll over. Cheap, with no new test shape beyond the padding.

@@ -36,8 +36,8 @@
 # apostrophe in a /* */ block flips its tracking for the rest of the line: a later // comment
 # is kept (false positive), or a // inside a real string is cut, hiding the code after it
 # (a miss: `1'000; u = "a'"; v = "http://x"; throw E;` loses the throw). Upgrade path if it ever
-# bites: clang-query, which needs the compile_commands.json that .clang-tidy also wants,
-# so 03-pio-bus is the earliest phase that can land it.
+# bites: clang-query over build/pico/compile_commands.json (exists since 23-firmware-build); no
+# phase owns it — tech-debt log entry "Grep checks have no type information".
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )
@@ -56,7 +56,8 @@ core_files( ) { find "$1/src/core" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|c
 # belay-debt: a function with no declaration at all — one defined only inside an anonymous
 # namespace in a .cpp — is therefore outside this check. Those are internal to one translation
 # unit and cannot be called by a caller who could ignore the result, but the gap is real. The
-# clang-query upgrade in 03-pio-bus is what closes it.
+# clang-query upgrade in the tech-debt log entry "Grep checks have no type information"
+# is what closes it.
 core_headers( ) { find "$1/src/core" -type f 2>/dev/null | grep -E '\.(h|hpp)$'; }
 
 # strip_line_comments <file> — each line cut at the first `//` that sits outside a "…" string
