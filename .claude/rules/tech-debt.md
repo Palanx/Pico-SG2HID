@@ -164,3 +164,34 @@ times out 71 minutes late, not never.
 Fix: two cases in `tests/ps2_codec_cases.cpp`. The first is a vector plus one padding byte,
 expecting the vector's frame. The second calls `step` twice with `elapsed_us = UINT32_MAX` and
 asserts `us_in_state` did not roll over. Cheap, with no new test shape beyond the padding.
+
+## `make test` runs its 16 test files one after another (reviewed 2026-10-08)
+
+Files: `Makefile`, `tests/test_checks_are_live.py`
+
+The `test` recipe walks `$(CPP_BINS)`, `$(SH_TESTS)` and `$(PY_TESTS)` in three serial `for`
+loops. Measured 2026-10-08 at `853a8a3`, with a warm mutant cache: `make test` takes 55.4 s. Of
+that, 11.3 s is the liveness harness, which already runs its accounting runs and mutants in
+parallel. The other ~44 s is the remaining files back to back: `test_repo_shape.sh` 7.4 s,
+`test_style.sh` 5.6 s, `test_ps2_codec.py` 5.5 s, `test_bus_frame.py` 5.0 s, then the rest. Run
+in parallel, the floor would be about the slowest file plus the harness.
+
+Nothing breaks: this is only wall-clock time. The operator expects it may never be worth doing,
+because a warm run is under a minute.
+
+What already works: every check is safe to run alongside the others. That was confirmed
+2026-10-08 when the harness's accounting runs were parallelised. Each check works in a temp
+directory outside the tree, the `.py` suites' tree copies skip `.git`, `build` and `mut_*`, and no
+test imports a repo module during `make test`, so none writes `__pycache__` into the tree.
+
+Fix, cheapest first:
+- Background each file in the recipe, write its output to `build/test-logs/<name>.log`, `wait`,
+  then print the logs in the current order and fold their exit codes. This costs a longer recipe
+  and per-file exit-code bookkeeping in POSIX `sh`, and it keeps the `--- <file>` output order
+  people read.
+- One phony target per test file under `make -j`. This needs `--output-sync` to keep each file's
+  output together. That flag arrived in GNU Make 4.0, and macOS ships 3.81 (`/usr/bin/make`), so
+  this costs a Homebrew `gmake` dependency, which `make test`'s "a C++23 compiler, `python3`,
+  bash >= 4" promise does not allow today.
+- Either way: the harness re-runs every check itself, so running it alongside them doubles the
+  CPU load at peak. Start the harness first, or last on its own.
