@@ -2,11 +2,12 @@
 # The tools the other checks depend on are present, recent enough, and actually work.
 #
 # RULE R-TOOL-01 — docs/constraints.md §Invariants — minimum versions
-# R-TOOL-01 is five independent probes behind one rule id, so deleting any one of them
-# leaves the other four still reporting it. One LIVE label per probe; the harness requires
+# R-TOOL-01 is six independent probes behind one rule id, so deleting any one of them
+# leaves the other five still reporting it. One LIVE label per probe; the harness requires
 # each to prefix exactly one result line. Same shape, and same fix, as R-SEC-01's two scans.
 # LIVE R-TOOL-01: clang-format
 # LIVE R-TOOL-01: clang-tidy
+# LIVE R-TOOL-01: clang-query
 # LIVE R-TOOL-01: arm-none-eabi-g++
 # LIVE R-TOOL-01: python3
 # LIVE R-TOOL-01: bash
@@ -121,6 +122,7 @@ probe( ) { check_version "$@" || fail=1; }
 run_all( ) {
     probe clang-format      23 --version
     probe clang-tidy        23 --version
+    probe clang-query       23 --version
     probe arm-none-eabi-g++ 12 -dumpversion
     probe python3          3.8 --version
     probe bash               4 --version

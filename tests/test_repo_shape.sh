@@ -36,8 +36,13 @@
 # apostrophe in a /* */ block flips its tracking for the rest of the line: a later // comment
 # is kept (false positive), or a // inside a real string is cut, hiding the code after it
 # (a miss: `1'000; u = "a'"; v = "http://x"; throw E;` loses the throw). Upgrade path if it ever
-# bites: clang-query over build/pico/compile_commands.json (exists since 23-firmware-build); no
-# phase owns it — tech-debt log entry "Grep checks have no type information".
+# bites: clang-query, the way R-ERR-01 and R-ERR-02 below already use it.
+#
+# R-ERR-01 and R-ERR-02 are the exception: they are clang-query matchers over the parsed AST,
+# not greps, because both are about a function's RETURN TYPE and only the type system sees
+# every spelling of one (`static`, qualified, trailing `->`, an alias, a type on its own line).
+# clang-query ships with the Homebrew LLVM `make lint` already requires; without it both rules
+# are a `skip:` under OPTIONAL_TOOLS (`make test`) and a FAIL otherwise, like R-STYLE-02.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$( pwd )
@@ -46,19 +51,38 @@ fail=0
 # One alternation, not -name clauses, so tests/test_checks_are_live.py mutates each extension.
 src_files( )  { find "$1/src" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl|pio)$'; }
 core_files( ) { find "$1/src/core" -type f 2>/dev/null | grep -E '\.(cpp|h|hpp|cc|inl)$'; }
-# R-ERR-02 scans HEADERS only, and that is a property of the rule rather than a shortcut: a
-# [[nodiscard]] belongs on the declaration, where it governs every call, and C++ does not
-# repeat it on the definition. Scanning .cpp too would report every correct out-of-line
-# definition — `LinkState step( … ) {` in src/core/link.cpp is exactly that shape. `.cc` and
-# `.inl` are left out for the same reason: both hold out-of-line definitions, so a declaration
-# placed in a `.inl` is outside this check.
-#
-# belay-debt: a function with no declaration at all — one defined only inside an anonymous
-# namespace in a .cpp — is therefore outside this check. Those are internal to one translation
-# unit and cannot be called by a caller who could ignore the result, but the gap is real. The
-# clang-query upgrade in the tech-debt log entry "Grep checks have no type information"
-# is what closes it.
-core_headers( ) { find "$1/src/core" -type f 2>/dev/null | grep -E '\.(h|hpp)$'; }
+# clang-query ships in the keg-only llvm formula on macOS, so PATH alone is not enough. Looked up
+# at top level, not in a function: tests/test_checks_are_live.py neuters every function, and a
+# neutered lookup would turn both rules into a skip that passes.
+CQ=""
+for c in clang-query /opt/homebrew/opt/llvm/bin/clang-query /usr/local/opt/llvm/bin/clang-query; do
+    command -v "$c" >/dev/null 2>&1 && { CQ=$c; break; }
+done
+# The macOS SDK as `-isysroot <dir>`, empty elsewhere: Homebrew's libc++ finds no platform C
+# library without it (tests/test_style.sh's flag note; measured again here 2026-10-09).
+CQ_SYSROOT=""
+cq_sdk=$( xcrun --show-sdk-path 2>/dev/null ) && [ -d "$cq_sdk" ] && CQ_SYSROOT="-isysroot $cq_sdk"
+
+# cq_hits <matcher> <file-list> — "path:line:col" per declaration <matcher> binds, each file
+# parsed as its own main file (isExpansionInMainFile( ) in the matchers keeps a declaration
+# from being reported once per file that includes it). A compiler or matcher error is printed
+# as a finding: a file that does not parse yields no AST and no match, and that must not read
+# as a pass. So is a run with no "N matches." line: a matcher clang-query cannot parse prints
+# its complaint without the word error (measured 2026-10-09) and matches nothing.
+# <file-list> is one argument, one path per line, as for hits( ).
+cq_hits( ) {
+    [ -n "$2" ] || return 0
+    cq_matcher=$1
+    cq_out=$( printf '%s\n' "$2" | {
+        set --
+        while IFS= read -r cq_f; do set -- "$@" "$cq_f"; done
+        "$CQ" -c 'set output diag' -c "match $cq_matcher" "$@" -- -xc++ -std=c++23 -I"$ROOT/src" $CQ_SYSROOT 2>&1
+    } )
+    printf '%s\n' "$cq_out" | grep -E '"root" binds here|[Ee]rror' | sed 's|: note: "root" binds here||'
+    printf '%s\n' "$cq_out" | grep -qE '^[0-9]+ match(es)?\.$' \
+        || printf 'clang-query ran no match: %s\n' "$( printf '%s\n' "$cq_out" | head -3 )"
+    return 0
+}
 
 # strip_line_comments <file> — each line cut at the first `//` that sits outside a "…" string
 # (honouring \" escapes) and outside a '…' character literal; every other character is kept,
@@ -155,23 +179,16 @@ find_clean09( ){ hits '(:[[:space:]]*(public|private|protected)[[:space:]]|(stru
 # opposite verdicts on the same tree. The literal reading is what both now use, so there is no
 # judgement left to interpret about what counts as a reference.
 find_proto05( ){ raw_hits 'tests/vectors' "$( src_files "$1" )"; }
-# R-ERR-01, narrowed on 2026-09-11 to its greppable core: a status enum is never a return type
-# of its own. It lives in std::expected's error slot (where it follows a `,` or a `<`, never the
-# start of a line) or as a member of Link (where the identifier is followed by `=` or `;`, never
-# `(` ). So "line starts with the enum name, then an identifier, then `(`" is exactly the
-# forbidden shape and nothing else. `enum class DecodeStatus : …` does not match because a `:`
-# follows the name, not an identifier.
-find_err01( ){ hits '^[[:space:]]*(\[\[nodiscard\]\][[:space:]]*)?(constexpr[[:space:]]+)?(DecodeStatus|FaultCause)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' '' "$( core_files "$1" )"; }
-# R-ERR-02: a declaration whose return type is a result or a LinkState and which does not open
-# with [[nodiscard]]. The attribute must precede the return type, so a compliant declaration
-# starts with `[` and cannot match the anchor at all — which is why this needs no exclusion
-# pattern. DecodeOutcome is included because it is the alias for the std::expected form, and a
-# rule that named only the spelled-out type would be silent on the name everyone actually uses.
-#
-# Every alternative ends in an identifier followed by `(`, which is what makes this a check on
-# RETURN types. Without it the pattern reported `LinkState state = LinkState::Absent;` — the
-# member of Link, which is not a function at all. Found by running it against src/core/link.h.
-find_err02( ){ hits '^[[:space:]]*(constexpr[[:space:]]+)?(std::expected<[^;]*>[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|DecodeOutcome[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(|LinkState[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\()' '' "$( core_headers "$1" )"; }
+# R-ERR-01: a function whose return type is, once aliases and qualifiers are seen through, one
+# of the two status enums. A status in std::expected's error slot or as a member of Link is not a
+# return type, so neither is reported. Every file under src/core/, any spelling.
+find_err01( ){ cq_hits 'functionDecl(isExpansionInMainFile(), unless(isImplicit()), returns(hasCanonicalType(enumType(hasDeclaration(enumDecl(matchesName("::(DecodeStatus|FaultCause)$")))))))' "$( core_files "$1" )"; }
+# R-ERR-02: a function returning a LinkState, a std::expected (DecodeOutcome is an alias of one)
+# or a std::optional that carries no [[nodiscard]]. `.cpp` files are scanned too: clang copies
+# the attribute from a declaration to its out-of-line definition, so `LinkState step( … ) {` in
+# src/core/link.cpp is compliant, and a function defined only in an anonymous namespace is
+# judged like any other. `(__1::)?` is libc++'s inline namespace.
+find_err02( ){ cq_hits 'functionDecl(isExpansionInMainFile(), unless(isImplicit()), unless(hasAttr("attr::WarnUnusedResult")), returns(anyOf(hasCanonicalType(enumType(hasDeclaration(enumDecl(matchesName("::LinkState$"))))), hasCanonicalType(recordType(hasDeclaration(classTemplateSpecializationDecl(matchesName("^::std::(__1::)?(expected|optional)$"))))))))' "$( core_files "$1" )"; }
 
 # R-SAFETY-09: a Pico SDK call that configures a pin, anywhere under src/ but src/hal/. The
 # name must be followed by optional whitespace and `(`, so a mention in prose or a pointer to
@@ -215,8 +232,15 @@ run_all( ) {
     report R-CLEAN-05 "$( find_clean05 "$1" )" || fail=1
     report R-CLEAN-09 "$( find_clean09 "$1" )" || fail=1
     report R-PROTO-05 "$( find_proto05 "$1" )" || fail=1
-    report R-ERR-01   "$( find_err01   "$1" )" || fail=1
-    report R-ERR-02   "$( find_err02   "$1" )" || fail=1
+    if [ -n "$CQ" ]; then
+        report R-ERR-01   "$( find_err01   "$1" )" || fail=1
+        report R-ERR-02   "$( find_err02   "$1" )" || fail=1
+    elif [ "${OPTIONAL_TOOLS:-0}" = "1" ]; then
+        echo "  skip: R-ERR-01, R-ERR-02: clang-query not found (brew install llvm)"
+    else
+        echo "  FAIL: R-ERR-01, R-ERR-02: clang-query not found (brew install llvm)"
+        fail=1
+    fi
     report R-SAFETY-09 "$( find_safety09 "$1" )" || fail=1
     report R-SAFETY-10 "$( find_safety10 "$1" )$( find_safety10od "$1" )" || fail=1
     report R-PROTO-07 "$( find_proto07 "$1" )" || fail=1
@@ -264,19 +288,16 @@ reject find_err03   src/core/x.h   'throw Status::kBad;'
 reject find_err03   src/core/x.hpp 'throw Status::kBad;'
 reject find_err03   src/core/x.cc  'throw Status::kBad;'
 reject find_err03   src/core/x.inl 'throw Status::kBad;'
-# Same for core_files( ) and core_headers( ). `.cpp` included: every other core_files( )-backed
-# case plants a `.h`.
+# Same for core_files( ). `.cpp` included: every other core_files( )-backed case plants a `.h`.
 reject find_clean09 src/core/x.cpp 'virtual void poll( );'
 reject find_clean09 src/core/x.hpp 'virtual void poll( );'
 reject find_clean09 src/core/x.cc  'virtual void poll( );'
 reject find_clean09 src/core/x.inl 'virtual void poll( );'
-reject find_err02   src/core/x.hpp 'LinkState step( Link& link );'
 # One per file list, in a path with a space: each list reaches hits( ) as one quoted argument
 # read one line per path. Passed unquoted, `a b.cpp` split into `a` and `b.cpp`, neither of
 # which exists, and all three of these passed.
 reject find_err03   'src/core/a b.cpp' 'throw Status::kBad;'
 reject find_clean09 'src/core/a b.hpp' 'virtual void poll( );'
-reject find_err02   'src/core/a b.h'   'LinkState step( Link& link );'
 # A `//` inside a string literal is not a comment: the throw after it must still be seen.
 reject find_err03   src/core/x.cpp 'const char* u = "http://x"; throw E;'
 reject find_err04   src/core/x.cpp 'auto v = result.value( );'
@@ -289,19 +310,6 @@ reject find_proto05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
 # tree passed while the acceptance criterion failed on it. Deleting this case would let the
 # check silently revert to the narrower scanner.
 reject find_proto05 src/core/x.cpp '// see tests/vectors/digital.h for the bytes'
-# R-ERR-01: one case per alternative of (DecodeStatus|FaultCause). Neither alternative can be
-# reached by the other's case, which is what tests/test_checks_are_live.py requires.
-reject find_err01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
-reject find_err01   src/core/x.h   'FaultCause cause_of( const Link& link );'
-# ...and the two optional prefixes a real violation would carry.
-reject find_err01   src/core/x.h   '[[nodiscard]] DecodeStatus decode_it( int n );'
-reject find_err01   src/core/x.h   'constexpr FaultCause cause_of( int n );'
-# R-ERR-02: one case per alternative of (std::expected<|DecodeOutcome …|LinkState …). All three
-# are headers, because that is the only place this check looks.
-reject find_err02   src/core/x.h   'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
-reject find_err02   src/core/x.h   'DecodeOutcome poll_once( Link& link );'
-reject find_err02   src/core/x.h   'LinkState step( Link& link );'
-reject find_err02   src/core/x.h   'constexpr LinkState step( Link& link );'
 # The two clauses validation found unchecked: each rule's second syntactic form.
 reject find_arch01  src/core/x.h   '#include <iostream>'
 reject find_clean09 src/core/x.h   'struct A : B { };'
@@ -427,6 +435,55 @@ reject find_proto07 src/hal/ps2_master.pio '    out pins, 1         side 1 [1]'
 reject find_proto07 src/hal/ps2_master.pio '    pull block          side 0'
 # A `side` in a trailing comment does not excuse the line.
 reject find_proto07 src/hal/ps2_master.pio '    in pins, 1    ; side 1'
+# R-ERR-01 and R-ERR-02 cases are C++ the compiler accepts, opening with the real core headers
+# so the status enums, LinkState and DecodeOutcome are the real types. Run only when clang-query
+# is there: without it the real run above is already a skip or a FAIL. An `if`, not a wrapper
+# function, because the harness neuters functions and a neutered wrapper would drop the cases
+# silently.
+CQ_PRE='#include "core/link.h"
+#include <optional>
+namespace ps2 {'
+if [ -n "$CQ" ]; then
+    # R-ERR-01: one case per alternative of (DecodeStatus|FaultCause), then the spellings the
+    # grep this replaced could not see, each measured unreported by it on 2026-09-16.
+    reject find_err01 src/core/x.h   "$CQ_PRE DecodeStatus decode_it( int n ); }"
+    reject find_err01 src/core/x.h   "$CQ_PRE FaultCause cause_of( const Link& link ); }"
+    reject find_err01 src/core/x.h   "$CQ_PRE static FaultCause cause_of( int n ); }"
+    reject find_err01 src/core/x.h   "$CQ_PRE ps2::DecodeStatus decode_it( int n ); }"
+    reject find_err01 src/core/x.h   "$CQ_PRE auto cause_of( int n ) -> FaultCause; }"
+    reject find_err01 src/core/x.h   "$CQ_PRE FaultCause
+cause_of( int n ); }"
+    # R-ERR-02: one case per alternative — LinkState, then (expected|optional) — the alias,
+    # then the same spellings.
+    reject find_err02 src/core/x.h   "$CQ_PRE LinkState step( Link& link ); }"
+    reject find_err02 src/core/x.h   "$CQ_PRE std::expected<int, DecodeStatus> decode( int n ); }"
+    reject find_err02 src/core/x.h   "$CQ_PRE std::optional<ControllerId> id_of( int n ); }"
+    reject find_err02 src/core/x.h   "$CQ_PRE DecodeOutcome poll_once( Link& link ); }"
+    reject find_err02 src/core/x.h   "$CQ_PRE static LinkState step( Link& link ); }"
+    reject find_err02 src/core/x.h   "$CQ_PRE const ps2::LinkState step( Link& link ); }"
+    reject find_err02 src/core/x.h   "$CQ_PRE auto step( Link& link ) -> LinkState; }"
+    reject find_err02 src/core/x.h   "$CQ_PRE std::expected<int,
+                  DecodeStatus> decode( int n ); }"
+    # The grep's blind spot that cost a belay-debt: a function defined only in an anonymous
+    # namespace in a .cpp, declared in no header.
+    reject find_err02 src/core/x.cpp "$CQ_PRE namespace { LinkState step( int n ) { return LinkState::Absent; } } }"
+    # A lambda's call operator is a function like any other.
+    reject find_err02 src/core/x.h   "$CQ_PRE inline auto pick = [ ]( int n ) { return LinkState::Absent; }; }"
+    # core_files( )'s other extensions, and a path with a space (see hits( )).
+    reject find_err02 src/core/x.hpp "$CQ_PRE LinkState step( Link& link ); }"
+    reject find_err02 src/core/x.cc  "$CQ_PRE LinkState step( Link& link ); }"
+    reject find_err02 src/core/x.inl "$CQ_PRE LinkState step( Link& link ); }"
+    reject find_err02 'src/core/a b.h' "$CQ_PRE LinkState step( Link& link ); }"
+    # A file that does not parse is a finding, never an empty match.
+    reject find_err02 src/core/x.h   "$CQ_PRE NotAType step( Link& link ); }"
+    # A matcher clang-query cannot parse is a finding too, on a file that parses cleanly. Not
+    # counted in `rejected`: that count reaching 0 is what catches a neutered reject( ).
+    printf '%s\n' "$CQ_PRE void f( ); }" > "$case_tmp/src/core/x.h"
+    if report cq_hits "$( cq_hits 'notAMatcher()' "$case_tmp/src/core/x.h" )" >/dev/null 2>&1; then
+        echo "  FAIL: cq_hits rejection case did not fire on an unparsable matcher"
+        fail=1
+    fi
+fi
 # No floor. A count next to "every alternative is covered" is the round-8 defect: the two
 # drift and the number is the one that stops being true. Sufficiency is asserted by
 # tests/test_checks_are_live.py, which derives what is needed from the patterns themselves.
@@ -501,26 +558,6 @@ accept find_clean09 src/core/x.h   'enum class Mode : uint8_t { kDigital };'
 accept find_clean03 src/core/x.cpp 'bool can_fire = true;'
 # should_ prefixed bool
 accept find_clean03 src/core/x.cpp 'bool should_retry = false;'
-# R-ERR-01 must not fire on the two shapes the narrowed rule explicitly permits — a status in
-# std::expected's error slot, and a status as a member of Link — nor on the enum's own
-# declaration. Without these the anchor and the trailing `(` could be dropped from the pattern
-# with every rejection case above still firing.
-# status in the expected error slot
-accept find_err01   src/core/x.h   'std::expected<Ps2Frame, DecodeStatus> decode( int n );'
-# status as a Link member
-accept find_err01   src/core/x.h   'FaultCause last_fault = FaultCause::None;'
-# the enum declaration itself
-accept find_err01   src/core/x.h   'enum class DecodeStatus : std::uint8_t { AckTimeout };'
-# R-ERR-02 must not fire on a compliant declaration. One per alternative, because a false
-# positive on any one of the three would be as broken as a missed violation.
-# nodiscard std::expected return
-accept find_err02   src/core/x.h   '[[nodiscard]] std::expected<Ps2Frame, DecodeStatus> decode( int n );'
-# nodiscard DecodeOutcome return
-accept find_err02   src/core/x.h   '[[nodiscard]] DecodeOutcome poll_once( Link& link );'
-# nodiscard LinkState return
-accept find_err02   src/core/x.h   '[[nodiscard]] LinkState step( Link& link );'
-# a DecodeOutcome parameter, not a return
-accept find_err02   src/core/x.h   'void trace( const DecodeOutcome& outcome );'
 # The three finders that had no accept case at all until 2026-09-17. None of them carries an
 # exclusion pattern, so there is no alternative to cover here and that is not what these are
 # for: each is the legitimate NEIGHBOUR of the violation its reject case plants, and nothing
@@ -564,10 +601,31 @@ accept find_safety10 src/hal/x.pio '    set pindirs, 1 ; open-drain'
 # R-SAFETY-10: the marked line is accepted while a .cpp under src/hal/ forces the pad low
 accept_pair find_safety10od src/hal/x.pio 'out pindirs, 1 ; open-drain' \
     src/hal/x.cpp 'gpio_set_outover( pin.gpio, GPIO_OVERRIDE_LOW );'
-if [ "$accepted" -ge 38 ]; then
-    echo "  ok:   false-positive cases: $accepted (floor 38)"
+if [ -n "$CQ" ]; then
+    # R-ERR-01: a status in std::expected's error slot, as a member, and as a parameter.
+    accept find_err01 src/core/x.h   "$CQ_PRE std::expected<int, DecodeStatus> decode( int n ); }"
+    accept find_err01 src/core/x.h   "$CQ_PRE struct L { FaultCause last_fault = FaultCause::None; }; }"
+    accept find_err01 src/core/x.h   "$CQ_PRE void note( DecodeStatus status ); }"
+    # R-ERR-02: each alternative marked [[nodiscard]], the alias marked, and a parameter.
+    accept find_err02 src/core/x.h   "$CQ_PRE [[nodiscard]] LinkState step( Link& link ); }"
+    accept find_err02 src/core/x.h   "$CQ_PRE [[nodiscard]] std::expected<int, DecodeStatus> decode( int n ); }"
+    accept find_err02 src/core/x.h   "$CQ_PRE [[nodiscard]] std::optional<ControllerId> id_of( int n ); }"
+    accept find_err02 src/core/x.h   "$CQ_PRE [[nodiscard]] DecodeOutcome poll_once( Link& link ); }"
+    accept find_err02 src/core/x.h   "$CQ_PRE void trace( const DecodeOutcome& outcome ); }"
+    # A marked captureless lambda: its implicit static invoker returns LinkState too, carries no
+    # attribute, and was reported until unless(isImplicit( )) (measured 2026-10-09).
+    accept find_err02 src/core/x.h   "$CQ_PRE inline auto pick = [ ] [[nodiscard]] ( int n ) { return LinkState::Absent; }; }"
+    # An out-of-line definition inherits its declaration's attribute: the src/core/link.cpp shape.
+    accept find_err02 src/core/x.cpp "$CQ_PRE [[nodiscard]] LinkState step2( int n );
+LinkState step2( int n ) { return LinkState::Absent; } }"
+fi
+cq_accepts=0
+[ -n "$CQ" ] && cq_accepts=10
+accept_floor=$(( 31 + cq_accepts ))
+if [ "$accepted" -ge "$accept_floor" ]; then
+    echo "  ok:   false-positive cases: $accepted (floor $accept_floor)"
 else
-    echo "  FAIL: false-positive cases: $accepted (floor 38)"
+    echo "  FAIL: false-positive cases: $accepted (floor $accept_floor)"
     fail=1
 fi
 
@@ -583,8 +641,10 @@ wiring( ) { # wiring <rule-id> <relative-path> <content>
     rm -rf "$case_tmp/src"
     mkdir -p "$case_tmp/$( dirname "$2" )"
     printf '%s\n' "$3" > "$case_tmp/$2"
-    wiring_out=$( fail=0; run_all "$case_tmp" >/dev/null 2>&1; echo "$fail" )
-    wiring_txt=$( fail=0; run_all "$case_tmp" 2>&1 )
+    # One run_all, its fail flag appended as the last line: two runs doubled the clang-query
+    # parses every wiring case pays for.
+    wiring_txt=$( fail=0; run_all "$case_tmp" 2>&1; echo "wiring-fail=$fail" )
+    wiring_out=$( printf '%s\n' "$wiring_txt" | sed -n 's/^wiring-fail=//p' )
     if [ "$wiring_out" = "1" ] && printf '%s' "$wiring_txt" | grep -q "FAIL: $1"; then
         wired=$(( wired + 1 ))
     else
@@ -602,17 +662,21 @@ wiring R-CLEAN-03 src/core/x.cpp 'bool flag = true;'
 wiring R-CLEAN-05 src/core/x.cpp '// TODO: fix this later'
 wiring R-CLEAN-09 src/core/x.h   'struct A : public B { };'
 wiring R-PROTO-05 src/core/x.cpp 'load( "tests/vectors/digital.hex" );'
-wiring R-ERR-01   src/core/x.h   'DecodeStatus decode_it( const std::uint8_t* p );'
-wiring R-ERR-02   src/core/x.h   'LinkState step( Link& link );'
 wiring R-SAFETY-09 src/app/x.cpp 'gpio_init( 2 );'
 wiring R-SAFETY-10 src/hal/x.cpp 'gpio_init( 2 );'
 wiring R-PROTO-07 src/hal/ps2_master.pio '    in pins, 1 side 0'
 # The outover half of R-SAFETY-10 reaches the exit code through the same report line.
 wiring R-SAFETY-10 src/hal/x.pio 'out pindirs, 1 ; open-drain'
-if [ "$wired" -eq 14 ]; then
-    echo "  ok:   wiring cases: $wired/14 (each rule's verdict reaches the exit code)"
+if [ -n "$CQ" ]; then
+    wiring R-ERR-01 src/core/x.h "$CQ_PRE DecodeStatus decode_it( int n ); }"
+    wiring R-ERR-02 src/core/x.h "$CQ_PRE LinkState step( Link& link ); }"
+fi
+wire_want=12
+[ -n "$CQ" ] && wire_want=14
+if [ "$wired" -eq "$wire_want" ]; then
+    echo "  ok:   wiring cases: $wired/$wire_want (each rule's verdict reaches the exit code)"
 else
-    echo "  FAIL: wiring cases: $wired/14"
+    echo "  FAIL: wiring cases: $wired/$wire_want"
     fail=1
 fi
 
