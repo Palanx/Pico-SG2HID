@@ -6,6 +6,8 @@
 # RULE R-PROTO-03 — docs/constraints.md §Invariants — an unknown controller id is refused
 # RULE R-PROTO-04 — docs/constraints.md §Invariants — the whammy comes only from an
 #                   analog frame; any other frame yields the axis at rest
+# RULE R-PROTO-10 — docs/constraints.md §Invariants — the master negotiates analog mode and
+#                   judges each answer by its stage
 
 This is the driver for tests/ps2_codec_cases.cpp, which is deliberately not named test_*.cpp:
 the Makefile would otherwise build and run it a second time with nothing around it. Here it
@@ -33,11 +35,13 @@ import subprocess
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True  # importing driver_support leaves no __pycache__
+import driver_support  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES = os.path.join("tests", "ps2_codec_cases.cpp")
-# The flags make test uses (see the Makefile's CXXFLAGS), so a warning that would fail the
-# build there fails here too rather than surfacing two steps later.
-CXXFLAGS = ["-std=c++23", "-Wall", "-Wextra", "-Werror", "-Og", "-g", "-UNDEBUG", "-Isrc"]
+# The flags `make test` uses, read from the Makefile (tests/driver_support.py).
+CXXFLAGS = driver_support.cxxflags()
 
 failures = []
 
@@ -143,6 +147,15 @@ MUTATIONS = [
         "    const std::size_t expected_len = frame_len( *id );",
         "    const std::size_t expected_len = kPrefixLen;",
     ),
+    Mutation(
+        "R-PROTO-10",
+        "skip the declined branch, so a wrong id falls through to step( )",
+        os.path.join("src", "core", "negotiation.cpp"),
+        "    if ( id.has_value() && *id != expected_id( master.stage ) ) {",
+        # `false &&` rather than `false`: expected_id( ) must stay referenced, or -Werror's
+        # unused-function warning fails the build before any line is printed.
+        "    if ( false && id.has_value() && *id != expected_id( master.stage ) ) {",
+    ),
 ]
 
 
@@ -184,13 +197,14 @@ def reject(mutation):
 
 
 def run_rejection_cases():
-    passed = sum(1 for m in MUTATIONS if reject(m))
+    passed, served = driver_support.run_rejection_cases(__file__, MUTATIONS, reject)
     total = len(MUTATIONS)
     if passed == total and total > 0:
-        print("  ok:   rejection cases: %d/%d (each mutation flips its own rule to FAIL)"
-              % (passed, total))
+        print("  ok:   rejection cases: %d/%d (each mutation flips its own rule to FAIL), "
+              "%d served from cache" % (passed, total, served))
     else:
-        print("  FAIL: rejection cases: %d/%d" % (passed, total))
+        print("  FAIL: rejection cases: %d/%d, %d served from cache"
+              % (passed, total, served))
         failures.append("rejection cases")
 
 

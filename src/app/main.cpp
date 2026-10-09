@@ -1,13 +1,17 @@
-// Master firmware, build/pico/sg2hid.uf2 (phase 06-hil-digital): a link poller. Every
-// kPollPeriodUs, start to start, it exchanges one digital poll, decodes the answer, advances the
-// link and counts the poll. It never stops: a refused poll drops the link to Absent and the next
-// one goes out on schedule anyway (docs/constraints.md §Error handling). Over USB serial it prints
-// a `hil:` summary every kPollsPerSummary polls, and a `link:` line plus that poll's `T1` trace
-// line (ADR-0015) whenever the link state changes; tools/hil_digital.py reads both. The loopback
-// program this file used to be is src/app/loopback.cpp. Configures no pin itself: bus_init( ) in
-// src/hal/ does, from src/core/pins.h (R-SAFETY-09, R-SAFETY-10).
+// Master firmware, build/pico/sg2hid.uf2 (phases 06-hil-digital, 07-analog-mode): an analog-mode
+// poller. Every kPollPeriodUs, start to start, it exchanges one frame of the analog-mode sequence
+// (src/core/negotiation.h, ADR-0017): enter config mode, select analog, leave config mode, then
+// analog polls for as long as the controller answers them. It never streams digital, and it
+// never stops: a frame that leaves the link Absent restarts the sequence on the next frame
+// (docs/constraints.md §Error handling). Over USB serial it prints a `hil:` summary every
+// kPollsPerSummary frames, ending in the whammy of the last good analog frame, and a `link:` line
+// plus that frame's `T1` trace line (ADR-0015) whenever the link state changes;
+// tools/hil_digital.py reads both. Configures no pin itself: bus_init( ) in src/hal/ does, from
+// src/core/pins.h (R-SAFETY-09, R-SAFETY-10).
 #include "core/bus_trace.h"
+#include "core/guitar_state.h"
 #include "core/link.h"
+#include "core/negotiation.h"
 #include "core/pins.h"
 #include "core/poll.h"
 #include "hal/bus_frame.h"
@@ -25,10 +29,14 @@ namespace {
 
 constexpr std::uint32_t kPollPeriodUs    = 1000;
 constexpr std::uint32_t kPollsPerSummary = 1000;
-// A five-byte `T1` line is about 100 characters; the rest is headroom.
+// A nine-byte `T1` line is about 170 characters; the rest is headroom.
 constexpr std::size_t   kTraceLineSize   = 256;
 // "XX XX" and its NUL.
 constexpr std::size_t   kPayloadTextSize = 6;
+// "XX" and its NUL.
+constexpr std::size_t   kWhammyTextSize  = 3;
+// The longest frame the master sends: an analog frame plus its address byte.
+constexpr std::size_t   kWireLen         = ps2::frame_len( ps2::ControllerId::Analog ) + 1;
 
 [[nodiscard]] std::string_view state_name( ps2::LinkState state ) {
     switch ( state ) {
@@ -56,13 +64,17 @@ constexpr std::size_t   kPayloadTextSize = 6;
         return "not-ready";
     case ps2::FaultCause::Negotiating:
         return "negotiating";
+    case ps2::FaultCause::Declined:
+        return "declined";
     }
     return "?";
 }
 
 struct Poller {
-    ps2::Link      link{};
+    ps2::Master    master{};
     ps2::PollTally tally{};
+    std::uint8_t   whammy      = 0;  // of the last good analog frame; meaningful once has_whammy
+    bool           has_whammy  = false;
     std::uint32_t  poll_start  = 0;  // time_us_32( ) at the latest poll's start
     std::uint32_t  batch_start = 0;  // time_us_32( ) when the current summary's polls began
 };
@@ -78,22 +90,29 @@ void print_trace( std::span<const ps2::WireByte> wire, std::size_t completed ) {
 }
 
 void poll_once( Poller& poller, std::uint32_t elapsed_us ) {
-    std::array<ps2::WireByte, ps2::kDigitalPollLen> wire{};
-    for ( std::size_t i = 0; i < wire.size(); ++i ) {
-        wire[ i ].out = ps2::kDigitalPoll[ i ];
+    const std::span<const std::uint8_t> command = ps2::command_for( poller.master.stage );
+    std::array<ps2::WireByte, kWireLen> wire{};
+    for ( std::size_t i = 0; i < command.size(); ++i ) {
+        wire[ i ].out = command[ i ];
     }
-    const std::size_t completed = ps2::exchange_frame( wire );
-    const auto        outcome   = ps2::decode_poll( wire, completed );
-    ps2::count_poll( poller.tally, outcome );
+    const std::span<ps2::WireByte> frame     = std::span( wire ).first( command.size() );
+    const std::size_t              completed = ps2::exchange_frame( frame );
+    const auto                     outcome   = ps2::decode_poll( frame, completed );
 
-    const ps2::LinkState was = poller.link.state;
-    const ps2::LinkState now = ps2::step( poller.link, outcome, elapsed_us );
+    const ps2::LinkState was = poller.master.link.state;
+    const ps2::LinkState now = ps2::advance(
+        poller.master, ps2::Exchanged{ .wire = frame, .completed = completed }, elapsed_us );
+    ps2::count_poll( poller.tally, now, outcome );
+    if ( now == ps2::LinkState::AnalogStreaming && outcome.has_value() ) {
+        poller.whammy     = ps2::map_frame( *outcome ).whammy;
+        poller.has_whammy = true;
+    }
     if ( now == was ) {
         return;
     }
     const std::string_view from  = state_name( was );
     const std::string_view to    = state_name( now );
-    const std::string_view fault = fault_name( poller.link.last_fault );
+    const std::string_view fault = fault_name( poller.master.link.last_fault );
     std::printf( "link: %.*s -> %.*s fault=%.*s\n",
                  static_cast<int>( from.size() ),
                  from.data(),
@@ -101,7 +120,7 @@ void poll_once( Poller& poller, std::uint32_t elapsed_us ) {
                  to.data(),
                  static_cast<int>( fault.size() ),
                  fault.data() );
-    print_trace( wire, completed );
+    print_trace( frame, completed );
 }
 
 void print_summary( Poller& poller ) {
@@ -119,10 +138,14 @@ void print_summary( Poller& poller ) {
                        tally.last_payload[ 0 ],
                        tally.last_payload[ 1 ] );
     }
-    const std::string_view state = state_name( poller.link.state );
-    const std::string_view fault = fault_name( poller.link.last_fault );
+    std::array<char, kWhammyTextSize> whammy{ '-', '-' };
+    if ( poller.has_whammy ) {
+        std::snprintf( whammy.data(), whammy.size(), "%02X", poller.whammy );
+    }
+    const std::string_view state = state_name( poller.master.link.state );
+    const std::string_view fault = fault_name( poller.master.link.last_fault );
     std::printf( "hil: polls=%lu refused=%lu changes=%lu us=%lu state=%.*s fault=%.*s att=%s "
-                 "payload=%s\n",
+                 "payload=%s whammy=%s\n",
                  static_cast<unsigned long>( tally.polls ),
                  static_cast<unsigned long>( tally.refused ),
                  static_cast<unsigned long>( tally.payload_changes ),
@@ -132,7 +155,8 @@ void print_summary( Poller& poller ) {
                  static_cast<int>( fault.size() ),
                  fault.data(),
                  is_att_high ? "high" : "low",
-                 payload.data() );
+                 payload.data(),
+                 whammy.data() );
 }
 
 }  // namespace

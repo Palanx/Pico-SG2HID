@@ -16,6 +16,7 @@
 #include "core/guitar_state.h"
 #include "core/hid_report.h"
 #include "core/link.h"
+#include "core/negotiation.h"
 #include "core/ps2_frame.h"
 
 #include "vectors/analog_idle.h"
@@ -24,13 +25,18 @@
 #include "vectors/digital_idle.h"
 #include "vectors/digital_pressed.h"
 #include "vectors/digital_whammy_absent.h"
+#include "vectors/negotiation.h"
 #include "vectors/not_ready.h"
+#include "vectors/poll_exchange.h"
 #include "vectors/truncated_ack.h"
 #include "vectors/truncated_not_ready.h"
 #include "vectors/unknown_id.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <iterator>
+#include <limits>
 #include <span>
 
 namespace {
@@ -125,6 +131,21 @@ constexpr std::uint8_t kZeroFill = 0x00;
         is_ok = frame->payload[ i ] == kZeroFill;
     }
     return report( is_ok, "digital_whammy_absent: bytes the header never announced are zero" );
+}
+
+// The poller hands `decode` a buffer as long as the longest frame, so bytes past the one the
+// header announced must be ignored. The input is the vector plus one zero byte, and the
+// expected bytes still come from the vector alone (R-PROTO-05).
+[[nodiscard]] bool case_bytes_past_the_frame_are_ignored() {
+    std::array<std::uint8_t, std::size( vectors::kDigitalIdle ) + 1> padded{};
+    std::ranges::copy( vectors::kDigitalIdle, padded.begin() );
+    padded.back() = kZeroFill;
+
+    const auto frame = ps2::decode( padded );
+
+    const bool is_ok = frame.has_value() && frame->id == ps2::ControllerId::Digital &&
+                       payload_matches( *frame, vectors::kDigitalIdle );
+    return report( is_ok, "digital_idle plus a trailing byte: decodes as digital_idle alone" );
 }
 
 // --- decode: the frames that must be refused -------------------------------------------
@@ -496,6 +517,162 @@ constexpr std::uint32_t kOnePollUs = 1000;
                    "link: time before entering Negotiating does not count toward its timeout" );
 }
 
+// us_in_state saturates instead of wrapping. A wrap would restart the negotiation clock of a
+// link stuck for 71.6 minutes. The second UINT32_MAX is the one that would overflow.
+[[nodiscard]] bool case_link_time_in_state_saturates() {
+    constexpr std::uint32_t             kMaxUs = std::numeric_limits<std::uint32_t>::max();
+    ps2::Link                           link{};
+    const std::span<const std::uint8_t> analog{ vectors::kAnalogIdle };
+    const ps2::LinkState                entered = ps2::step( link, ps2::decode( analog ), 0 );
+
+    const ps2::LinkState full     = ps2::step( link, ps2::decode( analog ), kMaxUs );
+    const ps2::LinkState past_max = ps2::step( link, ps2::decode( analog ), kMaxUs );
+
+    const bool is_ok = entered == ps2::LinkState::AnalogStreaming && full == entered &&
+                       past_max == entered && link.us_in_state == kMaxUs;
+    return report( is_ok, "link: us_in_state saturates at UINT32_MAX instead of wrapping" );
+}
+
+// --- the analog-mode sequence (R-PROTO-10) ---------------------------------------------
+// The master's frames against negotiation.h and kPollCommand, and `advance` over answers built
+// from the controller-side vectors. Wire byte 0's answer is always kAddressReply.
+
+using Wire = std::array<ps2::WireByte, std::size( vectors::kPollCommand )>;
+
+// Answer the master's current command with kAddressReply then `answer`, of which `completed`
+// wire bytes completed, and advance the master by one frame.
+[[nodiscard]] ps2::LinkState
+answer_with( ps2::Master& master, std::span<const std::uint8_t> answer, std::size_t completed ) {
+    const std::span<const std::uint8_t> command = ps2::command_for( master.stage );
+    Wire                                wire{};
+    for ( std::size_t i = 0; i < command.size(); ++i ) {
+        wire[ i ].out = command[ i ];
+    }
+    wire[ 0 ].in = vectors::kAddressReply;
+    for ( std::size_t i = 0; i < answer.size() && i + 1 < wire.size(); ++i ) {
+        wire[ i + 1 ].in = answer[ i ];
+    }
+    const ps2::Exchanged exchanged{ .wire      = std::span( wire ).first( command.size() ),
+                                    .completed = completed };
+    return ps2::advance( master, exchanged, kOnePollUs );
+}
+
+[[nodiscard]] bool is_same_bytes( std::span<const std::uint8_t> got,
+                                  std::span<const std::uint8_t> want ) {
+    return std::ranges::equal( got, want );
+}
+
+constexpr std::size_t kEnterLen        = std::size( vectors::kEnterConfig );
+constexpr std::size_t kLongLen         = std::size( vectors::kPollCommand );
+// A 9-byte frame to a digital controller: its last byte (wire byte 4) gets no ACK.
+constexpr std::size_t kDigitalAckedLen = std::size( vectors::kDigitalIdle );
+
+[[nodiscard]] bool case_negotiation_commands() {
+    const bool is_ok =
+        is_same_bytes( ps2::command_for( ps2::NegotiationStage::EnterConfig ),
+                       vectors::kEnterConfig ) &&
+        is_same_bytes( ps2::command_for( ps2::NegotiationStage::SetAnalog ),
+                       vectors::kSetAnalog ) &&
+        is_same_bytes( ps2::command_for( ps2::NegotiationStage::LeaveConfig ),
+                       vectors::kLeaveConfig ) &&
+        is_same_bytes( ps2::command_for( ps2::NegotiationStage::Polling ), vectors::kPollCommand );
+    return report( is_ok, "negotiation: each stage sends its negotiation.h / kPollCommand bytes" );
+}
+
+// The master in Polling, reached by answering the whole sequence the way the emulator does.
+[[nodiscard]] bool reach_polling( ps2::Master& master ) {
+    const ps2::LinkState after_enter = answer_with( master, vectors::kDigitalIdle, kEnterLen );
+    const ps2::LinkState after_set   = answer_with( master, vectors::kConfigMode, kLongLen );
+    const ps2::LinkState after_leave = answer_with( master, vectors::kConfigMode, kLongLen );
+    return after_enter == ps2::LinkState::Absent && after_set == ps2::LinkState::Negotiating &&
+           after_leave == ps2::LinkState::Negotiating &&
+           master.stage == ps2::NegotiationStage::Polling;
+}
+
+[[nodiscard]] bool case_negotiation_happy_path() {
+    ps2::Master master{};
+
+    const ps2::LinkState after_enter = answer_with( master, vectors::kDigitalIdle, kEnterLen );
+    const bool           is_entered =
+        after_enter == ps2::LinkState::Absent && master.stage == ps2::NegotiationStage::SetAnalog;
+    const ps2::LinkState after_set   = answer_with( master, vectors::kConfigMode, kLongLen );
+    const bool           is_set      = after_set == ps2::LinkState::Negotiating &&
+                                       master.stage == ps2::NegotiationStage::LeaveConfig;
+    const ps2::LinkState after_leave = answer_with( master, vectors::kConfigMode, kLongLen );
+    const bool           is_left     = after_leave == ps2::LinkState::Negotiating &&
+                                       master.stage == ps2::NegotiationStage::Polling;
+    const ps2::LinkState polled      = answer_with( master, vectors::kAnalogIdle, kLongLen );
+
+    const bool is_ok = is_entered && is_set && is_left &&
+                       polled == ps2::LinkState::AnalogStreaming &&
+                       master.stage == ps2::NegotiationStage::Polling;
+    return report( is_ok, "negotiation: enter, set analog, leave, poll -> AnalogStreaming" );
+}
+
+// A controller already in analog mode answers the 5-byte enter with an analog prefix; only the
+// prefix is judged.
+[[nodiscard]] bool case_negotiation_enter_judges_the_prefix() {
+    constexpr std::size_t               kAnsweredLen = kEnterLen - 1;
+    ps2::Master                         master{};
+    const std::span<const std::uint8_t> analog_head =
+        std::span<const std::uint8_t>{ vectors::kAnalogIdle }.first( kAnsweredLen );
+
+    const ps2::LinkState now = answer_with( master, analog_head, kEnterLen );
+
+    const bool is_ok =
+        now == ps2::LinkState::Absent && master.stage == ps2::NegotiationStage::SetAnalog;
+    return report( is_ok, "negotiation: an analog answer to the enter is accepted on its prefix" );
+}
+
+[[nodiscard]] bool case_negotiation_silent_enter() {
+    ps2::Master master{};
+
+    const ps2::LinkState now = answer_with( master, vectors::kDigitalIdle, 0 );
+
+    const bool is_ok = now == ps2::LinkState::Absent &&
+                       master.link.last_fault == ps2::FaultCause::AckTimeout &&
+                       master.stage == ps2::NegotiationStage::EnterConfig;
+    return report( is_ok, "negotiation: no answer to the enter -> Absent, AckTimeout, re-enter" );
+}
+
+[[nodiscard]] bool case_negotiation_polling_declined() {
+    ps2::Master master{};
+    const bool  is_polling = reach_polling( master );
+
+    const ps2::LinkState now = answer_with( master, vectors::kDigitalIdle, kDigitalAckedLen );
+
+    const bool is_ok = is_polling && now == ps2::LinkState::Absent &&
+                       master.link.last_fault == ps2::FaultCause::Declined &&
+                       master.stage == ps2::NegotiationStage::EnterConfig;
+    return report( is_ok, "negotiation: a digital answer to the poll -> Absent, Declined" );
+}
+
+[[nodiscard]] bool case_negotiation_set_analog_declined() {
+    ps2::Master          master{};
+    const ps2::LinkState entered = answer_with( master, vectors::kDigitalIdle, kEnterLen );
+
+    const ps2::LinkState now = answer_with( master, vectors::kDigitalIdle, kDigitalAckedLen );
+
+    const bool is_ok = entered == ps2::LinkState::Absent && now == ps2::LinkState::Absent &&
+                       master.link.last_fault == ps2::FaultCause::Declined &&
+                       master.stage == ps2::NegotiationStage::EnterConfig;
+    return report( is_ok, "negotiation: a digital answer to set-analog -> Declined" );
+}
+
+[[nodiscard]] bool case_negotiation_polling_refused() {
+    ps2::Master master{};
+    const bool  is_polling = reach_polling( master );
+    const bool  is_streaming =
+        answer_with( master, vectors::kAnalogIdle, kLongLen ) == ps2::LinkState::AnalogStreaming;
+
+    const ps2::LinkState now = answer_with( master, vectors::kUnknownId, kLongLen );
+
+    const bool is_ok = is_polling && is_streaming && now == ps2::LinkState::Absent &&
+                       master.link.last_fault == ps2::FaultCause::UnknownId &&
+                       master.stage == ps2::NegotiationStage::EnterConfig;
+    return report( is_ok, "negotiation: an unknown id while polling -> Absent, UnknownId" );
+}
+
 // --- the HID report ---------------------------------------------------------------------
 
 // A GuitarState with exactly one control pressed and nothing else, so a report built from it
@@ -727,6 +904,19 @@ constexpr std::uint32_t kOnePollUs = 1000;
                    "R-PROTO-02 (a cut-short frame yields no frame and the link goes Absent)" );
 }
 
+// The master side of the analog-mode sequence: what it sends at each stage and how it judges
+// each answer. Every case above is a clause; a mutation of any judging rule fails one of them.
+[[nodiscard]] bool rule_proto10() {
+    bool is_ok = case_negotiation_commands();
+    is_ok      = case_negotiation_happy_path() && is_ok;
+    is_ok      = case_negotiation_enter_judges_the_prefix() && is_ok;
+    is_ok      = case_negotiation_silent_enter() && is_ok;
+    is_ok      = case_negotiation_polling_declined() && is_ok;
+    is_ok      = case_negotiation_set_analog_declined() && is_ok;
+    is_ok      = case_negotiation_polling_refused() && is_ok;
+    return report( is_ok, "R-PROTO-10 (the master negotiates analog mode and judges each answer)" );
+}
+
 }  // namespace
 
 int main() {
@@ -738,6 +928,7 @@ int main() {
     is_ok = case_config_mode() && is_ok;
     is_ok = case_announced_lengths() && is_ok;
     is_ok = case_digital_payload_is_zero_filled() && is_ok;
+    is_ok = case_bytes_past_the_frame_are_ignored() && is_ok;
     is_ok = case_unknown_id() && is_ok;
     is_ok = case_truncated_ack() && is_ok;
     is_ok = case_not_ready() && is_ok;
@@ -763,6 +954,7 @@ int main() {
     is_ok = case_link_good_frame_keeps_the_last_fault() && is_ok;
     is_ok = case_link_negotiation_bound_is_exclusive() && is_ok;
     is_ok = case_link_time_before_entering_is_not_counted() && is_ok;
+    is_ok = case_link_time_in_state_saturates() && is_ok;
 
     is_ok = case_report_gives_every_button_its_own_bit() && is_ok;
     is_ok = case_report_idle_is_all_zero_buttons() && is_ok;
@@ -772,6 +964,7 @@ int main() {
     is_ok = rule_proto02() && is_ok;
     is_ok = rule_proto03() && is_ok;
     is_ok = rule_proto04() && is_ok;
+    is_ok = rule_proto10() && is_ok;
 
     return is_ok ? 0 : 1;
 }

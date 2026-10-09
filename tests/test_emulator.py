@@ -22,10 +22,14 @@ import subprocess
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True  # importing driver_support leaves no __pycache__
+import driver_support  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES = os.path.join("tests", "emulator_cases.cpp")
 MODEL = os.path.join("src", "emu", "sg_model.cpp")
-CXXFLAGS = ["-std=c++23", "-Wall", "-Wextra", "-Werror", "-Og", "-g", "-UNDEBUG", "-Isrc"]
+# The flags `make test` uses, read from the Makefile (tests/driver_support.py).
+CXXFLAGS = driver_support.cxxflags()
 # A mutant that loops forever must fail, not hang `make test`.
 RUN_TIMEOUT_S = 30
 
@@ -84,6 +88,12 @@ MUTATIONS = [
              "!m_is_broken && index < last_index()", "!m_is_broken && index <= last_index()"),
     Mutation("R-EMU-02", "the id fault is ignored",
              "if ( m_fault.kind == FaultKind::Id ) {", "if ( false ) {"),
+    Mutation("R-EMU-01", "set-analog is ignored",
+             "m_argument == kModeAnalog && !is_declined )",
+             "m_argument == kModeAnalog && !is_declined && false )"),
+    Mutation("R-EMU-02", "the decline fault is ignored",
+             "const bool is_declined = m_fault.kind == FaultKind::Decline;",
+             "const bool is_declined = m_fault.kind == FaultKind::Decline && false;"),
 ]
 
 
@@ -121,13 +131,14 @@ def reject(mutation):
 
 
 def run_rejection_cases():
-    passed = sum(1 for m in MUTATIONS if reject(m))
+    passed, served = driver_support.run_rejection_cases(__file__, MUTATIONS, reject)
     total = len(MUTATIONS)
     if passed == total and total > 0:
-        print("  ok:   rejection cases: %d/%d (each mutation flips its own rule to FAIL)"
-              % (passed, total))
+        print("  ok:   rejection cases: %d/%d (each mutation flips its own rule to FAIL), "
+              "%d served from cache" % (passed, total, served))
     else:
-        print("  FAIL: rejection cases: %d/%d" % (passed, total))
+        print("  FAIL: rejection cases: %d/%d, %d served from cache"
+              % (passed, total, served))
         failures.append("rejection cases")
 
 

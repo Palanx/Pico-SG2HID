@@ -30,9 +30,8 @@ enum class LinkState : std::uint8_t {
     AnalogStreaming,
 };
 
-// Why the link last dropped to Absent. A superset of DecodeStatus on purpose: 07-analog-mode
-// adds causes that are not decode failures, such as a controller that answered the config
-// sequence and then declined analog mode.
+// Why the link last dropped to Absent. A superset of DecodeStatus on purpose: Negotiating and
+// Declined are not decode failures, and deciding either needs history (ADR-0012).
 //
 // There is deliberately no function anywhere that returns a FaultCause. R-ERR-01 forbids it:
 // a status enum lives in std::expected's error slot or as a member of Link, never as a return
@@ -44,6 +43,7 @@ enum class FaultCause : std::uint8_t {
     UnknownId,    // the header byte was not a declared controller id (R-PROTO-03)
     NotReady,     // a known id, but the byte after it was not kReadyByte
     Negotiating,  // config mode outlasted kNegotiationTimeoutUs without producing a report
+    Declined,     // a well-formed answer with an id the analog-mode sequence did not ask for
 };
 
 // How long the controller may stay in config mode before the link gives up and starts over.
@@ -51,7 +51,8 @@ enum class FaultCause : std::uint8_t {
 // orders of magnitude: it is a "something is wrong" bound, not a schedule.
 //
 // belay-debt: the value is a budget, not a measurement — nothing has yet timed a real
-// negotiation. 07-analog-mode drives the sequence for the first time and owns tightening it.
+// negotiation. The emulator negotiates in one frame of Negotiating, so it measures nothing about
+// the guitar; 09-guitar-observe times the real sequence and owns tightening it.
 constexpr std::uint32_t kNegotiationTimeoutUs = 100000;
 
 // Plain data. `us_in_state` is what makes the timeout above decidable without `core` ever

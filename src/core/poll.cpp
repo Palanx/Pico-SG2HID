@@ -18,10 +18,12 @@ DecodeOutcome decode_poll( std::span<const WireByte> wire, std::size_t completed
     return decode( std::span<const std::uint8_t>( bytes.data(), count ) );
 }
 
-void count_poll( PollTally& tally, const DecodeOutcome& outcome ) {
+void count_poll( PollTally& tally, LinkState now, const DecodeOutcome& outcome ) {
     ++tally.polls;
-    if ( !outcome.has_value() ) {
+    if ( now == LinkState::Absent ) {
         ++tally.refused;
+    }
+    if ( now != LinkState::AnalogStreaming || !outcome.has_value() ) {
         return;
     }
     if ( tally.has_payload && outcome->payload != tally.last_payload ) {

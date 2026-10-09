@@ -18,6 +18,10 @@ have to become unreadable binary to benefit.
 `0xFF` answer to the address byte, which `tests/emulator_cases.cpp` drives the emulator with,
 plus the `0xFF` of released DATA it expects past a frame's end and after a broken frame.
 
+`negotiation.h` is the master's side too: the three frames of the analog-mode sequence (enter
+config mode, select analog, leave config mode), which the codec cases compare the master's
+commands with and the emulator cases drive the emulator with.
+
 Digital buttons are **active low**: a bit is `1` when the button is released. A frame with
 nothing pressed is therefore `0xFF 0xFF`, not `0x00 0x00`.
 

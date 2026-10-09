@@ -28,13 +28,17 @@ import subprocess
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True  # importing driver_support leaves no __pycache__
+import driver_support  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES = os.path.join("tests", "bus_trace_cases.cpp")
 FORMATTER = os.path.join("src", "core", "bus_trace.cpp")
 DECODER = os.path.join("tools", "trace_decode.py")
 SESSION = os.path.join("tests", "vectors", "trace_session.txt")
 RENDERED = os.path.join("tests", "vectors", "trace_session.rendered")
-CXXFLAGS = ["-std=c++23", "-Wall", "-Wextra", "-Werror", "-Og", "-g", "-UNDEBUG", "-Isrc"]
+# The flags `make test` uses, read from the Makefile (tests/driver_support.py).
+CXXFLAGS = driver_support.cxxflags()
 TRACE_PREFIX = "T1 "
 # A mutant that loops forever must fail, not hang `make test`.
 RUN_TIMEOUT_S = 30
@@ -167,13 +171,14 @@ def reject(mutation):
 
 
 def run_rejection_cases():
-    passed = sum(1 for m in MUTATIONS if reject(m))
+    passed, served = driver_support.run_rejection_cases(__file__, MUTATIONS, reject)
     total = len(MUTATIONS)
     if passed == total and total > 0:
-        print("  ok:   rejection cases: %d/%d (each mutation turns the R-PROTO-08 line to FAIL)"
-              % (passed, total))
+        print("  ok:   rejection cases: %d/%d (each mutation turns the R-PROTO-08 line to FAIL), "
+              "%d served from cache" % (passed, total, served))
     else:
-        print("  FAIL: rejection cases: %d/%d" % (passed, total))
+        print("  FAIL: rejection cases: %d/%d, %d served from cache"
+              % (passed, total, served))
         failures.append("rejection cases")
 
 
