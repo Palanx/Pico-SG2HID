@@ -1,7 +1,7 @@
 # pico-sg2hid
 
 RP2040 firmware turning a wired PS2 Guitar Hero SG into a driverless USB HID gamepad on
-macOS and Debian, with a real analog whammy axis.
+macOS and the Steam Deck (SteamOS), with a real analog whammy axis.
 
 Greenfield project run under the phase workflow. Every rule here is true in *every*
 session; everything session-specific lives on disk behind the pointer table. Keep this

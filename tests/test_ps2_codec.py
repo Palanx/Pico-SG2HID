@@ -8,6 +8,10 @@
 #                   analog frame; any other frame yields the axis at rest
 # RULE R-PROTO-10 — docs/constraints.md §Invariants — the master negotiates analog mode and
 #                   judges each answer by its stage
+# RULE R-HID-01 — docs/constraints.md §Invariants — the HID report descriptor equals the
+#                 hand-written vector
+# RULE R-HID-02 — docs/constraints.md §Invariants — while the link is not AnalogStreaming, the
+#                 report is the neutral report
 
 This is the driver for tests/ps2_codec_cases.cpp, which is deliberately not named test_*.cpp:
 the Makefile would otherwise build and run it a second time with nothing around it. Here it
@@ -155,6 +159,22 @@ MUTATIONS = [
         # `false &&` rather than `false`: expected_id( ) must stay referenced, or -Werror's
         # unused-function warning fails the build before any line is printed.
         "    if ( false && id.has_value() && *id != expected_id( master.stage ) ) {",
+    ),
+    Mutation(
+        "R-HID-01",
+        "declare the whammy as Generic Desktop Y instead of X",
+        os.path.join("src", "core", "hid_descriptor.h"),
+        "constexpr std::uint8_t kUsageX                  = 0x30;",
+        "constexpr std::uint8_t kUsageX                  = 0x31;",
+    ),
+    Mutation(
+        "R-HID-02",
+        "report the frame's controls whatever the link state",
+        os.path.join("src", "core", "poll.cpp"),
+        "    if ( now == LinkState::AnalogStreaming && outcome.has_value() ) {",
+        # `true ||` rather than dropping the clause: `now` must stay referenced, or -Werror's
+        # unused-parameter warning fails the build before any line is printed.
+        "    if ( ( true || now == LinkState::AnalogStreaming ) && outcome.has_value() ) {",
     ),
 ]
 

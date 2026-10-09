@@ -1,5 +1,7 @@
 #include "core/poll.h"
 
+#include "core/guitar_state.h"
+
 #include <algorithm>
 
 namespace ps2 {
@@ -31,6 +33,19 @@ void count_poll( PollTally& tally, LinkState now, const DecodeOutcome& outcome )
     }
     tally.last_payload = outcome->payload;
     tally.has_payload  = true;
+}
+
+HidReport neutral_report() {
+    GuitarState released{};
+    released.whammy = kWhammyRest;
+    return build_report( released );
+}
+
+HidReport report_for( LinkState now, const DecodeOutcome& outcome ) {
+    if ( now == LinkState::AnalogStreaming && outcome.has_value() ) {
+        return build_report( map_frame( *outcome ) );
+    }
+    return neutral_report();
 }
 
 }  // namespace ps2

@@ -9,7 +9,7 @@
 #                  typecheck of the SDK layers (skipped with a `skip:` line when it is
 #                  not). Not part of `make test`.
 #   make firmware  Builds build/pico/sg2hid.uf2 (the master, an analog-mode poller since
-#                  07-analog-mode),
+#                  07-analog-mode and a composite CDC + HID gamepad since 08-usb-hid),
 #                  build/pico/sg2hid_loopback.uf2 (the 24-pio-bus loopback and bit-order
 #                  probe) and build/pico/sg2hid_emu.uf2 (the emulator, 05-emulator). Needs
 #                  cmake, arm-none-eabi-gcc and
@@ -18,7 +18,8 @@
 #                  src/hal, src/usb, src/app and src/emu. Not required for `make test`.
 #   make hil MASTER=<port> EMU=<port>
 #                  The two-Pico hardware-in-the-loop run (06-hil-digital, analog since
-#                  07-analog-mode): tools/hil_digital.py against a master flashed with sg2hid.uf2
+#                  07-analog-mode, HID reports since 08-usb-hid): tools/hil_digital.py against a
+#                  master flashed with sg2hid.uf2
 #                  and an emulator with sg2hid_emu.uf2.
 #                  Needs the bench; never part of `make test`.
 #   make clean

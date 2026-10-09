@@ -14,9 +14,11 @@
 // inline `0xEF` would not.
 
 #include "core/guitar_state.h"
+#include "core/hid_descriptor.h"
 #include "core/hid_report.h"
 #include "core/link.h"
 #include "core/negotiation.h"
+#include "core/poll.h"
 #include "core/ps2_frame.h"
 
 #include "vectors/analog_idle.h"
@@ -25,6 +27,7 @@
 #include "vectors/digital_idle.h"
 #include "vectors/digital_pressed.h"
 #include "vectors/digital_whammy_absent.h"
+#include "vectors/hid_descriptor.h"
 #include "vectors/negotiation.h"
 #include "vectors/not_ready.h"
 #include "vectors/poll_exchange.h"
@@ -784,6 +787,51 @@ constexpr std::size_t kDigitalAckedLen = std::size( vectors::kDigitalIdle );
     return report( is_ok, "hid: the report is wide enough for every button it declares" );
 }
 
+// --- the HID report descriptor and the report for a frame -------------------------------
+
+// The neutral report, read as what it means rather than as bytes: no button set, the whammy at
+// rest.
+[[nodiscard]] bool is_neutral( const ps2::HidReport& report ) {
+    return buttons_set( report ) == 0 && report[ ps2::kWhammyOffset ] == ps2::kWhammyRest;
+}
+
+[[nodiscard]] bool case_report_for_streaming_frame() {
+    const std::span<const std::uint8_t> bytes{ vectors::kAnalogWhammyFull };
+    const auto                          outcome = ps2::decode( bytes );
+
+    const ps2::HidReport built = ps2::report_for( ps2::LinkState::AnalogStreaming, outcome );
+
+    const bool is_ok =
+        outcome.has_value() && built == ps2::build_report( ps2::map_frame( *outcome ) );
+    return report( is_ok, "hid: an AnalogStreaming frame reports its own controls" );
+}
+
+[[nodiscard]] bool case_report_for_negotiating_is_neutral() {
+    const std::span<const std::uint8_t> bytes{ vectors::kAnalogWhammyFull };
+
+    const ps2::HidReport built =
+        ps2::report_for( ps2::LinkState::Negotiating, ps2::decode( bytes ) );
+
+    return report( is_neutral( built ), "hid: a good frame while Negotiating reports neutral" );
+}
+
+[[nodiscard]] bool case_report_for_absent_is_neutral() {
+    const std::span<const std::uint8_t> bytes{ vectors::kAnalogWhammyFull };
+
+    const ps2::HidReport built = ps2::report_for( ps2::LinkState::Absent, ps2::decode( bytes ) );
+
+    return report( is_neutral( built ),
+                   "hid: a good frame that left the link Absent reports neutral" );
+}
+
+[[nodiscard]] bool case_report_for_refused_is_neutral() {
+    const std::span<const std::uint8_t> bytes{ vectors::kUnknownId };
+
+    const ps2::HidReport built = ps2::report_for( ps2::LinkState::Absent, ps2::decode( bytes ) );
+
+    return report( is_neutral( built ), "hid: a refused frame reports neutral" );
+}
+
 // --- the rule lines ---------------------------------------------------------------------
 // These are what tests/test_ps2_codec.py declares in its header and what its rejection cases
 // flip to FAIL. Each restates its rule over the vectors, so the line means the rule and not
@@ -917,6 +965,28 @@ constexpr std::size_t kDigitalAckedLen = std::size( vectors::kDigitalIdle );
     return report( is_ok, "R-PROTO-10 (the master negotiates analog mode and judges each answer)" );
 }
 
+// The descriptor the host reads equals the hand-written one, byte for byte. Sizes first, so a
+// longer or shorter descriptor fails without reading past either array.
+[[nodiscard]] bool rule_hid01() {
+    const std::span<const std::uint8_t> expected{ vectors::kHidDescriptor };
+
+    const bool is_ok =
+        ps2::kHidReportDescriptor.size() == expected.size() &&
+        std::equal( expected.begin(), expected.end(), ps2::kHidReportDescriptor.begin() );
+    return report( is_ok, "R-HID-01 (the HID report descriptor equals the hand-written vector)" );
+}
+
+// Every way the link can be other than AnalogStreaming gives the neutral report, a refused frame
+// included. The streaming case is what stops "always neutral" from passing.
+[[nodiscard]] bool rule_hid02() {
+    bool is_ok = case_report_for_negotiating_is_neutral();
+    is_ok      = case_report_for_absent_is_neutral() && is_ok;
+    is_ok      = case_report_for_refused_is_neutral() && is_ok;
+    is_ok      = case_report_for_streaming_frame() && is_ok;
+    return report( is_ok,
+                   "R-HID-02 (while the link is not AnalogStreaming, the report is neutral)" );
+}
+
 }  // namespace
 
 int main() {
@@ -965,6 +1035,8 @@ int main() {
     is_ok = rule_proto03() && is_ok;
     is_ok = rule_proto04() && is_ok;
     is_ok = rule_proto10() && is_ok;
+    is_ok = rule_hid01() && is_ok;
+    is_ok = rule_hid02() && is_ok;
 
     return is_ok ? 0 : 1;
 }
