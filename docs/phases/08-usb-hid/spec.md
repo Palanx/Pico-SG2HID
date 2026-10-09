@@ -97,8 +97,7 @@ A new mode, `--demo`, needs only `--emu`. It sends `fault none`, `mode digital` 
 `payload ff ff 80 80 80 80`, then presses each control of the `buttons` table for `DEMO_HOLD_S`
 (2 s), printing `pressed: <control>` first, then sends the whammy values `00`, `40`, `80`,
 `C0`, `FF` for `DEMO_HOLD_S` each, printing `whammy: <V>`, and ends by sending
-`payload ff ff 80 80 80 80` and `fault none`. It judges nothing and exits 0 unless the emulator
-refuses a line or a port fails. Without `--demo`, `--master` is still required.
+`payload ff ff 80 80 80 80` and `fault none`. It judges nothing. Without `--demo`, `--master` is still required.
 
 **Rules** added to `docs/constraints.md` under a new `### USB HID` section, both bound
 `test: tests/test_ps2_codec.py`:
@@ -188,7 +187,7 @@ refuses a line or a port fails. Without `--demo`, `--master` is still required.
      - `kAnalogWhammyFull` with `now = AnalogStreaming` → `build_report( map_frame( … ) )`;
      - the same frame with `now` `Negotiating`, then `Absent` → the neutral report;
      - a refused outcome (`kUnknownId`) with `now = Absent` → the neutral report;
-     - the rule line `R-HID-02 (…)`, aggregating the three neutral cases.
+     - the rule line `R-HID-02 (…)`, aggregating the four cases above.
    - `tests/test_ps2_codec.py`: a `RULE R-HID-02` marker, and one mutation that drops the
      `now == AnalogStreaming` condition from `report_for( )`.
    - `docs/constraints.md`: R-HID-02.
@@ -258,13 +257,20 @@ refuses a line or a port fails. Without `--demo`, `--master` is still required.
 9. **`docs/phases/08-usb-hid/verify.md`**, for a non-specialist, with the two R-PROC-02
    headings. It explains what a HID report descriptor is and why no driver is needed; what a
    composite device is and why the serial port stays; what the neutral report is for. It gives
-   §Plan step 8's procedure step by step, including how to find each port on macOS and on the
-   Deck, Desktop Mode, the macOS accessory approval, that a browser gamepad tester shows a
+   §Plan step 8's procedure step by step, including how to find each serial port on macOS,
+   Desktop Mode, the macOS accessory approval, that a browser gamepad tester shows a
    device only after its first button press, and that the Steam client may hold the device
    (quit Steam if the tester shows nothing).
 
    Check: `grep -c '^#\+ What was built\|^#\+ .*[Cc]heck it' docs/phases/08-usb-hid/verify.md`
    → 2.
+
+10. **Linux target** (operator's decision after the bench, 2026-10-09). Write
+    `docs/adr/0019-linux-target-steam-deck.md`: the Steam Deck (SteamOS) replaces Debian as the
+    Linux target. Replace Debian with SteamOS in `docs/product/requirements.md` (Users, R1),
+    `CLAUDE.md`'s summary line and `docs/phases/PHASES.md`'s feature summary.
+
+    Check: `test -f docs/adr/0019-linux-target-steam-deck.md` → exit 0.
 
 ## Acceptance criteria
 
@@ -313,5 +319,3 @@ grep -c 'event-joystick' docs/phases/08-usb-hid/notes.md         # expect: >= 1 
   flashing stays BOOTSEL by hand.
 - A per-suite key for the mutant cache, and the three open tech-debt entries in
   `.claude/rules/tech-debt.md`.
-- Editing `docs/product/requirements.md`, whose R1 says Debian — an operator decision, raised
-  at expansion.

@@ -81,7 +81,32 @@
   `requirements.md` (Users, R1), `CLAUDE.md`'s summary line and `PHASES.md`'s feature summary. The
   Debt entry "Debian not run on the bench" is removed: ADR-0019 closes it. Not edited: ADR-0003 and
   ADR-0018 (immutable; their Debian mentions are context, and ADR-0019 names the debt it closes),
-  `docs/phases/01-ps2-codec/verify.md` and this phase's `spec.md` (records of their time).
+  `docs/phases/01-ps2-codec/verify.md` (a record of its time); this phase's `spec.md` was
+  amended at validation (next entry).
+- Validation round 1 (2026-10-09), spec amended, no code changed:
+  - closure test: `docs/adr/0019-linux-target-steam-deck.md` was in the diff but named nowhere in the
+    spec, and §Out of scope still excluded editing `docs/product/requirements.md`. The Out-of-scope
+    bullet is deleted; Plan step 10 names ADR-0019 and the three Debian→SteamOS edits.
+  - undecidable: §Goal's `--demo` exit conditions ("exits 0 unless the emulator refuses a line or a
+    port fails") did not say whether an emulator answer timeout counts. Cut back to "It judges
+    nothing."
+  - undecidable: Plan step 9's "how to find each port on macOS and on the Deck" — no serial port is
+    needed on the Deck. Cut to "each serial port on macOS".
+  - Reconciliation checked: §Goal's operator decisions and Plan step 1 (SteamOS as the Linux host,
+    consistent), §Out of scope's "A Debian install" (still true), Plan step 6's check and step 8's
+    demo run (assert no exit condition), the Debian deviation above (its "spec.md not edited" clause
+    was stale, corrected).
+- Validation round 2 (2026-10-09), spec amended, no code changed: Plan step 3 said the R-HID-02 rule
+  line aggregates "the three neutral cases"; it aggregates all four (the streaming case too), as
+  R-HID-02's Scope in `docs/constraints.md` states — without it an always-neutral `report_for( )`
+  passes the rule. Classified spec-side; Plan step 3 now says "the four cases above". Reconciliation
+  checked: §Goal's R-HID-02 statement (the rule, not the line's cases; unchanged), Plan step 3's
+  mutation and §Acceptance's `R-HID-0[12]` count (unaffected); none other names the case count.
+- operator closed with open finding: §Plan CMakeLists.txt — Plan step 4 says `sg2hid` gains "the
+  two `src/usb/` sources"; `CMakeLists.txt` compiles one, `src/usb/usb_device.cpp` (the other two
+  `src/usb/` files are headers). Closed at the round cap, 2026-10-09.
+- Operator, at validation (2026-10-09): the R-CLEAN-02 exception for TinyUSB's two five-parameter
+  callbacks is confirmed as written.
 - Files read that the Context pointers missed (closure-test gaps):
   `.clang-tidy` (naming for globals and enum constants, `HeaderFilterRegex`, the function-size
   thresholds); `tests/test_repo_shape.sh` (`find_proto05`); `docs/wiring-emulator.md` (the safe
@@ -112,8 +137,6 @@
   correction — a dead zone of whammy bytes 112–142 around `80`, and a non-linear scale outside it
   (`## Bench readings`). The report itself is linear; a test on Linux that reads the axis value must
   expect the corrected numbers, or read raw `ABS_X` through evdev.
-- **Operator, at validation:** the R-CLEAN-02 exception (Deviations) is a rule change made inside
-  this phase; confirm or reject it.
 - **Bench readings:** `verify.md` §2 run through step 9.1 on 2026-10-09; the values still owed are
   marked in `## Bench readings` below.
 
@@ -184,6 +207,8 @@ Steps 3, 5, 6 and the demo runs below are copied from the operator's Terminal sc
     usb-pico-sg2hid_SG2HID_Guitar_5303284730F33A1C-if02-joystick
     ```
 
+    Operator, at validation (2026-10-09): the hand transcription stands as evidence of the expected
+    entry even if it is not character-identical to the screen.
     The manufacturer and product strings, the board's unique id as serial, and `if02` — the HID
     interface number in the configuration descriptor (CDC holds 0 and 1).
 - **Step 9, summary lines by hand (master back on the Mac):**
@@ -212,3 +237,45 @@ Steps 3, 5, 6 and the demo runs below are copied from the operator's Terminal sc
 
     Green is bit 0 of the report's first byte, as the descriptor declares; still no refusal.
   - Step 9.3 (`payload 7f fe …` restored): back to the expected state, as reported.
+
+## Validation — 2026-10-09
+- criteria: 21 passed / 0 failed (bench criteria run live: `hil: PASS` on `usbmodem101`/`usbmodem2101`, `hidutil` 2 matches)
+- project gates: test pass, lint pass, typecheck pass
+- gates tree: 4863cf720b677e1880dbe3c9263799ba94aa7a8b
+- boundary sweep: clean
+- independent review: undecidable: `--demo` exit conditions (emulator answer timeout unclassified); undecidable: "each port … on the Deck" in Plan step 9 (settled: 1 — `make hil MASTER=<master port> EMU=<emulator port> | tail -n 1` for the CDC buffer sizes in `src/usb/tusb_config.h`; the SDK's own are 64 at full speed, equal) (unstated: 4 — R-HID-02 rule line aggregates the streaming case too; `kMaxPowerMa`/`kDeviceVersion`/`kUsbVersion` values; the `kButtonCount` range `static_assert`; `--demo` ignores `--master` and prints `demo: done`)
+- closure test: fail: `docs/adr/0019-linux-target-steam-deck.md` named nowhere in the spec; §Out of scope excluded the `requirements.md` edit the diff makes
+- findings: 3
+- finding keys: §Goal tools/hil_digital.py; §Plan docs/phases/08-usb-hid/verify.md; §Plan docs/adr/0019-linux-target-steam-deck.md
+- spec size: 19803 (first)
+- upstream: none
+- not-ours: none
+- verdict: returned to spec
+
+## Validation — 2026-10-09
+- criteria: 21 passed / 0 failed (bench criteria run live again: `hil: PASS`, `hidutil` 2 matches)
+- project gates: test pass, lint pass, typecheck pass (carried over)
+- gates tree: 4863cf720b677e1880dbe3c9263799ba94aa7a8b
+- boundary sweep: clean
+- independent review: contradicts (spec-side): Plan step 3 "aggregating the three neutral cases" vs `rule_hid02( )` aggregating four — R-HID-02's Scope in `docs/constraints.md` names the streaming case; the spec sentence dates from `4c9db70` (settled: none) (unstated: 6 — CDC buffer sizes in `tusb_config.h`; unspecified descriptor values in `usb_device.cpp` (bMaxPower, bcdUSB, bcdDevice, langid, endpoint sizes); the `kButtonCount` range `static_assert`; `--demo` output lines, failure path and ignored `--master`; `requirements.md` wording beyond the word swap; ADR-0019's joydev note)
+- closure test: pass
+- findings: 1
+- finding keys: §Plan tests/ps2_codec_cases.cpp
+- spec size: 20040 (+237 since the previous validation)
+- upstream: none
+- not-ours: none
+- verdict: returned to spec
+
+## Validation — 2026-10-09
+- criteria: 21 passed / 0 failed (bench criteria run live again: `hil: PASS`, `hidutil` 2 matches)
+- project gates: test pass, lint pass, typecheck pass (carried over)
+- gates tree: 4863cf720b677e1880dbe3c9263799ba94aa7a8b
+- boundary sweep: clean
+- independent review: undecidable: Plan step 4 "`sg2hid` alone gains the two `src/usb/` sources" — `CMakeLists.txt` compiles one (`usb_device.cpp`); the spec does not name the two (settled: none) (unstated: 8 — descriptor values in `usb_device.cpp`; GET_REPORT ignores type/id; CDC buffer sizes; the `kButtonCount` range `static_assert`; `--demo` output/failure path/ignored `--master`; `--demo`'s whammy payload bytes; ADR-0019's joydev note; verify.md 8.2's move order)
+- closure test: fail: the undecidable above is a missing pointer
+- findings: 1
+- finding keys: §Plan CMakeLists.txt
+- spec size: 20037 (-3 since the previous validation)
+- upstream: commands/validate-phase.md — /belay-feedback recommended (round cap reached on fresh, unrelated findings each round)
+- not-ours: none
+- verdict: done (operator-closed at round cap: 1 open)
