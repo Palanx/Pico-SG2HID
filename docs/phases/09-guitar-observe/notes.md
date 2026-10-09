@@ -5,6 +5,7 @@
 - base: `6a3d060` (the phase's own work is the commit after it; the two commits between
   `f9913a6`, the expansion, and the base are the tech-debt work below, committed apart so this
   phase's diff does not carry it)
+- not-ours: .claude/rules/tech-debt.md — the operator: the two paid entries removed (3f83e24) and the belay reviewer-breach watch added, both tech-debt log upkeep this spec puts out of scope
 - **Where implementation stopped (2026-10-09, round 1):** Plan steps 1, 2, 3 and 6 are done. Steps 4,
   5 and 7 are bench steps owed by the operator (`verify.md` Parts 2, 3 and 4). Steps 8–11 need the
   captures step 7 produces and have not started. The G table is therefore not yet in this file;

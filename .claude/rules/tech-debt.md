@@ -2,6 +2,7 @@
 paths:
   - "tests/test_rule_traceability.py"
   - "tests/test_checks_are_live.py"
+  - "docs/phases/*/notes.md"
 ---
 
 # Tech debt log
@@ -42,3 +43,21 @@ Fix, cheapest first:
   the neutered helpers that no case reaches will surface as survivors to triage.
 
 Where it was found: the debt sweep after `27-live-mutant-cache` closed, 2026-10-08.
+
+## belay's step-5 reviewer is starved by instruction only (reviewed 2026-10-09)
+
+Files: `docs/phases/*/notes.md` (the `- independent review:` line of every `## Validation` block)
+
+`/validate-phase` step 5 hands its reviewer four inputs and tells it to use nothing else. The
+subagent still has the session's tools and can read the whole repo. In `07-analog-mode` round 2
+the reviewer ran a `diff -q` of its `CLAUDE.md` copy against the repo's, outside those inputs; it
+recorded the call on the review line and did not use it.
+
+Nothing breaks while the reviewer keeps to its inputs, or reports when it does not. A reviewer
+that reads the rest of `notes.md` or a dependency's notes judges the diff against what the session
+meant, which is the bias the starvation exists to remove.
+
+When a `- independent review:` line, or anything else in a validation round, shows the reviewer
+reading outside its four inputs: run `/belay-feedback` with that line, and say whether the outside
+read fed a verdict. The fix is belay's (restrict the reviewer's tools, or have the review line
+record every outside read), not this project's.
