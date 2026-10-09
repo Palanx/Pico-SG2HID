@@ -27,14 +27,14 @@ if( NOT PICO_SDK_VERSION_STRING STREQUAL SG2HID_PICO_SDK_VERSION )
                          "but this firmware is pinned to ${SG2HID_PICO_SDK_VERSION} (ADR-0014)" )
 endif( )
 
-# Three firmwares, each from an explicit list: a glob over src/hal/ would link the master's and the
+# Four firmwares, each from an explicit list: a glob over src/hal/ would link the master's and the
 # emulator's PIO ports into both, and each claims the bus pins from its own table; a glob over
 # src/app/ would give the master two main( )s.
 file( GLOB SG2HID_CORE_SOURCES CONFIGURE_DEPENDS src/core/*.cpp )
 file( GLOB SG2HID_EMU_SOURCES CONFIGURE_DEPENDS src/emu/*.cpp )
 
-# The two master firmwares share everything but their main( ).
-set( SG2HID_MASTER_SOURCES ${SG2HID_CORE_SOURCES} src/hal/bus_frame.cpp src/hal/pio_port.cpp )
+# The master firmwares share everything but their main( ).
+set( SG2HID_MASTER_SOURCES ${SG2HID_CORE_SOURCES} src/hal/bus_frame.cpp src/hal/pio_port.cpp src/app/console.cpp )
 function( add_master_firmware target main_source )
     set( target_sources ${SG2HID_MASTER_SOURCES} ${main_source} )
     add_executable( ${target} ${target_sources} )
@@ -69,6 +69,10 @@ target_include_directories( sg2hid SYSTEM PRIVATE ${PICO_TINYUSB_PATH}/src )
 
 # The loopback that carries R-PROTO-01's bit-order probe (24-pio-bus): build/pico/sg2hid_loopback.uf2.
 add_master_firmware( sg2hid_loopback src/app/loopback.cpp )
+
+# The observe instrument the real guitar first meets the bus through (09-guitar-observe):
+# build/pico/sg2hid_observe.uf2. Trace lines only, no HID, so it leaves TinyUSB to the SDK.
+add_master_firmware( sg2hid_observe src/app/observe.cpp )
 
 # The emulator, flashed to a second Pico (ADR-0004): build/pico/sg2hid_emu.uf2.
 set( SG2HID_EMU_ALL_SOURCES ${SG2HID_CORE_SOURCES} src/hal/pio_device.cpp ${SG2HID_EMU_SOURCES} )

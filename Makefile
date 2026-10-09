@@ -11,7 +11,9 @@
 #   make firmware  Builds build/pico/sg2hid.uf2 (the master, an analog-mode poller since
 #                  07-analog-mode and a composite CDC + HID gamepad since 08-usb-hid),
 #                  build/pico/sg2hid_loopback.uf2 (the 24-pio-bus loopback and bit-order
-#                  probe) and build/pico/sg2hid_emu.uf2 (the emulator, 05-emulator). Needs
+#                  probe), build/pico/sg2hid_emu.uf2 (the emulator, 05-emulator) and
+#                  build/pico/sg2hid_observe.uf2 (the read-only trace instrument the real
+#                  guitar first meets, 09-guitar-observe). Needs
 #                  cmake, arm-none-eabi-gcc and
 #                  PICO_SDK_PATH pointing at pico-sdk 2.3.1 (ADR-0014). Also writes
 #                  build/pico/compile_commands.json, which `make lint` reads for
