@@ -5,13 +5,20 @@
 // program shifted in and waits the delay it returns; tests/emulator_cases.cpp feeds it hand-
 // written vectors (R-EMU-01, R-EMU-02).
 //
-// One poll frame, wire byte i, from the controller's side:
+// One frame, wire byte i, from the controller's side:
 //
 //     i       0      1     2      3 … frame_len( id )
 //     sends   0xFF   id    0x5A   payload bytes
-//     ACKs    when the master sent 0x01 at 0 and 0x42 at 1, then every byte but the last
+//     ACKs    when the master sent 0x01 at 0 and an accepted command at 1, then every byte but
+//             the last
 //
 // A frame broken at byte 0 or 1 gets no ACK from that byte on, and 0xFF on every later byte.
+// Accepted commands are 0x42 (poll) and 0x43 (config), plus 0x44 (set mode) in config mode. In
+// config mode the id is 0xF3 and the payload six 0x00 bytes (07-analog-mode).
+//
+// A 0x43 or 0x44 command takes effect at the start of the next frame, and only when the master's
+// wire byte 3, the command's argument, arrived (ADR-0017): a real controller has already answered
+// most of the frame before it has seen the whole command.
 //
 // The answer to byte i is decided when byte i-1 arrives, because the PIO program shifts it out
 // while the master's byte i is still coming in.
@@ -46,6 +53,9 @@ constexpr std::uint8_t kIdleByte = 0xFF;
 constexpr std::uint8_t kButtonsReleased = 0xFF;
 constexpr std::uint8_t kAxisCentred     = 0x80;
 
+// What a config-mode answer carries in every payload byte.
+constexpr std::uint8_t kConfigReplyByte = 0x00;
+
 // What to do after the master's byte at the current wire index.
 struct ByteAnswer {
     std::uint8_t  next;          // the byte to shift out for the next wire index
@@ -55,7 +65,8 @@ struct ByteAnswer {
 
 using Payload = std::array<std::uint8_t, kMaxPayload>;
 
-enum class FaultKind : std::uint8_t { None, Ack, Late, Id };
+// Decline makes `44 … 01` (select analog) select nothing.
+enum class FaultKind : std::uint8_t { None, Ack, Late, Id, Decline };
 
 struct Fault {
     FaultKind     kind;
@@ -64,7 +75,8 @@ struct Fault {
 
 class SgModel {
 public:
-    // The start of a frame: ATT fell. Wire byte 0's answer is kIdleByte.
+    // The start of a frame: ATT fell. Applies the previous frame's 0x43 / 0x44 command, if its
+    // argument arrived. Wire byte 0's answer is kIdleByte.
     void reset();
 
     // The master sent `received` at the current wire index; advances to the next.
@@ -75,19 +87,25 @@ public:
     [[nodiscard]] std::expected<void, std::string_view> apply( std::string_view line );
 
 private:
+    void                       apply_command();
+    [[nodiscard]] ControllerId mode_id() const;
     [[nodiscard]] std::uint8_t byte_at( std::size_t index ) const;
     [[nodiscard]] std::size_t  last_index() const;
 
-    bool        m_is_analog = false;
-    Payload     m_payload   = { kButtonsReleased,
-                                kButtonsReleased,
-                                kAxisCentred,
-                                kAxisCentred,
-                                kAxisCentred,
-                                kAxisCentred };
-    Fault       m_fault     = { .kind = FaultKind::None, .value = 0 };
-    std::size_t m_index     = 0;
-    bool        m_is_broken = false;
+    bool         m_is_analog    = false;
+    bool         m_is_config    = false;
+    std::uint8_t m_command      = 0;  // the master's wire byte 1 in the current frame
+    std::uint8_t m_argument     = 0;  // the master's wire byte 3 in the current frame
+    bool         m_has_argument = false;
+    Payload      m_payload      = { kButtonsReleased,
+                                    kButtonsReleased,
+                                    kAxisCentred,
+                                    kAxisCentred,
+                                    kAxisCentred,
+                                    kAxisCentred };
+    Fault        m_fault        = { .kind = FaultKind::None, .value = 0 };
+    std::size_t  m_index        = 0;
+    bool         m_is_broken    = false;
 };
 
 }  // namespace ps2

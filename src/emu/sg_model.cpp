@@ -7,14 +7,15 @@ namespace ps2 {
 
 namespace {
 
-constexpr std::size_t   kWireIdIndex      = 1;
-constexpr std::size_t   kWireReadyIndex   = 2;
-constexpr std::size_t   kWirePayloadStart = 3;
-constexpr std::size_t   kMaxAckByte       = 7;  // the last wire byte an analog frame ACKs
-constexpr std::uint32_t kMaxLateUs        = 10000;
-constexpr int           kHexBase          = 16;
-constexpr int           kDecimalBase      = 10;
-constexpr std::size_t   kHexDigits        = 2;
+constexpr std::size_t   kWireIdIndex       = 1;
+constexpr std::size_t   kWireReadyIndex    = 2;
+constexpr std::size_t   kWirePayloadStart  = 3;
+constexpr std::size_t   kWireArgumentIndex = 3;  // a 0x43 / 0x44 command's argument
+constexpr std::size_t   kMaxAckByte        = 7;  // the last wire byte an analog frame ACKs
+constexpr std::uint32_t kMaxLateUs         = 10000;
+constexpr int           kHexBase           = 16;
+constexpr int           kDecimalBase       = 10;
+constexpr std::size_t   kHexDigits         = 2;
 
 // Splits off the next space-separated word; `rest` keeps what follows it.
 [[nodiscard]] std::string_view next_word( std::string_view& rest ) {
@@ -79,15 +80,19 @@ constexpr std::size_t   kHexDigits        = 2;
     return payload;
 }
 
-// `fault none|ack <n>|late <us>|id <hh>`.
+// `fault none|ack <n>|late <us>|id <hh>|decline`.
 [[nodiscard]] std::expected<Fault, std::string_view> parse_fault( std::string_view rest ) {
-    const std::string_view kind = next_word( rest );
-    const std::string_view arg  = next_word( rest );
+    constexpr std::string_view kUsage = "usage: fault none|ack <n>|late <us>|id <hh>|decline";
+    const std::string_view     kind   = next_word( rest );
+    const std::string_view     arg    = next_word( rest );
     if ( !next_word( rest ).empty() ) {
-        return std::unexpected( "usage: fault none|ack <n>|late <us>|id <hh>" );
+        return std::unexpected( kUsage );
     }
     if ( kind == "none" && arg.empty() ) {
         return Fault{ .kind = FaultKind::None, .value = 0 };
+    }
+    if ( kind == "decline" && arg.empty() ) {
+        return Fault{ .kind = FaultKind::Decline, .value = 0 };
     }
     if ( kind == "ack" ) {
         const auto n = parse_number( arg, kDecimalBase );
@@ -110,18 +115,42 @@ constexpr std::size_t   kHexDigits        = 2;
         }
         return Fault{ .kind = FaultKind::Id, .value = *id };
     }
-    return std::unexpected( "usage: fault none|ack <n>|late <us>|id <hh>" );
+    return std::unexpected( kUsage );
 }
 
 }  // namespace
 
+void SgModel::apply_command() {
+    const bool is_declined = m_fault.kind == FaultKind::Decline;
+    if ( m_command == kCmdConfig && m_argument == kConfigEnter ) {
+        m_is_config = true;
+    } else if ( m_command == kCmdConfig && m_argument == kConfigLeave ) {
+        m_is_config = false;
+    } else if ( m_command == kCmdSetMode && m_argument == kModeAnalog && !is_declined ) {
+        m_is_analog = true;
+    } else if ( m_command == kCmdSetMode && m_argument == kModeDigital ) {
+        m_is_analog = false;
+    }
+}
+
 void SgModel::reset() {
-    m_index     = 0;
-    m_is_broken = false;
+    if ( m_has_argument ) {
+        apply_command();
+    }
+    m_has_argument = false;
+    m_index        = 0;
+    m_is_broken    = false;
+}
+
+ControllerId SgModel::mode_id() const {
+    if ( m_is_config ) {
+        return ControllerId::Config;
+    }
+    return m_is_analog ? ControllerId::Analog : ControllerId::Digital;
 }
 
 std::size_t SgModel::last_index() const {
-    return frame_len( m_is_analog ? ControllerId::Analog : ControllerId::Digital );
+    return frame_len( mode_id() );
 }
 
 std::uint8_t SgModel::byte_at( std::size_t index ) const {
@@ -129,22 +158,31 @@ std::uint8_t SgModel::byte_at( std::size_t index ) const {
         if ( m_fault.kind == FaultKind::Id ) {
             return static_cast<std::uint8_t>( m_fault.value );
         }
-        return m_is_analog ? kIdAnalog : kIdDigital;
+        return static_cast<std::uint8_t>( mode_id() );
     }
     if ( index == kWireReadyIndex ) {
         return kReadyByte;
     }
     if ( index >= kWirePayloadStart && index <= last_index() ) {
-        return m_payload[ index - kWirePayloadStart ];
+        return m_is_config ? kConfigReplyByte : m_payload[ index - kWirePayloadStart ];
     }
     return kIdleByte;
 }
 
 ByteAnswer SgModel::step( std::uint8_t received ) {
-    const std::size_t index = m_index++;
+    const std::size_t index               = m_index++;
+    const bool        is_command_accepted = received == kCmdPoll || received == kCmdConfig ||
+                                            ( m_is_config && received == kCmdSetMode );
     if ( ( index == 0 && received != kFrameStart ) ||
-         ( index == kWireIdIndex && received != kCmdPoll ) ) {
+         ( index == kWireIdIndex && !is_command_accepted ) ) {
         m_is_broken = true;
+    }
+    if ( !m_is_broken && index == kWireIdIndex ) {
+        m_command = received;
+    }
+    if ( !m_is_broken && index == kWireArgumentIndex ) {
+        m_argument     = received;
+        m_has_argument = true;
     }
     bool should_ack = !m_is_broken && index < last_index();
     if ( m_fault.kind == FaultKind::Ack && index == m_fault.value ) {
@@ -169,6 +207,7 @@ std::expected<void, std::string_view> SgModel::apply( std::string_view line ) {
     if ( verb == "mode" ) {
         return parse_mode( rest ).transform( [ this ]( bool is_analog ) {
             m_is_analog = is_analog;
+            m_is_config = false;
         } );
     }
     if ( verb == "payload" ) {

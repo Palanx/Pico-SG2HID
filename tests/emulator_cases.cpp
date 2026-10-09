@@ -10,8 +10,10 @@
 
 #include "emu/sg_model.h"
 #include "vectors/analog_idle.h"
+#include "vectors/config_mode.h"
 #include "vectors/digital_idle.h"
 #include "vectors/digital_pressed.h"
+#include "vectors/negotiation.h"
 #include "vectors/poll_exchange.h"
 
 #include <cstdio>
@@ -74,6 +76,21 @@ struct Frame {
     for ( std::size_t i = 0; i < kWireBytes; ++i ) {
         if ( got.sent[ i ] != want.sent[ i ] || got.is_acked[ i ] != want.is_acked[ i ] ||
              got.delay_us[ i ] != want.delay_us[ i ] ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// `got` against `want` over the first `driven` wire bytes: what was sent at each, and the ACK of
+// each but the last, which the master never waits for. For a frame the master cuts short of the
+// controller's answer, such as the 5-byte enter-config.
+[[nodiscard]] bool same_prefix( const Frame& got, const Frame& want, std::size_t driven ) {
+    for ( std::size_t i = 0; i < driven && i < kWireBytes; ++i ) {
+        const bool is_waited_on = i + 1 < driven;
+        if ( got.sent[ i ] != want.sent[ i ] ||
+             ( is_waited_on && ( got.is_acked[ i ] != want.is_acked[ i ] ||
+                                 got.delay_us[ i ] != want.delay_us[ i ] ) ) ) {
             return false;
         }
     }
@@ -149,19 +166,69 @@ struct Frame {
                 is_ok;
     }
     {
-        // Addressed, then a command the model does not answer: ACK at 0 only.
-        constexpr std::uint8_t kWrongCommand[] = { 0x01, 0x43, 0x00, 0x00, 0x00 };
-        ps2::SgModel           model;
-        const Frame            frame   = drive( model, kWrongCommand );
-        bool                   is_none = true;
+        // Addressed, then set-mode outside config mode: ACK at 0 only.
+        ps2::SgModel model;
+        const Frame  frame   = drive( model, vectors::kSetAnalog );
+        bool         is_none = true;
         for ( std::size_t i = 1; i < kWireBytes; ++i ) {
             is_none = is_none && !frame.is_acked[ i ];
         }
-        is_ok =
-            expect( frame.is_acked[ 0 ] && is_none, "01 43 gets no ACK from byte 1 on" ) && is_ok;
-        is_ok = expect( released_after( frame, 1, std::size( kWrongCommand ) ),
-                        "01 43 gets 0xFF after byte 1" ) &&
+        is_ok = expect( frame.is_acked[ 0 ] && is_none,
+                        "01 44 outside config mode gets no ACK from byte 1 on" ) &&
                 is_ok;
+        is_ok = expect( released_after( frame, 1, std::size( vectors::kSetAnalog ) ),
+                        "01 44 outside config mode gets 0xFF after byte 1" ) &&
+                is_ok;
+    }
+    return is_ok;
+}
+
+// --- R-EMU-01: config mode and the analog-mode sequence (07-analog-mode) -------------------
+
+// Drives the three negotiation frames from tests/vectors/negotiation.h, then a poll, and returns
+// the poll's frame. `answers` receives the three negotiation frames.
+[[nodiscard]] Frame negotiate( ps2::SgModel& model, Frame ( &answers )[ 3 ] ) {
+    answers[ 0 ] = drive( model, vectors::kEnterConfig );
+    answers[ 1 ] = drive( model, vectors::kSetAnalog );
+    answers[ 2 ] = drive( model, vectors::kLeaveConfig );
+    return poll( model );
+}
+
+[[nodiscard]] bool config_mode() {
+    bool        is_ok  = true;
+    const Frame config = faithful( vectors::kConfigMode );
+    {
+        ps2::SgModel model;
+        Frame        answers[ 3 ];
+        const Frame  polled = negotiate( model, answers );
+        is_ok               = expect( same_prefix( answers[ 0 ],
+                                                   faithful( vectors::kDigitalIdle ),
+                                                   std::size( vectors::kEnterConfig ) ),
+                                      "from boot, the enter is answered as kDigitalIdle" ) &&
+                              is_ok;
+        is_ok               = expect( same( answers[ 1 ], config ),
+                                      "set-analog is answered as kConfigMode, byte 8 not ACKed" ) &&
+                              is_ok;
+        is_ok = expect( same( answers[ 2 ], config ),
+                        "leave-config is answered as kConfigMode, byte 8 not ACKed" ) &&
+                is_ok;
+        is_ok = expect( same( polled, faithful( vectors::kAnalogIdle ) ),
+                        "the poll after the sequence is answered as kAnalogIdle" ) &&
+                is_ok;
+    }
+    {
+        constexpr std::size_t kAnsweredLen = std::size( vectors::kEnterConfig ) - 1;
+        ps2::SgModel          model;
+        const bool            is_applied = applied( model, "mode analog" );
+        const Frame           entered    = drive( model, vectors::kEnterConfig );
+        is_ok =
+            expect( is_applied &&
+                        same_prefix(
+                            entered,
+                            faithful( std::span( vectors::kAnalogIdle ).first( kAnsweredLen ) ),
+                            std::size( vectors::kEnterConfig ) ),
+                    "after mode analog, the enter is answered with kAnalogIdle's first 4 bytes" ) &&
+            is_ok;
     }
     return is_ok;
 }
@@ -208,6 +275,14 @@ struct Frame {
     }
     {
         ps2::SgModel model;
+        Frame        answers[ 3 ];
+        const bool   is_applied = applied( model, "fault decline" );
+        is_ok = expect( is_applied && same( negotiate( model, answers ), idle ),
+                        "fault decline: the poll after the sequence is still kDigitalIdle" ) &&
+                is_ok;
+    }
+    {
+        ps2::SgModel model;
         is_ok = expect( applied( model, "mode analog\r" ) &&
                             same( poll( model ), faithful( vectors::kAnalogIdle ) ),
                         "a trailing CR is ignored" ) &&
@@ -230,6 +305,7 @@ struct Frame {
         "fault ack 8",
         "fault late 0",
         "fault late 10001",
+        "fault decline x",
         "mode analog                                                      ",
     };
     for ( const std::string_view line : kRefused ) {
@@ -252,10 +328,11 @@ struct Frame {
 }  // namespace
 
 int main() {
-    bool is_ok = true;
-    is_ok =
-        report( faithful_answer(), "R-EMU-01 (the emulator answers a poll as the vectors say)" ) &&
-        is_ok;
+    bool       is_ok        = true;
+    const bool is_config_ok = config_mode();
+    is_ok = report( faithful_answer() && is_config_ok,
+                    "R-EMU-01 (the emulator answers a poll as the vectors say)" ) &&
+            is_ok;
     const bool is_faults_ok = faults();
     is_ok                   = report( refused_lines() && is_faults_ok,
                                       "R-EMU-02 (each fault and command changes only its part)" ) &&

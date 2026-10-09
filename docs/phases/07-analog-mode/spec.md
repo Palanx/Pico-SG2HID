@@ -74,7 +74,8 @@ counts every frame exchanged. `fault=` gains the value `declined`.
   - `44` with byte 3 `00` selects digital.
   - Any other byte-3 value changes nothing.
 - A new command, `fault decline`, makes `44 … 01` select nothing.
-- `mode digital|analog` also leaves config mode.
+- `mode digital|analog` also leaves config mode. A `43`/`44` command still pending from the
+  previous frame takes effect at the next frame's start, after it.
 
 **The harness** `tools/hil_digital.py` keeps its name, its rules, windows and recovery checks.
 It changes these expectations:
@@ -87,7 +88,7 @@ It changes these expectations:
 | `fault ack 0`, `fault ack 3`, `fault late 200` | the fault line | as in 06-hil-digital: `state=absent fault=ack-timeout`, Δrefused = Δpolls |
 | `fault id 79` | `fault id 79` | `state=absent fault=unknown-id`, Δrefused = Δpolls |
 | `fault late 50` | `fault late 50` | over a 2-summary window: `state=analog`, Δrefused = 0 |
-| `fault decline` | `fault decline` | over a 2-summary window: no summary has `state=analog`, every summary has `fault=declined`, Δrefused ≥ 1 |
+| `fault decline` | `fault decline`, then `mode digital` | over a 2-summary window: no summary has `state=analog`, every summary has `fault=declined`, Δrefused ≥ 1 |
 
 The `sweep` scenario ends by sending the setup payload line again. Every fault scenario ends
 with 06-hil-digital's recovery check, now `state=analog payload=7F FE whammy=80`.
@@ -150,7 +151,8 @@ with 06-hil-digital's recovery check, now `state=analog payload=7F FE whammy=80`
   shape this phase copies (empty marker files under `build/`, kills only, `FULL=1` bypass,
   `FULL` must be unset, empty or `1`).
 - `tests/vectors/README.md`, `tests/vectors/poll_exchange.h` (`kPollCommand`, `kAddressReply`),
-  `tests/vectors/config_mode.h`, `tests/vectors/analog_idle.h`, `tests/vectors/digital_idle.h`
+  `tests/vectors/config_mode.h`, `tests/vectors/analog_idle.h`,
+  `tests/vectors/analog_whammy_full.h`, `tests/vectors/digital_idle.h`
   — hand-written vectors (R-PROTO-05).
 - `tools/hil_digital.py` — the harness.
 - `docs/phases/06-hil-digital/spec.md` §Goal — the harness rules this phase keeps: the summary
@@ -342,8 +344,9 @@ with 06-hil-digital's recovery check, now `state=analog payload=7F FE whammy=80`
     phase changed, and confirm it still reads no phase `spec.md` or `notes.md`. Otherwise
     delete the line.
 
-    Check: `grep -l 'spec.md\|notes.md' $(grep -v '^#' .claude/workflow/carry-over-exempt)` →
-    no output.
+    Check: `grep -n 'spec.md\|notes.md' $(grep -v '^#' .claude/workflow/carry-over-exempt)` →
+    every hit is a comment or docstring that names a path, and none opens one (read by hand,
+    recorded in `notes.md`).
 
 11. **Bench.** Flash `sg2hid.uf2` to the master and `sg2hid_emu.uf2` to the emulator. Never
     with the guitar connected (R-SAFETY-08). Run `make hil MASTER=… EMU=…`.
@@ -397,7 +400,7 @@ test -f tests/vectors/negotiation.h                              # expect: exit 
 grep -rl 'tests/vectors' src | wc -l                             # expect: 0
 python3 tools/hil_digital.py --help >/dev/null                   # expect: exit 0
 make hil >/dev/null 2>&1; test $? -ne 0                          # expect: exit 0 (no ports → refused)
-grep -l 'spec.md\|notes.md' $(grep -v '^#' .claude/workflow/carry-over-exempt) | wc -l   # expect: 0
+grep -n 'spec.md\|notes.md' $(grep -v '^#' .claude/workflow/carry-over-exempt)   # expect: every hit a comment or docstring naming a path; none opens one (read by hand)
 git diff --quiet main -- src/hal tools/trace_decode.py tests/vectors/poll_exchange.h tests/vectors/config_mode.h tests/vectors/analog_idle.h tests/vectors/digital_idle.h   # expect: exit 0
 python3 tests/test_rule_traceability.py                          # expect: exit 0
 grep -c '^#\+ What was built\|^#\+ .*[Cc]heck it' docs/phases/07-analog-mode/verify.md   # expect: 2

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Two-Pico hardware-in-the-loop run for phase 06-hil-digital. Standard library only.
+"""Two-Pico hardware-in-the-loop run, phases 06-hil-digital and 07-analog-mode. Standard library
+only.
 
-The master (build/pico/sg2hid.uf2) polls the emulator (build/pico/sg2hid_emu.uf2) once a
-millisecond and prints a `hil:` summary every 1000 polls. This harness tells the emulator what to
-answer, through the 05-emulator command grammar, and judges the master's summaries. It prints
-`ok: <scenario>` or `FAIL: <scenario>: <reason>` per scenario, stops at the first FAIL, sends
-`fault none` to the emulator before it exits, and ends with `hil: PASS` (exit 0) or `hil: FAIL`
-(exit 1). The scenarios and what each must show are in docs/phases/06-hil-digital/spec.md §Goal.
+The master (build/pico/sg2hid.uf2) negotiates analog mode with the emulator
+(build/pico/sg2hid_emu.uf2), then polls it once a millisecond, and prints a `hil:` summary every
+1000 frames. This harness tells the emulator what to answer, through the 05-emulator command
+grammar plus `fault decline`, and judges the master's summaries. It prints `ok: <scenario>` or
+`FAIL: <scenario>: <reason>` per scenario, stops at the first FAIL, sends `fault none` to the
+emulator before it exits, and ends with `hil: PASS` (exit 0) or `hil: FAIL` (exit 1). The rules it
+keeps are in docs/phases/06-hil-digital/spec.md §Goal; the scenarios and what each must show are
+in docs/phases/07-analog-mode/spec.md §Goal.
 
     tools/hil_digital.py --master /dev/cu.usbmodem101 --emu /dev/cu.usbmodem2101
 """
@@ -23,7 +26,7 @@ import tty
 SUMMARY = re.compile(
     r"hil: polls=(?P<polls>\d+) refused=(?P<refused>\d+) changes=(?P<changes>\d+)"
     r" us=(?P<us>\d+) state=(?P<state>\S+) fault=(?P<fault>\S+) att=(?P<att>\S+)"
-    r" payload=(?P<payload>.+)$"
+    r" payload=(?P<payload>.+) whammy=(?P<whammy>\S+)$"
 )
 COUNTERS = ("polls", "refused", "changes", "us")
 
@@ -39,6 +42,11 @@ DISCARDED_SUMMARIES = 2
 # The harness's own input, sent in `setup`; not a protocol-fixed byte (R-PROTO-05, 2026-09-17).
 PAYLOAD_LINE = "payload 7f fe 80 80 80 80"
 EXPECTED_PAYLOAD = "7F FE"
+EXPECTED_WHAMMY = "80"
+# The `sweep` scenario's whammy values: the last payload byte, which the master reads as the
+# whammy. Uppercase, as the master prints them.
+SWEEP_WHAMMY = ("00", "40", "80", "C0", "FF")
+SWEEP_LINE = "payload 7f fe 80 80 80 {}"
 
 # Everything a Port call raises: os and select raise OSError, tty.setraw( ) and
 # termios.tcdrain( ) raise termios.error, which is not an OSError.
@@ -147,8 +155,9 @@ class Harness:
 def expect_streaming(h, k):
     got, delta = h.window(k)
     for s in got:
-        if s["state"] != "digital" or s["payload"] != EXPECTED_PAYLOAD:
-            raise Failure(f"state={s['state']} payload={s['payload']}")
+        if (s["state"] != "analog" or s["payload"] != EXPECTED_PAYLOAD
+                or s["whammy"] != EXPECTED_WHAMMY):
+            raise Failure(f"state={s['state']} payload={s['payload']} whammy={s['whammy']}")
     if delta("refused") or delta("changes"):
         raise Failure(f"Δrefused={delta('refused')} Δchanges={delta('changes')}")
 
@@ -165,10 +174,31 @@ def expect_dropped(h, fault):
 def expect_late_kept(h):
     got, delta = h.window(FAULT_WINDOW)
     for s in got:
-        if s["state"] != "digital":
-            raise Failure(f"state={s['state']} fault={s['fault']}, expected digital")
+        if s["state"] != "analog":
+            raise Failure(f"state={s['state']} fault={s['fault']}, expected analog")
     if delta("refused"):
         raise Failure(f"Δrefused={delta('refused')}")
+
+
+def expect_declined(h):
+    got, delta = h.window(FAULT_WINDOW)
+    for s in got:
+        if s["state"] == "analog" or s["fault"] != "declined":
+            raise Failure(f"state={s['state']} fault={s['fault']}, expected declined, not analog")
+    if delta("refused") < 1:
+        raise Failure(f"Δrefused={delta('refused')}, expected at least 1")
+
+
+def sweep(h):
+    for value in SWEEP_WHAMMY:
+        h.send(SWEEP_LINE.format(value.lower()))
+        got, delta = h.window(1)
+        for s in got:
+            if s["state"] != "analog" or s["whammy"] != value:
+                raise Failure(f"state={s['state']} whammy={s['whammy']}, expected analog/{value}")
+        if delta("refused"):
+            raise Failure(f"whammy {value}: Δrefused={delta('refused')}")
+    h.send(PAYLOAD_LINE)
 
 
 def setup(h):
@@ -177,9 +207,12 @@ def setup(h):
     h.summary()
 
 
-def fault_scenario(line, check):
+def fault_scenario(line, check, then=()):
+    """`line`, then each of `then`, judged by `check`; then `fault none` and the recovery check."""
     def run(h):
         h.send(line)
+        for extra in then:
+            h.send(extra)
         check(h)
         h.send("fault none")
         try:
@@ -194,11 +227,15 @@ def scenarios(seconds):
     return [
         ("setup", setup),
         ("sustained", lambda h: expect_streaming(h, seconds)),
+        ("sweep", sweep),
         fault_scenario("fault ack 0", lambda h: expect_dropped(h, "ack-timeout")),
         fault_scenario("fault ack 3", lambda h: expect_dropped(h, "ack-timeout")),
         fault_scenario("fault late 200", lambda h: expect_dropped(h, "ack-timeout")),
         fault_scenario("fault id 79", lambda h: expect_dropped(h, "unknown-id")),
         fault_scenario("fault late 50", expect_late_kept),
+        # The emulator is analog by now, and the fault only acts on the next `44 … 01`: `mode
+        # digital` makes the master negotiate again, against the fault.
+        fault_scenario("fault decline", expect_declined, then=("mode digital",)),
     ]
 
 

@@ -7,6 +7,8 @@
 
 #include "core/poll.h"
 
+#include "vectors/analog_idle.h"
+#include "vectors/analog_whammy_full.h"
 #include "vectors/digital_idle.h"
 #include "vectors/digital_pressed.h"
 #include "vectors/poll_exchange.h"
@@ -94,29 +96,46 @@ using Wire = std::array<ps2::WireByte, kWireLen>;
                    "unknown id, completed 5: UnknownId" );
 }
 
+// The five steps of 06-hil-digital's tally, over analog frames: only a frame that left the link
+// AnalogStreaming counts toward payload changes.
 [[nodiscard]] bool case_tally() {
-    const Wire     idle_wire    = wire_of( vectors::kDigitalIdle );
-    const Wire     pressed_wire = wire_of( vectors::kDigitalPressed );
-    const auto     idle         = ps2::decode_poll( idle_wire, ps2::kDigitalPollLen );
-    const auto     pressed      = ps2::decode_poll( pressed_wire, ps2::kDigitalPollLen );
-    const auto     refused      = ps2::decode_poll( idle_wire, 0 );
-    ps2::PollTally tally{};
+    constexpr ps2::LinkState kAnalog     = ps2::LinkState::AnalogStreaming;
+    const Wire               idle_wire   = wire_of( vectors::kAnalogIdle );
+    const Wire               whammy_wire = wire_of( vectors::kAnalogWhammyFull );
+    const auto               idle        = ps2::decode_poll( idle_wire, kWireLen );
+    const auto               whammy      = ps2::decode_poll( whammy_wire, kWireLen );
+    const auto               refused     = ps2::decode_poll( idle_wire, 0 );
+    ps2::PollTally           tally{};
 
-    ps2::count_poll( tally, idle );
-    ps2::count_poll( tally, idle );
+    ps2::count_poll( tally, kAnalog, idle );
+    ps2::count_poll( tally, kAnalog, idle );
     const bool is_same_kept = tally.payload_changes == 0;
-    ps2::count_poll( tally, refused );
+    ps2::count_poll( tally, ps2::LinkState::Absent, refused );
     const bool is_refusal_counted = tally.refused == 1;
-    ps2::count_poll( tally, idle );
+    ps2::count_poll( tally, kAnalog, idle );
     const bool is_kept_across_refusal = tally.payload_changes == 0;
-    ps2::count_poll( tally, pressed );
+    ps2::count_poll( tally, kAnalog, whammy );
 
     bool is_ok = report( is_same_kept, "tally: idle, idle -> no change" );
     is_ok      = report( is_refusal_counted, "tally: a refusal -> refused 1" ) && is_ok;
     is_ok = report( is_kept_across_refusal, "tally: idle after a refusal -> no change" ) && is_ok;
-    is_ok = report( tally.payload_changes == 1, "tally: pressed -> one change" ) && is_ok;
+    is_ok = report( tally.payload_changes == 1, "tally: whammy full -> one change" ) && is_ok;
     constexpr std::uint32_t kPolls = 5;
     return report( tally.polls == kPolls, "tally: polls 5" ) && is_ok;
+}
+
+// A good frame the sequencer still dropped (a declined answer): refused, and its payload is
+// neither compared nor kept.
+[[nodiscard]] bool case_good_frame_left_absent_is_refused() {
+    const Wire     wire    = wire_of( vectors::kDigitalIdle );
+    const auto     outcome = ps2::decode_poll( wire, ps2::kDigitalPollLen );
+    ps2::PollTally tally{};
+
+    ps2::count_poll( tally, ps2::LinkState::Absent, outcome );
+
+    const bool is_ok = outcome.has_value() && tally.polls == 1 && tally.refused == 1 &&
+                       tally.payload_changes == 0 && !tally.has_payload;
+    return report( is_ok, "tally: a good digital frame left Absent -> refused, nothing else" );
 }
 
 }  // namespace
@@ -127,6 +146,7 @@ int main() {
     is_ok      = case_overlong_count_is_clamped() && is_ok;
     is_ok      = case_unknown_id() && is_ok;
     is_ok      = case_tally() && is_ok;
+    is_ok      = case_good_frame_left_absent_is_refused() && is_ok;
     std::printf( "test_poll: %s\n", is_ok ? "ok" : "FAIL" );
     return is_ok ? 0 : 1;
 }
