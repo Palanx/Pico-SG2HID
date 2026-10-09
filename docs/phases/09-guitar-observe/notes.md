@@ -58,8 +58,7 @@
     around the new scope; R-ERR-02 now names `std::optional`. R-TOOL-01 gains a `clang-query >= 23`
     probe (`tests/test_tool_versions.sh`, six probes). Liveness harness: 42/42 neutered, 116/116
     alternations caught.
-  - The tech-debt log itself is not edited: removing both entries is proposed to the operator and
-    waits for confirmation (interaction protocol).
+  - The tech-debt log entries were removed after the operator confirmed (see §For later phases).
 
 ## Deviations
 
@@ -87,10 +86,9 @@
 - **This phase, steps 4–11**: resume from `verify.md` Part 2. The observe firmware has never run on
   hardware. If Part 2 fails, the instrument is wrong, not the guitar: fix `observe.cpp` before any
   guitar contact.
-- **Tech-debt log**: once the operator confirms, remove the entries "`make test` runs its 16 test
-  files one after another" and "Grep checks have no type information" from
-  `.claude/rules/tech-debt.md`. The second entry's third option (porting every `test_repo_shape.sh`
-  finder to `clang-query`) was not taken; if the operator wants it kept as an entry, it is that
-  narrower one.
+- **Tech-debt log**: done 2026-10-09 on the operator's confirmation. The entries "`make test` runs
+  its 16 test files one after another" and "Grep checks have no type information" are removed from
+  `.claude/rules/tech-debt.md`, and its `paths:` narrowed to the remaining entry's two files.
+  Porting the other `test_repo_shape.sh` finders to `clang-query` was not taken and is not logged.
 - **10-guitar-full**: `make test` now runs in parallel and writes `build/host/test-logs/`; a phase that
   adds a test file pays nothing extra in wall clock unless the file is the new slowest one.
