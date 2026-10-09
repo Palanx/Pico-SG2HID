@@ -52,8 +52,21 @@ function( add_master_firmware target main_source )
     pico_add_extra_outputs( ${target} )
 endfunction( )
 
-# The master, the link poller (06-hil-digital): build/pico/sg2hid.uf2.
+# The master, the link poller and the HID gamepad (06-hil-digital, 08-usb-hid):
+# build/pico/sg2hid.uf2. It alone owns TinyUSB: linking tinyusb_device turns off the SDK's own USB
+# descriptors and its tusb_init( ), so src/usb/ supplies both (ADR-0018). src/usb is a plain include
+# directory and the SDK's tusb_config.h sits in a system one, so src/usb/tusb_config.h is the one
+# TinyUSB reads.
 add_master_firmware( sg2hid src/app/main.cpp )
+set( SG2HID_USB_SOURCES src/usb/usb_device.cpp )
+target_sources( sg2hid PRIVATE ${SG2HID_USB_SOURCES} )
+target_include_directories( sg2hid PRIVATE src/usb )
+set_source_files_properties( ${SG2HID_USB_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror" )
+target_link_libraries( sg2hid tinyusb_device pico_unique_id )
+# The SDK adds TinyUSB's headers as a plain include directory; repeated here as a system one, which
+# the compiler then keeps, so `make lint` diagnoses this repo's sources and not TinyUSB's.
+target_include_directories( sg2hid SYSTEM PRIVATE ${PICO_TINYUSB_PATH}/src )
+
 # The loopback that carries R-PROTO-01's bit-order probe (24-pio-bus): build/pico/sg2hid_loopback.uf2.
 add_master_firmware( sg2hid_loopback src/app/loopback.cpp )
 

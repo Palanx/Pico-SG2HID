@@ -276,7 +276,7 @@ make lint                                                        # expect: exit 
 make typecheck                                                   # expect: exit 0
 make firmware && test -f build/pico/sg2hid.uf2 && test -f build/pico/sg2hid_emu.uf2 && test -f build/pico/sg2hid_loopback.uf2   # expect: exit 0
 python3 tests/test_ps2_codec.py | grep -c 'ok: .*R-HID-0[12]'    # expect: 2
-python3 tests/test_ps2_codec.py | grep -c 'FAIL'                 # expect: 0
+python3 tests/test_ps2_codec.py | grep -c 'FAIL:'                # expect: 0
 grep -c '^- \*\*R-HID-0[12]\*\*' docs/constraints.md             # expect: 2
 python3 tests/test_rule_traceability.py                          # expect: exit 0
 test -f docs/adr/0018-usb-composite-hid.md                       # expect: exit 0

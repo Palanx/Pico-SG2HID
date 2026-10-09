@@ -19,14 +19,14 @@ a physical check the operator can perform to judge whether the work is correct.
 
 ## Users
 
-- **The operator** (project owner): plugs the Pico into a Mac or a Debian machine
+- **The operator** (project owner): plugs the Pico into a Mac or a Steam Deck (ADR-0019)
   and plays. Also builds, flashes, and physically verifies each phase.
-- **Any host OS**, macOS or Debian, acting as a plain USB HID consumer with no
+- **Either host OS**, macOS or SteamOS, acting as a plain USB HID consumer with no
   driver, kernel module, daemon, or configuration software installed.
 
 ## Capabilities
 
-- **R1 — Driverless HID gamepad.** The device enumerates on macOS and Debian as a
+- **R1 — Driverless HID gamepad.** The device enumerates on macOS and SteamOS as a
   standard USB HID gamepad. No driver, no host-side software, no configuration.
 - **R2 — Correct PS2 bus mastering.** The firmware clocks the bus LSB-first, SPI
   mode 3, at the documented rate, and waits for the controller's open-drain `ACK`

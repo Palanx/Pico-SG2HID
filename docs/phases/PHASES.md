@@ -20,7 +20,7 @@
 
 ## Feature: driverless SG-to-HID firmware  (/bootstrap-project 2026-08-31)
 
-Turns a wired PlayStation 2 Guitar Hero SG into a USB HID gamepad on macOS and Debian,
+Turns a wired PlayStation 2 Guitar Hero SG into a USB HID gamepad on macOS and SteamOS (ADR-0019),
 with the whammy bar as a real analog axis, using a Raspberry Pi Pico. Deliberately out
 of scope: the wireless Les Paul, any other PS2 device, rumble, Windows, the Pico 2, and
 any host-side software — see `docs/product/requirements.md` §Non-goals.
@@ -40,7 +40,7 @@ between them and may run in parallel.
 | 05-emulator | Second-Pico firmware in `src/emu/` that behaves as an SG: id, report bytes, `ACK` timing, digital or analog on command, plus injectable faults | 01-ps2-codec, 02-wiring | The emulator answers a manually driven frame correctly and can be told to drop an `ACK`, answer late, or report a wrong id; R-SAFETY-06 moves to `test:` | done |
 | 06-hil-digital | Hardware-in-the-loop: the master polls the emulator in digital mode | 24-pio-bus, 05-emulator | An automated two-Pico run polls for a sustained period with zero desyncs, and each injected fault produces the specified recovery instead of a hang | done |
 | 07-analog-mode | Config-mode sequence, analog-mode verification, whammy axis, against the emulator; also pays the tech-debt entries "Two `decode` / `step` contracts are specified and asserted by nothing", "Every `MUTATIONS`-list mutant runs on every `make test`" and "Test drivers copy the `Makefile`'s `CXXFLAGS` by hand" (operator's decision 2026-10-08) | 06-hil-digital | The master negotiates analog mode, verifies the analog header before reading the axis, and reads the emulator's swept whammy value end to end | done |
-| 08-usb-hid | TinyUSB HID gamepad descriptor and report transport, fed by emulator data | 07-analog-mode | macOS and Linux both enumerate the device with no driver and show every fret, both strums, and a continuous whammy axis in a standard gamepad tester; the Linux host is SteamOS on the operator's Steam Deck, standing in for Debian (same kernel `usbhid`/`hid-generic` path; operator, 2026-10-09) | expanded |
+| 08-usb-hid | TinyUSB HID gamepad descriptor and report transport, fed by emulator data | 07-analog-mode | macOS and Linux both enumerate the device with no driver and show every fret, both strums, and a continuous whammy axis in a standard gamepad tester; the Linux host is SteamOS on the operator's Steam Deck, standing in for Debian (same kernel `usbhid`/`hid-generic` path; operator, 2026-10-09) | in-progress |
 | 09-guitar-observe | First contact with the real SG, read-only through trace mode; reconcile the captured bytes with the codec | 04-trace-mode, 08-usb-hid | The operator captures real traces following a written procedure; every discrepancy against the codec becomes a new literal vector and a codec fix, or a recorded finding in `docs/constraints.md` | pending |
 | 10-guitar-full | Full pipeline on the real guitar: negotiation, polling, hotplug recovery, latency | 09-guitar-observe | The guitar plays through a gamepad tester on both hosts across repeated unplug/replug cycles with measured end-to-end latency inside one USB poll interval | pending |
 | 11-release | Flashable UF2, build and flash instructions, host-side setup notes for both OSes | 10-guitar-full | A clean clone builds the UF2 following only the README, and a second machine flashes it and plays without further steps | pending |

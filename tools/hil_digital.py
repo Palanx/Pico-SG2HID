@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Two-Pico hardware-in-the-loop run, phases 06-hil-digital and 07-analog-mode. Standard library
-only.
+"""Two-Pico hardware-in-the-loop run, phases 06-hil-digital, 07-analog-mode and 08-usb-hid.
+Standard library only.
 
 The master (build/pico/sg2hid.uf2) negotiates analog mode with the emulator
 (build/pico/sg2hid_emu.uf2), then polls it once a millisecond, and prints a `hil:` summary every
@@ -9,9 +9,14 @@ grammar plus `fault decline`, and judges the master's summaries. It prints `ok: 
 `FAIL: <scenario>: <reason>` per scenario, stops at the first FAIL, sends `fault none` to the
 emulator before it exits, and ends with `hil: PASS` (exit 0) or `hil: FAIL` (exit 1). The rules it
 keeps are in docs/phases/06-hil-digital/spec.md §Goal; the scenarios and what each must show are
-in docs/phases/07-analog-mode/spec.md §Goal.
+in docs/phases/07-analog-mode/spec.md §Goal, and the HID report each must show, the `buttons`
+scenario and `--demo` in docs/phases/08-usb-hid/spec.md §Goal.
+
+`--demo` needs only the emulator: it presses each control and sweeps the whammy, slowly, for a
+person watching a gamepad tester on the host the master is plugged into. It judges nothing.
 
     tools/hil_digital.py --master /dev/cu.usbmodem101 --emu /dev/cu.usbmodem2101
+    tools/hil_digital.py --demo --emu /dev/cu.usbmodem2101
 """
 
 import argparse
@@ -26,7 +31,7 @@ import tty
 SUMMARY = re.compile(
     r"hil: polls=(?P<polls>\d+) refused=(?P<refused>\d+) changes=(?P<changes>\d+)"
     r" us=(?P<us>\d+) state=(?P<state>\S+) fault=(?P<fault>\S+) att=(?P<att>\S+)"
-    r" payload=(?P<payload>.+) whammy=(?P<whammy>\S+)$"
+    r" payload=(?P<payload>.+) whammy=(?P<whammy>\S+) report=(?P<report>[0-9A-F]{2}(?: [0-9A-F]{2})*)$"
 )
 COUNTERS = ("polls", "refused", "changes", "us")
 
@@ -47,6 +52,30 @@ EXPECTED_WHAMMY = "80"
 # whammy. Uppercase, as the master prints them.
 SWEEP_WHAMMY = ("00", "40", "80", "C0", "FF")
 SWEEP_LINE = "payload 7f fe 80 80 80 {}"
+
+# The HID report the master shows, hand-written from 08-usb-hid's spec, never computed from core.
+# PAYLOAD_LINE presses tilt only (7f fe: bit 0 of the second byte clear, active low).
+STREAMING_REPORT = "00 02 80"
+NEUTRAL_REPORT = "00 00 80"
+SWEEP_REPORT = "00 02 {}"
+# Each control alone: the two button bytes of its payload, and the report that must follow.
+BUTTONS = (
+    ("green", "ff bf", "01 00 80"),
+    ("red", "ff df", "02 00 80"),
+    ("yellow", "ff ef", "04 00 80"),
+    ("blue", "ff 7f", "08 00 80"),
+    ("orange", "ff fb", "10 00 80"),
+    ("strum up", "ef ff", "20 00 80"),
+    ("strum down", "bf ff", "40 00 80"),
+    ("start", "f7 ff", "80 00 80"),
+    ("select", "fe ff", "00 01 80"),
+    ("tilt", "ff fe", "00 02 80"),
+)
+BUTTONS_LINE = "payload {} 80 80 80 80"
+
+DEMO_HOLD_S = 2.0
+DEMO_IDLE_LINE = "payload ff ff 80 80 80 80"
+DEMO_WHAMMY_LINE = "payload ff ff 80 80 80 {}"
 
 # Everything a Port call raises: os and select raise OSError, tty.setraw( ) and
 # termios.tcdrain( ) raise termios.error, which is not an OSError.
@@ -111,6 +140,20 @@ def checked_summary(line):
     return got
 
 
+def command(emu, text):
+    """Sends one emulator line and waits for its `ok:`."""
+    emu.write_line(text)
+    deadline = time.monotonic() + EMU_ANSWER_S
+    while True:
+        line = emu.read_line(deadline)
+        if line is None:
+            raise Failure(f"emulator did not answer '{text}'")
+        if line == f"ok: {text}":
+            return
+        if line.startswith("error:"):
+            raise Failure(f"emulator refused '{text}': {line}")
+
+
 class Harness:
     def __init__(self, master, emu):
         self.master = master
@@ -129,16 +172,7 @@ class Harness:
     def send(self, text):
         """Sends one emulator line and waits for its `ok:`; the master's older lines are dropped,
         but every `hil:` line among them is still checked."""
-        self.emu.write_line(text)
-        deadline = time.monotonic() + EMU_ANSWER_S
-        while True:
-            line = self.emu.read_line(deadline)
-            if line is None:
-                raise Failure(f"emulator did not answer '{text}'")
-            if line == f"ok: {text}":
-                break
-            if line.startswith("error:"):
-                raise Failure(f"emulator refused '{text}': {line}")
+        command(self.emu, text)
         for line in self.master.take_complete_lines():
             if line.startswith("hil:"):
                 checked_summary(line)
@@ -156,8 +190,9 @@ def expect_streaming(h, k):
     got, delta = h.window(k)
     for s in got:
         if (s["state"] != "analog" or s["payload"] != EXPECTED_PAYLOAD
-                or s["whammy"] != EXPECTED_WHAMMY):
-            raise Failure(f"state={s['state']} payload={s['payload']} whammy={s['whammy']}")
+                or s["whammy"] != EXPECTED_WHAMMY or s["report"] != STREAMING_REPORT):
+            raise Failure(f"state={s['state']} payload={s['payload']} whammy={s['whammy']}"
+                          f" report={s['report']}")
     if delta("refused") or delta("changes"):
         raise Failure(f"Δrefused={delta('refused')} Δchanges={delta('changes')}")
 
@@ -165,8 +200,9 @@ def expect_streaming(h, k):
 def expect_dropped(h, fault):
     got, delta = h.window(FAULT_WINDOW)
     for s in got:
-        if s["state"] != "absent" or s["fault"] != fault:
-            raise Failure(f"state={s['state']} fault={s['fault']}, expected absent/{fault}")
+        if s["state"] != "absent" or s["fault"] != fault or s["report"] != NEUTRAL_REPORT:
+            raise Failure(f"state={s['state']} fault={s['fault']} report={s['report']},"
+                          f" expected absent/{fault}/{NEUTRAL_REPORT}")
     if delta("refused") != delta("polls"):
         raise Failure(f"Δrefused={delta('refused')} of Δpolls={delta('polls')}")
 
@@ -174,8 +210,9 @@ def expect_dropped(h, fault):
 def expect_late_kept(h):
     got, delta = h.window(FAULT_WINDOW)
     for s in got:
-        if s["state"] != "analog":
-            raise Failure(f"state={s['state']} fault={s['fault']}, expected analog")
+        if s["state"] != "analog" or s["report"] != STREAMING_REPORT:
+            raise Failure(f"state={s['state']} fault={s['fault']} report={s['report']},"
+                          f" expected analog/{STREAMING_REPORT}")
     if delta("refused"):
         raise Failure(f"Δrefused={delta('refused')}")
 
@@ -183,8 +220,9 @@ def expect_late_kept(h):
 def expect_declined(h):
     got, delta = h.window(FAULT_WINDOW)
     for s in got:
-        if s["state"] == "analog" or s["fault"] != "declined":
-            raise Failure(f"state={s['state']} fault={s['fault']}, expected declined, not analog")
+        if s["state"] == "analog" or s["fault"] != "declined" or s["report"] != NEUTRAL_REPORT:
+            raise Failure(f"state={s['state']} fault={s['fault']} report={s['report']},"
+                          f" expected declined/{NEUTRAL_REPORT}, not analog")
     if delta("refused") < 1:
         raise Failure(f"Δrefused={delta('refused')}, expected at least 1")
 
@@ -194,11 +232,42 @@ def sweep(h):
         h.send(SWEEP_LINE.format(value.lower()))
         got, delta = h.window(1)
         for s in got:
-            if s["state"] != "analog" or s["whammy"] != value:
-                raise Failure(f"state={s['state']} whammy={s['whammy']}, expected analog/{value}")
+            report = SWEEP_REPORT.format(value)
+            if s["state"] != "analog" or s["whammy"] != value or s["report"] != report:
+                raise Failure(f"state={s['state']} whammy={s['whammy']} report={s['report']},"
+                              f" expected analog/{value}/{report}")
         if delta("refused"):
             raise Failure(f"whammy {value}: Δrefused={delta('refused')}")
     h.send(PAYLOAD_LINE)
+
+
+def buttons(h):
+    for control, button_bytes, report in BUTTONS:
+        h.send(BUTTONS_LINE.format(button_bytes))
+        got, delta = h.window(1)
+        for s in got:
+            if s["state"] != "analog" or s["report"] != report:
+                raise Failure(f"{control}: state={s['state']} report={s['report']},"
+                              f" expected analog/{report}")
+        if delta("refused"):
+            raise Failure(f"{control}: Δrefused={delta('refused')}")
+    h.send(PAYLOAD_LINE)
+
+
+def demo(emu):
+    """Each control, then each whammy value, held DEMO_HOLD_S; judges nothing."""
+    for line in ("fault none", "mode digital", DEMO_IDLE_LINE):
+        command(emu, line)
+    for control, button_bytes, _ in BUTTONS:
+        print(f"pressed: {control}", flush=True)
+        command(emu, BUTTONS_LINE.format(button_bytes))
+        time.sleep(DEMO_HOLD_S)
+    for value in SWEEP_WHAMMY:
+        print(f"whammy: {value}", flush=True)
+        command(emu, DEMO_WHAMMY_LINE.format(value.lower()))
+        time.sleep(DEMO_HOLD_S)
+    command(emu, DEMO_IDLE_LINE)
+    command(emu, "fault none")
 
 
 def setup(h):
@@ -228,6 +297,7 @@ def scenarios(seconds):
         ("setup", setup),
         ("sustained", lambda h: expect_streaming(h, seconds)),
         ("sweep", sweep),
+        ("buttons", buttons),
         fault_scenario("fault ack 0", lambda h: expect_dropped(h, "ack-timeout")),
         fault_scenario("fault ack 3", lambda h: expect_dropped(h, "ack-timeout")),
         fault_scenario("fault late 200", lambda h: expect_dropped(h, "ack-timeout")),
@@ -246,13 +316,29 @@ def at_least_one(text):
     return value
 
 
+def run_demo(path):
+    try:
+        demo(Port(path))
+    except (Failure, *PORT_ERRORS) as failure:
+        print(f"demo: FAIL: {failure}")
+        return 1
+    print("demo: done")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--master", required=True, help="the master Pico's serial port")
+    parser.add_argument("--master", help="the master Pico's serial port (not with --demo)")
     parser.add_argument("--emu", required=True, help="the emulator Pico's serial port")
     parser.add_argument("--seconds", type=at_least_one, default=60,
                         help="summaries in the sustained window (default 60)")
+    parser.add_argument("--demo", action="store_true",
+                        help="press each control and sweep the whammy for a gamepad tester")
     args = parser.parse_args()
+    if args.demo:
+        return run_demo(args.emu)
+    if args.master is None:
+        parser.error("--master is required unless --demo")
 
     name = "setup"
     emu = None

@@ -31,3 +31,7 @@ nothing pressed is therefore `0xFF 0xFF`, not `0x00 0x00`.
 literals are text: the expected value is a line, not bytes the controller sent. Both are
 written by hand and read only by `tests/test_bus_trace.py`, which compares them as whole lines
 and parses nothing.
+
+`hid_descriptor.h` is the other direction again, and not PS2 at all: the HID report descriptor
+the master sends the USB host (`08-usb-hid`, R-HID-01), written from the HID 1.11 item encoding.
+`tests/ps2_codec_cases.cpp` compares `src/core/hid_descriptor.h` with it byte for byte.

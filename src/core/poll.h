@@ -6,6 +6,7 @@
 // what the bytes mean.
 
 #include "core/bus_trace.h"
+#include "core/hid_report.h"
 #include "core/link.h"
 #include "core/ps2_frame.h"
 #include "core/ps2_protocol.h"
@@ -41,5 +42,14 @@ struct PollTally {
 // good analog one keeps the last good payload, so a change is always measured against the
 // previous good analog frame.
 void count_poll( PollTally& tally, LinkState now, const DecodeOutcome& outcome );
+
+// The report the host gets when there is no analog frame to report: no button set, the whammy
+// at kWhammyRest (R-HID-02, ADR-0018).
+[[nodiscard]] HidReport neutral_report();
+
+// The HID report for one frame, given the link state it left (`now`) and its decode: the
+// frame's controls while the link is AnalogStreaming, the neutral report otherwise (R-HID-02).
+// A press is never held on the host across a dropped link.
+[[nodiscard]] HidReport report_for( LinkState now, const DecodeOutcome& outcome );
 
 }  // namespace ps2
