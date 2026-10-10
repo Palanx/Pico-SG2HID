@@ -15,6 +15,7 @@
 // src/hal/ does, from src/core/pins.h (R-SAFETY-09, R-SAFETY-10).
 #include "app/console.h"
 #include "core/bus_trace.h"
+#include "core/command_line.h"
 #include "core/link.h"
 #include "core/negotiation.h"
 #include "core/poll.h"
@@ -30,7 +31,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <span>
-#include <string_view>
 
 namespace {
 
@@ -41,19 +41,9 @@ constexpr std::uint32_t kPortWaitMs   = 10;
 constexpr std::array<std::uint8_t, ps2::kDigitalPollLen> kReadPoll = {
     ps2::kFrameStart, ps2::kCmdPoll, ps2::kPadByte, ps2::kPadByte, ps2::kPadByte };
 
-constexpr std::string_view kAnalogCommand  = "analog";
-// The longest accepted line, its '\r', and one more, so a longer line is still refused whole.
-constexpr std::size_t      kLineBufferSize = kAnalogCommand.size() + 2;
-
 enum class Mode : std::uint8_t {
     Digital,
     Analog,
-};
-
-struct LineReader {
-    std::array<char, kLineBufferSize> text{};
-    std::size_t                       len         = 0;
-    bool                              is_overlong = false;
 };
 
 struct Observer {
@@ -62,40 +52,27 @@ struct Observer {
     ps2::Master      master{};                        // analog mode's sequence and link
     ps2::LinkState   shown = ps2::LinkState::Absent;  // the state the last `link:` line ended in
     ps2::TraceFilter filter{};
-    LineReader       reader{};
+    ps2::CommandLine line{};
 };
 
-// Reads at most one waiting character; on '\n', answers the line and, for `analog`, switches.
+// Reads at most one waiting character; answers a finished line and, for `analog`, switches.
 void poll_command( Observer& observer ) {
     const int c = getchar_timeout_us( 0 );
     if ( c == PICO_ERROR_TIMEOUT ) {
         return;
     }
-    LineReader& reader = observer.reader;
-    if ( c != '\n' ) {
-        if ( reader.len < reader.text.size() ) {
-            reader.text[ reader.len++ ] = static_cast<char>( c );
-        } else {
-            reader.is_overlong = true;
-        }
+    switch ( ps2::take_char( observer.line, static_cast<char>( c ) ) ) {
+    case ps2::LineEvent::Pending:
         return;
-    }
-    std::string_view line( reader.text.data(), reader.len );
-    const bool       is_overlong = reader.is_overlong;
-    reader                       = LineReader{};
-    if ( !line.empty() && line.back() == '\r' ) {
-        line.remove_suffix( 1 );
-    }
-    if ( line.empty() && !is_overlong ) {
-        return;
-    }
-    if ( line != kAnalogCommand || is_overlong ) {
+    case ps2::LineEvent::Unknown:
         std::printf( "error: unknown command\n" );
         return;
+    case ps2::LineEvent::Analog:
+        observer.mode   = Mode::Analog;
+        observer.master = ps2::Master{};
+        std::printf( "ok: analog\n" );
+        return;
     }
-    observer.mode   = Mode::Analog;
-    observer.master = ps2::Master{};
-    std::printf( "ok: analog\n" );
 }
 
 // Exchanges one frame in the current mode and prints what is due.

@@ -32,6 +32,21 @@
   (Part 4: emulator off, the `02-wiring` C1/C2 checklist re-run with pin 3 insulated and nothing on
   VBUS/VSYS, guitar in with the Pico unpowered, the two capture scripts, reading the decoder, the four
   stop conditions on screen).
+- **Bench round 1, `verify.md` Part 2 (2026-10-09/10): failed, two defects.** `captures/emu.log`
+  (kept as evidence): one good frame, then the emulator never answers again (`k=0`/`k=1`
+  alternating), and `analog` answered `error: unknown command`.
+  - Parser, fixed: `poll_command( )` built a `string_view` into `reader.text`, then reset the reader
+    (`reader = LineReader{}` zeroes `text`) before comparing, so every line compared as NUL bytes
+    and `analog` could never match. Reproduced 3/3 on the bench before the fix. The line reader
+    moved to `src/core/command_line.{h,cpp}` (`take_char( )` judges before it clears), tested by
+    `tests/test_command_line.cpp` (7 cases); hand mutation reintroducing the clear-before-judge
+    order prints 4 `FAIL:` lines and exits 1 (2026-10-10). `make test`, `make lint`, `make
+    typecheck`, `make firmware` green.
+  - Bus desync, open: persists across a `picotool reboot -f` of each board. Part 3 (`sg2hid.uf2`,
+    same bench, same wiring) gave `hil: PASS`, so the wiring and the emulator are cleared and the
+    cause is in the observe firmware. `src/hal/` and `src/emu/` unchanged since `b9f01bb`.
+  - `cat > file` captures are faithful: a silent port is the trace filter holding back a steady
+    frame, not a stalled read.
 - Host acceptance criteria run 2026-10-09: `make test` OK, `make lint` exit 0, `make typecheck` exit
   0, `make firmware` lists `sg2hid_observe.uf2`, `build/host/test_trace_filter` exit 0 with no
   `FAIL:`, the `verify.md` heading grep → 2, `git diff --quiet 51f1291 HEAD -- src/hal/ps2_master.pio
