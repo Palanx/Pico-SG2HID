@@ -59,6 +59,46 @@
   round's fix does not touch.
   - `cat > file` captures are faithful: a silent port is the trace filter holding back a steady
     frame, not a stalled read.
+- **First contact, `verify.md` Part 4 (2026-10-10): stop condition G1, "the guitar does not
+  answer".** Operator's captures, untracked until the operator decides their fate. Attempt 1 is
+  lost: `sg-digital.log` was started twice and the second `cat >` truncated the first. Attempt 2,
+  from a fresh power-up: `sg-digital.log` is one line, the first frame, `01 42 00 00 00` aborted at
+  byte 0 with no ACK after 134 µs; nothing else printed through the ten controls, so every frame
+  failed identically. `sg-analog.log`: `ok: analog`, then `01 43 00 01 00` aborted at byte 0 the
+  same way, and nothing after. No `link:` line in either. Decoder exit 0 on both. Same master
+  firmware passed Part 2 on the emulator an hour earlier, and the operator never took the socket
+  apart: the emulator was wired through the same socket, so the five signal paths through it are
+  the ones Part 2 proved. What the emulator never needed is power: the emulator bench left socket
+  pin 5 unwired (`verify.md` 4.3 step 1 adds it). The operator confirms pins
+  5 and 4 are wired; Part 2 does not prove that path, because `bus_init( )` also enables the
+  Pico's internal pull-ups on DATA and ACK, so the bus works against the self-powered emulator
+  with the 3V3 rail loose. The operator knows one breadboard wire is unreliable, possibly the 3V3.
+- **Power checked (2026-10-10): good, guitar still silent.** Operator: Pico pin 36, the 3V3 rail
+  and socket pin 5 each 3.3 V (BOOTSEL, guitar unplugged); socket pin 5 at 3.25 V with the guitar
+  plugged in and powered. Agent, read-only digital polls after a fresh power-up: no line in 20 s
+  while the operator pressed and released green repeatedly, so no frame ever completed; the
+  firmware was alive (`ping` answered `error: unknown command`). The untracked `sg-*.log` of the
+  no-answer attempts are to be overwritten by the next capture, operator's decision; this entry
+  is their record. Power is ruled out; the remaining suspects are in step 4 below and the
+  socket-contact question in §Resume step 5.
+- **Resume here (stopped 2026-10-10, operator away):**
+  1. Everything unplugged; reseat the power path: Pico physical pin 36 (3V3 OUT) → 3V3 rail →
+     socket pin 5, Pico physical pin 38 (GND) → GND rail → socket pin 4. Replace the bad wire.
+  2. Master in BOOTSEL, guitar **unplugged**, multimeter DC 20 V, black probe on the GND rail.
+     Red probe on Pico pin 36, then the 3V3 rail, then socket pin 5: each 3.2–3.35 V. A good pin
+     36 with ~0 V further along names the loose wire. This is C2 of
+     `docs/phases/02-wiring/verify.md` Part C; run C1 too if any wire was moved.
+  3. All three good: master unplugged, guitar in, then USB (4.4); recapture 4.5 and 4.6, each
+     `cat` started once. The current untracked `sg-digital.log` and `sg-analog.log` (the
+     no-answer attempt) are overwritten by that recapture unless renamed first: operator's call,
+     still open.
+  4. If power measures good and the guitar still does not answer: second hypothesis, lower
+     confidence. The master clocks 1–2 µs after ATT falls and adds no gap between bytes; the
+     emulator tolerates that, a real controller may not. Arduino's PS2X uses 20 µs
+     (`CTRL_BYTE_DELAY`, forum.arduino.cc/t/playstation-controller/22625). A code and protocol
+     change: operator's decision, an ADR before it lands.
+  5. Closed: the operator wired the emulator by pushing wire ends into the socket's own
+     contacts, so Part 2 proved each signal through the connector, contacts included.
 - Host acceptance criteria run 2026-10-09: `make test` OK, `make lint` exit 0, `make typecheck` exit
   0, `make firmware` lists `sg2hid_observe.uf2`, `build/host/test_trace_filter` exit 0 with no
   `FAIL:`, the `verify.md` heading grep → 2, `git diff --quiet 51f1291 HEAD -- src/hal/ps2_master.pio
