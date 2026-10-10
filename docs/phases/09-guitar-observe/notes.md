@@ -42,9 +42,21 @@
     `tests/test_command_line.cpp` (7 cases); hand mutation reintroducing the clear-before-judge
     order prints 4 `FAIL:` lines and exits 1 (2026-10-10). `make test`, `make lint`, `make
     typecheck`, `make firmware` green.
-  - Bus desync, open: persists across a `picotool reboot -f` of each board. Part 3 (`sg2hid.uf2`,
-    same bench, same wiring) gave `hil: PASS`, so the wiring and the emulator are cleared and the
-    cause is in the observe firmware. `src/hal/` and `src/emu/` unchanged since `b9f01bb`.
+  - Bus desync, not reproduced, cause unproven: persisted across a `picotool reboot -f` of each
+    board. Part 3 (`sg2hid.uf2`) then gave `hil: PASS`, but the bench was rewired for it, so that
+    pass does not clear the first wiring. The emulator's `SgModel` answers repeated digital polls
+    correctly on the host (scratch simulation, 4 frames). Most likely a bad contact in the first
+    wiring: the failure outlived both reboots and disappeared after the rewire, while the only
+    firmware change since is the parser, which never touches the bus.
+- **Bench round 2, `verify.md` Part 2 (2026-10-10): pass**, run by the agent on the operator's
+  wiring, firmware `c5abf41`. `captures/emu.log` (replaces round 1's, which stays in `c5abf41`):
+  `-> digital` 1, `-> analog` 2, `ok: analog` 1, decoder exit 0, whammy `00 40 80 C0 FF` each
+  present, green `BF` at byte 4. One frame aborted at byte 0 (`analog -> absent ack-timeout`, then
+  renegotiated) as a `payload` line reached the emulator; the emulator's own USB activity is the
+  likely cause, which the guitar does not have. Soak: 30 s of digital polls against the emulator
+  in digital mode with six `payload` changes, every printed frame `k=5`, id `41`.
+  Part 3 (`hil: PASS`) was run by the operator before this round, on `sg2hid.uf2`, which this
+  round's fix does not touch.
   - `cat > file` captures are faithful: a silent port is the trace filter holding back a steady
     frame, not a stalled read.
 - Host acceptance criteria run 2026-10-09: `make test` OK, `make lint` exit 0, `make typecheck` exit
