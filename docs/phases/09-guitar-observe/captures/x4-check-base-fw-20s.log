@@ -1,0 +1,136 @@
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,44,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=46,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36
+link: digital -> absent fault=ack-timeout
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=133,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=45,43,44,47,36

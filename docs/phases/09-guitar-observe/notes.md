@@ -87,9 +87,9 @@
   plugged guitar (X9, both in `experiments.md`). Rewired by PS2 number (`docs/wiring.md`), the
   guitar answers: `link: absent -> digital fault=none`, `in=FF,41,5A,FF,FF`, `k=5`
   (`captures/x5-first-answer.log`). G1: yes, on 3.3 V. G2: `41`. Caveat: the master was running
-  X4's firmware (20 µs waits), not this branch's; re-check on this branch's build before
-  recapturing Part 4. Two loose contacts from the rewire (the ACK wire, the ATT resistor) were
-  found by voltage at the socket and fixed. Next: that re-check, then Part 4 from 4.5 (G2–G11).
+  X4's firmware (20 µs waits). Re-checked the same day: this branch's build drops the link 34
+  times in 20 s, X4's 0 times (`experiments.md` after the Settled table), so X4 is needed. Two loose contacts from the rewire (the ACK wire, the ATT resistor) were
+  found by voltage at the socket and fixed. Next: merge X4 (operator's call), then Part 4 from 4.5 (G2–G11).
 - **Superseded resume pointer (2026-10-12): `experiments.md` in this directory.** It lists every hypothesis for
   the silent guitar, its status, and the `-prototype-<name>` branch that tried it; this branch
   stays at the state first contact left (no spec or ADR change). The list below is the

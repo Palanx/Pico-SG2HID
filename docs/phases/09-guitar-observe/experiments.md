@@ -18,14 +18,16 @@ continues; the others stay as a record and never merge.
 | X1 | Signal wiring or socket contacts | done: ruled out | Part 2 passed with the emulator's wires pushed into the socket's own contacts (2026-10-10) | — |
 | X2 | No supply at socket pin 5 / loose 3V3 wire | done: ruled out | 3.3 V at Pico pin 36, the 3V3 rail and socket pin 5 unloaded; 3.25 V at socket pin 5 with the guitar plugged in (2026-10-10) | — |
 | X3 | The guitar is broken | done: ruled out | operator played it on a PS2 (2026-10-10) | — |
-| X4 | Master too fast around ATT and between bytes | done: no effect | ADR-0020 + R-PROTO-11: 20 µs after ATT falls and before every later byte. Part 2 passed; the guitar stayed silent through 20 s of green presses (2026-10-10) | `feat/09-guitar-observe-prototype-timing` @ `36813ad` |
+| X4 | Master too fast around ATT and between bytes | done: needed (alone, no effect; with X9 fixed, it removes link drops) | ADR-0020 + R-PROTO-11: 20 µs after ATT falls and before every later byte. Part 2 passed; the guitar stayed silent through 20 s of green presses (2026-10-10) | `feat/09-guitar-observe-prototype-timing` @ `36813ad` |
 | X5 | Logic analyzer at the socket (diagnostic) | done: found the cause | uLA 0.0.5 (dotcypress/ula, generic UF2) on the emulator Pico, inputs only (checked in its source), read by a stdlib SUMP client. At the socket the master's frame was textbook (ATT low, `01` LSB-first at 250 kHz, CLK idle high) and DATA/ACK had 0 edges in 20 frames, so the fault was between the socket and the guitar (2026-10-12) | `feat/09-guitar-observe-prototype-logic-analyzer` |
 | X9 | Breakout prints its pin numbers mirrored (terminal N = PS2 pin 10 − N) | done: fixed | diode mode, guitar plugged, rails disconnected: printed 6 → 5 reads 0.59 V (GND → VCC), printed 3 and 8 read 1.57 V like inputs instead of `OL`. Rewired by PS2 number (`docs/wiring.md`); after fixing two loose contacts the rewire left (ACK wire, ATT resistor) the guitar answered: `link: absent -> digital`, `in=FF,41,5A,FF,FF`, `k=5` (`captures/x5-first-answer.log`, 2026-10-12). Answers G1 (yes, on 3.3 V) and G2 (`41`) | `feat/09-guitar-observe-prototype-logic-analyzer` |
 
-The master that got the answer was running X4's firmware, not this branch's: the X5 capture shows
-CLK starting 26.8 µs after ATT falls, X4's 20 µs wait plus setup, where this branch clocks 1–2 µs
-after it. Whether the guitar also answers without X4's waits is untested, and decides whether X4
-merges: flash this branch's `sg2hid_observe.uf2` and read one frame.
+X4 re-checked after X9 (2026-10-12), same bench, guitar plugged, 20 s of digital polls each:
+this branch's `sg2hid_observe.uf2` (`ee637ef`) answers but drops the link 34 times
+(`digital -> absent fault=ack-timeout`, each recovering on the next frame;
+`captures/x4-check-base-fw-20s.log`); X4's build (`36813ad`) drops it 0 times
+(`captures/x4-check-x4-fw-20s.log`). X4's waits are needed. Merging X4 (ADR-0020, R-PROTO-11)
+into this branch is the operator's call.
 
 X1's evidence did not cover this: the emulator's wires went into the breakout by its printed
 numbers too, so a mirrored breakout passed. X6–X8 below are moot unless a later G check fails.
