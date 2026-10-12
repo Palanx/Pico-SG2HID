@@ -182,8 +182,8 @@ With the bench still wired as in Part 3: signal wires out, then flash the master
 
 The socket now takes the guitar, so its wiring is checked again from scratch, exactly as the first time.
 
-1. Wire the socket per `docs/wiring.md`: each signal's 330 Ω resistor from the Pico pin's row to the socket pin's row, the two 10 kΩ pull-ups, **socket pin 5 to the 3V3 rail** and **socket pin 4 to the GND rail**. In the emulator bench, socket pin 5 had no wire; it gets one now.
-2. **Socket pin 3 stays empty and insulated** (tape or heat-shrink over it). It is the 7.6 V pin, and anything on it can destroy the Pico (R-SAFETY-04).
+1. Wire the socket per `docs/wiring.md`: each signal's 330 Ω resistor from the Pico pin's row to the socket pin's row, the two 10 kΩ pull-ups, **socket pin 5 to the 3V3 rail** and **socket pin 4 to the GND rail**. In the emulator bench, socket pin 5 had no wire; it gets one now. **"Socket pin" is the PS2 number, not the number printed on this bench's breakout:** the breakout prints them mirrored (printed N = PS2 pin 10 − N), so use the table in `docs/wiring.md` §This bench's breakout. Wired by the printed numbers the guitar never answers (experiment X9, 2026-10-12).
+2. **Socket pin 3 (printed 7 on this breakout) stays empty and insulated** (tape or heat-shrink over it). It is the 7.6 V pin, and anything on it can destroy the Pico (R-SAFETY-04).
 3. **Nothing goes to Pico pin 39 (VSYS) or pin 40 (VBUS).** Both carry 5 V from USB, and the guitar is powered from 3.3 V only (R-SAFETY-05).
 4. Run `docs/phases/02-wiring/verify.md`, **Part C, sections C1 and C2** (read its Part B, the multimeter primer, first if you need to). C1 is with everything unplugged; C2 is with the master in BOOTSEL and the guitar **unplugged**. Section C3 (current draw) is not needed again.
 5. **If any reading is outside its expected range, stop here.** Unplug everything and recheck the wiring before going on.

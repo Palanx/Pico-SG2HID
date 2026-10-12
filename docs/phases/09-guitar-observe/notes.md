@@ -81,7 +81,16 @@
   no-answer attempts are to be overwritten by the next capture, operator's decision; this entry
   is their record. Power is ruled out; the remaining suspects are in step 4 below and the
   socket-contact question in §Resume step 5.
-- **Resume here (2026-10-12): `experiments.md` in this directory.** It lists every hypothesis for
+- **G1 answered (2026-10-12): the breakout prints its pin numbers mirrored.** Printed terminal N
+  is PS2 pin 10 − N, so the bench, wired by the printed numbers, put CLK on the guitar's pin 3 and
+  never clocked it. Found with a logic analyzer at the socket (X5) and a diode-mode sweep of the
+  plugged guitar (X9, both in `experiments.md`). Rewired by PS2 number (`docs/wiring.md`), the
+  guitar answers: `link: absent -> digital fault=none`, `in=FF,41,5A,FF,FF`, `k=5`
+  (`captures/x5-first-answer.log`). G1: yes, on 3.3 V. G2: `41`. Caveat: the master was running
+  X4's firmware (20 µs waits), not this branch's; re-check on this branch's build before
+  recapturing Part 4. Two loose contacts from the rewire (the ACK wire, the ATT resistor) were
+  found by voltage at the socket and fixed. Next: that re-check, then Part 4 from 4.5 (G2–G11).
+- **Superseded resume pointer (2026-10-12): `experiments.md` in this directory.** It lists every hypothesis for
   the silent guitar, its status, and the `-prototype-<name>` branch that tried it; this branch
   stays at the state first contact left (no spec or ADR change). The list below is the
   2026-10-10 plan it replaces: its steps 1–4 are done (X2, X4 in `experiments.md`).

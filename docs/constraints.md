@@ -220,6 +220,11 @@ each entry gets one when it does.
 - Names say what the thing is on the bus, not what it is in the abstract:
   `Ps2Frame`, `ControllerId`, `AckTimeout`, `WhammyAxis`.
 - Files, directories and identifiers are English, always, including comments.
+- **This bench's PS2 breakout prints its pin numbers mirrored: printed N is PS2 pin 10 − N
+  (measured 2026-10-12, reference file `docs/wiring.md` §This bench's breakout).** Every
+  "socket pin" in the docs is the PS2 number. Continuity and emulator checks done by the printed
+  numbers pass on a mirrored breakout; only a real controller exposes it, so any replacement
+  breakout is checked with the diode-mode test that section describes.
 - **clang-tidy needs exactly two extra flags, and the reason is two separate failures
   (measured 2026-09-11, Homebrew LLVM 23.1.0, reference file `tests/test_style.sh`).** The
   working invocation is `clang-tidy --quiet <file> -- [-xc++ if <file> is a .h or .inl] -std=c++23
