@@ -146,6 +146,15 @@
   direction byte 3 bit 6, and byte 3 bit 7 is always 0. The operator did strum up toward the
   legs and strum down toward the face. Next: Part 4 from 4.5 (G2–G11) on the 8 ms build; Part 3
   (`make hil`) owes a re-run on the new `sg2hid.uf2`.
+- **Part 4 captures, 8 ms build (2026-10-12): stop condition G7.** `captures/sg-digital.log` and
+  `captures/sg-analog.log`, recorded by the agent from a fresh boot while the operator ran 4.5 and
+  4.6; decoder exit 0 on both. G1 yes. G2 `41`. G3 byte 4 (active low): green bit 1, red 5, yellow
+  4, blue 6, orange 7; byte 3: strum up (toward the legs) bit 6, strum down bit 4, start bit 3,
+  select bit 0, bit 7 always 0. G4 config answers `F3,5A` then zeros. G5 yes, id `73`. G6 same bytes
+  and bits. **G7 stops the phase:** the whammy is byte 8 and rests at `7F`; pushed to the stop it
+  falls to `00`, and returns to `7F` (bytes 5–7 stay `7F`). G8 ACK 6–17 µs. Tilt never showed in
+  either capture, neck held past vertical in 4.6; byte 4 bit 0 (`FE`) appeared once in the 4 ms X10
+  test, unasked, and is the candidate. Operator's call on G7: map in `core` or pass it raw.
 - **Superseded resume pointer (2026-10-12): `experiments.md` in this directory.** It lists every hypothesis for
   the silent guitar, its status, and the `-prototype-<name>` branch that tried it; this branch
   stays at the state first contact left (no spec or ADR change). The list below is the
