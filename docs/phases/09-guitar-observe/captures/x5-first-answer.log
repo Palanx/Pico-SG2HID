@@ -1,0 +1,2 @@
+link: absent -> digital fault=none
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,FF,FF us=47,45,45,48,37
