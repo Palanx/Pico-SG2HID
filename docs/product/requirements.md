@@ -96,7 +96,9 @@ promise; they are not negotiable by a later ADR without new hardware.
 - **The guitar is powered from the Pico's 3V3 pin**, not VBUS and not VSYS (both
   5 V). The onboard regulator's budget is the ceiling.
 - **USB full-speed HID, 1 ms polling.** The host contract is a standard HID gamepad
-  report; latency added by the firmware must stay well inside one poll interval.
+  report. The firmware reads the guitar every 8 ms, because the SG stops refreshing its
+  buttons at 2 ms and below (ADR-0021), so the firmware adds up to 8 ms of latency, 4 ms on
+  average; the game's calibration absorbs the average.
 - **No kernel driver on either host OS**, and no code signing, entitlement, or
   privileged install step on macOS.
 - **Every rule stated as a project rule must either be bound to a deterministic

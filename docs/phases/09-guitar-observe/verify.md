@@ -8,7 +8,7 @@ This page is for someone who does not write firmware. It is the first time the r
 
 `build/pico/sg2hid_observe.uf2` is a measuring instrument, not the product. It does three things:
 
-- It talks to whatever is plugged into the socket, one frame every millisecond, exactly as the gamepad firmware does.
+- It talks to whatever is plugged into the socket, one frame every 8 ms (ADR-0021), exactly as the gamepad firmware does.
 - It prints what it sent and what came back on its USB serial port, as `T1` lines, the trace format from phase 04.
 - It does **not** pretend to be a gamepad. The Mac sees only a serial port.
 

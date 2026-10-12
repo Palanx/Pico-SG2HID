@@ -3,8 +3,8 @@
 Standard library only.
 
 The master (build/pico/sg2hid.uf2) negotiates analog mode with the emulator
-(build/pico/sg2hid_emu.uf2), then polls it once a millisecond, and prints a `hil:` summary every
-1000 frames. This harness tells the emulator what to answer, through the 05-emulator command
+(build/pico/sg2hid_emu.uf2), then polls it every 8 ms (ADR-0021), and prints a `hil:` summary every
+125 frames, about once a second. This harness tells the emulator what to answer, through the 05-emulator command
 grammar plus `fault decline`, and judges the master's summaries. It prints `ok: <scenario>` or
 `FAIL: <scenario>: <reason>` per scenario, stops at the first FAIL, sends `fault none` to the
 emulator before it exits, and ends with `hil: PASS` (exit 0) or `hil: FAIL` (exit 1). The rules it
@@ -35,7 +35,7 @@ SUMMARY = re.compile(
 )
 COUNTERS = ("polls", "refused", "changes", "us")
 
-MAX_SUMMARY_US = 1_100_000  # 1000 polls at 1 ms, plus 10 %
+MAX_SUMMARY_US = 1_100_000  # 125 polls at 8 ms, plus 10 %
 MASTER_SILENT_S = 3.0
 EMU_ANSWER_S = 2.0
 FAULT_WINDOW = 2
