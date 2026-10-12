@@ -1,8 +1,8 @@
 // Master firmware, build/pico/sg2hid.uf2 (phases 06-hil-digital, 07-analog-mode, 08-usb-hid): an
-// analog-mode poller and a USB HID gamepad. Every kPollPeriodUs, start to start, it exchanges one
-// frame of the analog-mode sequence (src/core/negotiation.h, ADR-0017): enter config mode, select
-// analog, leave config mode, then analog polls for as long as the controller answers them. It
-// never streams digital, and it never stops: a frame that leaves the link Absent restarts the
+// analog-mode poller and a USB HID gamepad. Every ps2::kPollPeriodUs, start to start, it exchanges
+// one frame of the analog-mode sequence (src/core/negotiation.h, ADR-0017): enter config mode,
+// select analog, leave config mode, then analog polls for as long as the controller answers them.
+// It never streams digital, and it never stops: a frame that leaves the link Absent restarts the
 // sequence on the next frame (docs/constraints.md §Error handling). After each frame it hands the
 // HID interface that frame's report, or the neutral report while the link is not AnalogStreaming
 // (src/usb/, ADR-0018). Over the USB serial port, the composite device's other interface, it
@@ -18,6 +18,7 @@
 #include "core/negotiation.h"
 #include "core/pins.h"
 #include "core/poll.h"
+#include "core/ps2_protocol.h"
 #include "hal/bus_frame.h"
 #include "hal/bus_port.h"
 #include "pico/stdlib.h"
@@ -32,8 +33,8 @@
 
 namespace {
 
-constexpr std::uint32_t kPollPeriodUs    = 1000;
-constexpr std::uint32_t kPollsPerSummary = 1000;
+// One summary a second at ps2::kPollPeriodUs; tools/hil_digital.py's MAX_SUMMARY_US assumes it.
+constexpr std::uint32_t kPollsPerSummary = 125;
 // "XX XX" and its NUL.
 constexpr std::size_t   kPayloadTextSize = 6;
 // "XX" and its NUL.
@@ -141,7 +142,7 @@ int main() {
     poller.poll_start  = time_us_32();
     poller.batch_start = poller.poll_start;
     for ( ;; ) {
-        while ( time_us_32() - poller.poll_start < kPollPeriodUs ) {
+        while ( time_us_32() - poller.poll_start < ps2::kPollPeriodUs ) {
             usb::task();
         }
         // Unsigned, so the counter's ~71.6-minute wraparound subtracts correctly (ADR-0011).

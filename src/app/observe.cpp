@@ -1,6 +1,6 @@
 // Observe firmware, build/pico/sg2hid_observe.uf2 (09-guitar-observe): the instrument the real SG
 // first meets the bus through. No HID interface; USB stdio is its only USB function. Every
-// kPollPeriodUs, start to start, it exchanges one frame in one of two modes:
+// ps2::kPollPeriodUs, start to start, it exchanges one frame in one of two modes:
 //
 //   digital  at power-up. Sends only the read poll `01 42 00 00 00`, so the guitar stays in its
 //            power-up mode: that is what "read-only" means here. The link is judged by step( ).
@@ -34,8 +34,7 @@
 
 namespace {
 
-constexpr std::uint32_t kPollPeriodUs = 1000;
-constexpr std::uint32_t kPortWaitMs   = 10;
+constexpr std::uint32_t kPortWaitMs = 10;
 
 // The read poll: the only frame digital mode sends.
 constexpr std::array<std::uint8_t, ps2::kDigitalPollLen> kReadPoll = {
@@ -123,7 +122,7 @@ int main() {
     Observer      observer{};
     std::uint32_t poll_start = time_us_32();
     for ( ;; ) {
-        while ( time_us_32() - poll_start < kPollPeriodUs ) {
+        while ( time_us_32() - poll_start < ps2::kPollPeriodUs ) {
             poll_command( observer );
         }
         // Unsigned, so the counter's ~71.6-minute wraparound subtracts correctly (ADR-0011).

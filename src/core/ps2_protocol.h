@@ -49,6 +49,11 @@ constexpr std::uint32_t kBusClockHz = 250000;
 constexpr std::uint32_t kAttSetupUs = 20;
 constexpr std::uint32_t kByteGapUs  = 20;
 
+// How often the master starts a frame, start to start (ADR-0021). The SG answers at a 1 or 2 ms
+// period but never refreshes its buttons; at 4, 8 and 16 ms it does. 8 ms keeps 2x margin from
+// the last period that worked.
+constexpr std::uint32_t kPollPeriodUs = 8000;
+
 // How long the master waits for ACK after a byte's last bit before giving up on the byte.
 // belay-debt: a budget, not a measurement; 09-guitar-observe measures the real ACK delay and
 // replaces this if the guitar answers later than it allows.

@@ -137,7 +137,15 @@
   (`captures/x5-first-answer.log`). G1: yes, on 3.3 V. G2: `41`. Caveat: the master was running
   X4's firmware (20 µs waits). Re-checked the same day: this branch's build drops the link 34
   times in 20 s, X4's 0 times (`experiments.md` after the Settled table), so X4 is needed. Two loose contacts from the rewire (the ACK wire, the ATT resistor) were
-  found by voltage at the socket and fixed. X4 merged into this branch (2026-10-12). Next: Part 4 from 4.5 (G2–G11).
+  found by voltage at the socket and fixed. X4 merged into this branch (2026-10-12).
+- **Buttons frozen at a 1 ms poll (2026-10-12): ADR-0021, 8 ms.** First 4.5 attempt: the guitar
+  answered every frame but no control changed a byte. Rebuilt observe at 16, 8, 4 and 2 ms
+  (X10 in `experiments.md`): buttons refresh at 4 ms and above, not at 2 ms or below. The
+  operator chose 8 ms; `ps2::kPollPeriodUs` now drives both firmwares, `hil:` summaries every 125
+  frames. Seen on the way, for G3: green is byte 4 bit 1, start byte 3 bit 3, one strum
+  direction byte 3 bit 6, and byte 3 bit 7 is always 0. The operator did strum up toward the
+  legs and strum down toward the face. Next: Part 4 from 4.5 (G2–G11) on the 8 ms build; Part 3
+  (`make hil`) owes a re-run on the new `sg2hid.uf2`.
 - **Superseded resume pointer (2026-10-12): `experiments.md` in this directory.** It lists every hypothesis for
   the silent guitar, its status, and the `-prototype-<name>` branch that tried it; this branch
   stays at the state first contact left (no spec or ADR change). The list below is the
