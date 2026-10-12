@@ -81,7 +81,11 @@
   no-answer attempts are to be overwritten by the next capture, operator's decision; this entry
   is their record. Power is ruled out; the remaining suspects are in step 4 below and the
   socket-contact question in §Resume step 5.
-- **Resume here (stopped 2026-10-10, operator away):**
+- **Resume here (2026-10-12): `experiments.md` in this directory.** It lists every hypothesis for
+  the silent guitar, its status, and the `-prototype-<name>` branch that tried it; this branch
+  stays at the state first contact left (no spec or ADR change). The list below is the
+  2026-10-10 plan it replaces: its steps 1–4 are done (X2, X4 in `experiments.md`).
+- **Superseded resume list (2026-10-10):**
   1. Everything unplugged; reseat the power path: Pico physical pin 36 (3V3 OUT) → 3V3 rail →
      socket pin 5, Pico physical pin 38 (GND) → GND rail → socket pin 4. Replace the bad wire.
   2. Master in BOOTSEL, guitar **unplugged**, multimeter DC 20 V, black probe on the GND rail.
