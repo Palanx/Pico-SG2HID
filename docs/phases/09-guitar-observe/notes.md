@@ -81,24 +81,54 @@
   no-answer attempts are to be overwritten by the next capture, operator's decision; this entry
   is their record. Power is ruled out; the remaining suspects are in step 4 below and the
   socket-contact question in §Resume step 5.
-- **Resume here (stopped 2026-10-10, operator away):**
-  1. Everything unplugged; reseat the power path: Pico physical pin 36 (3V3 OUT) → 3V3 rail →
-     socket pin 5, Pico physical pin 38 (GND) → GND rail → socket pin 4. Replace the bad wire.
-  2. Master in BOOTSEL, guitar **unplugged**, multimeter DC 20 V, black probe on the GND rail.
-     Red probe on Pico pin 36, then the 3V3 rail, then socket pin 5: each 3.2–3.35 V. A good pin
-     36 with ~0 V further along names the loose wire. This is C2 of
-     `docs/phases/02-wiring/verify.md` Part C; run C1 too if any wire was moved.
-  3. All three good: master unplugged, guitar in, then USB (4.4); recapture 4.5 and 4.6, each
-     `cat` started once. The current untracked `sg-digital.log` and `sg-analog.log` (the
-     no-answer attempt) are overwritten by that recapture unless renamed first: operator's call,
-     still open.
-  4. If power measures good and the guitar still does not answer: second hypothesis, lower
-     confidence. The master clocks 1–2 µs after ATT falls and adds no gap between bytes; the
-     emulator tolerates that, a real controller may not. Arduino's PS2X uses 20 µs
-     (`CTRL_BYTE_DELAY`, forum.arduino.cc/t/playstation-controller/22625). A code and protocol
-     change: operator's decision, an ADR before it lands.
-  5. Closed: the operator wired the emulator by pushing wire ends into the socket's own
-     contacts, so Part 2 proved each signal through the connector, contacts included.
+- **Timing change (2026-10-10, operator's order "vamos por la opción del timing"):** ADR-0020.
+  `exchange_frame( )` now waits `kAttSetupUs` (20) after `att_assert( )` and `kByteGapUs` (20)
+  before every later byte, through a new port call `bus_wait_us( )` in `src/hal/bus_wait.cpp`;
+  `pio_port.cpp` and `ps2_master.pio` stay unchanged since `51f1291` (checked), so G11 holds. New
+  rule R-PROTO-11, bound to `tests/test_bus_frame.py`: `waits_placed( )` in
+  `tests/bus_frame_cases.cpp` plus three rejection cases, all flipping R-PROTO-11 to FAIL
+  (8/8). `make test` OK, `make lint` 0 FAIL, `make typecheck` 0, `make firmware` four UF2s. The
+  change reaches every master firmware, `sg2hid.uf2` included, so before the guitar: Part 3
+  (`make hil`, operator) and Part 2 (agent) again, on the emulator bench.
+- **Bench round 3, on the ADR-0020 firmware (2026-10-10):** Part 3 by the operator (`make hil`
+  on the new `sg2hid.uf2`, reported reached; result assumed PASS). Part 2 by the agent, both
+  boards restarted with `picotool reboot -f` first: `-> digital` 2, `-> analog` 1, `ok: analog`
+  1, decoder exit 0, whammy `00 40 80 C0 FF` = 3, 1, 2, 1, 1, green `BF`. One frame aborted at byte
+  0 and recovered on the next, as a `mode digital` line reached the emulator, the same pattern as
+  round 2. `captures/emu.log` replaced again.
+- **Guitar on the ADR-0020 firmware (2026-10-10): still silent.** Fresh power-up in the 4.4
+  order, master alive (`ping`), no line in 20 s of read-only digital polls while the operator
+  pressed and released green. The 20 µs waits are not sufficient. The first frame's line was
+  again missing on the first port open after a physical USB plug (never after a `picotool`
+  reboot); unexplained, nothing held the port when checked. External references read: Curious
+  Inventor (store.curiousinventor.com/guides/PS2): a live PS2 supplies 3.4 V, every controller
+  they tested worked at 3.3 V, the Guitar Hero controller is clocked at 250 kHz, ACK falls ~12 µs
+  after a byte for half a clock; Santroller (santroller.github.io/guitar-configurator/guides/
+  ps2.html) wires PS2 guitars to a Pico on 3V3 OUT with 1 kΩ pull-ups on DATA and ACK and no
+  series resistors. Both make the clock and the supply weak suspects; neither explains a guitar
+  that never ACKs byte 0.
+- **Resume here (updated 2026-10-10, operator restarting the PC):** the previous resume list
+  is done: power measured good (steps 1–2), the 20 µs waits (ADR-0020) built and tested, and the
+  guitar is still silent. Settled: wiring and socket contacts (Part 2 through the socket),
+  supply (3.25 V under load), the guitar itself (plays on a PS2). Bench state: master carries
+  the ADR-0020 `sg2hid_observe.uf2`, guitar on the socket, emulator off the bench.
+  Uncommitted: ADR-0020, R-PROTO-11 and its tests, `src/hal/bus_wait.cpp`, `captures/emu.log`
+  (round 3), this file; untracked `captures/sg-*.log` (no-answer attempts, to be overwritten).
+  Two operator decisions open:
+  1. **Logic analyzer (agent's recommendation).** Flash the spare Pico (the emulator board)
+     with an off-the-shelf logic-analyzer firmware (candidates named from memory, to be verified
+     first: gusmanb's LogicAnalyzer, sigrok-pico) and watch ATT, CLK, CMD, DATA and ACK at the
+     socket, inputs only. Flash it with the guitar unplugged; wire it after. Answers whether the
+     guitar ever pulls ACK or DATA, and what actually reaches it. Third-party software on the
+     bench: operator's call.
+  2. **Commit the timing change or revert it.** Agent's recommendation: commit; it is tested,
+     harmless to the bus, and passed Part 2 and (reported) Part 3.
+  Weaker alternatives if the analyzer is declined: a different supply (above 3.3 V; needs an ADR
+  and a review of R-SAFETY-04/05), or a slower `kBusClockHz` (moves the trace decoder's shift and
+  G11). Also open, minor: the first `T1` line is lost on the first port open after a physical
+  USB plug, so before the 4.5 capture, find why or restart the master with `picotool reboot -f`
+  before capturing (it passes through BOOTSEL: not a flash, but the guitar is powered through
+  it; operator's call).
 - Host acceptance criteria run 2026-10-09: `make test` OK, `make lint` exit 0, `make typecheck` exit
   0, `make firmware` lists `sg2hid_observe.uf2`, `build/host/test_trace_filter` exit 0 with no
   `FAIL:`, the `verify.md` heading grep → 2, `git diff --quiet 51f1291 HEAD -- src/hal/ps2_master.pio
