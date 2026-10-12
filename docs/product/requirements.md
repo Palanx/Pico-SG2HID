@@ -114,7 +114,9 @@ promise; they are not negotiable by a later ADR without new hardware.
 - ANSWERED (02-wiring, 2026-09-28): the SG draws 0.85 mA from 3V3 at power-up, settling
   to 0.36–0.50 mA, measured with the Pico in BOOTSEL and no bus traffic. That is far
   inside the onboard regulator's budget; no external 3.3 V supply is needed.
-- OPEN (09-guitar-observe): does the SG answer the bus correctly on 3V3 alone?
+- ANSWERED (09-guitar-observe, 2026-10-12): yes, on 3V3 alone, once the breakout is wired by
+  PS2 number, the master waits 20 µs around ATT and between bytes (ADR-0020) and polls no
+  faster than every 4 ms (ADR-0021 sets 8). Detail: `docs/constraints.md`, "The SG on the bus".
 
 <!-- Byte-level unknowns (exact config-mode sequence, whammy byte position, rest and
      full-deflection values, the controller id this specific SG reports) are NOT

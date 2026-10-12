@@ -31,6 +31,12 @@
 #include "vectors/negotiation.h"
 #include "vectors/not_ready.h"
 #include "vectors/poll_exchange.h"
+#include "vectors/sg_analog_controls.h"
+#include "vectors/sg_analog_idle.h"
+#include "vectors/sg_analog_whammy_full.h"
+#include "vectors/sg_digital_controls.h"
+#include "vectors/sg_digital_idle.h"
+#include "vectors/sg_negotiation_answers.h"
 #include "vectors/truncated_ack.h"
 #include "vectors/truncated_not_ready.h"
 #include "vectors/unknown_id.h"
@@ -45,6 +51,11 @@
 namespace {
 
 constexpr std::uint8_t kZeroFill = 0x00;
+
+// The whammy the codec reports with the SG's bar at its stop: (0x7F - 0x00) * 2, worked by hand
+// from ADR-0022. A value this project decides, not one the controller sends, so it lives here
+// and not under tests/vectors/ (R-PROTO-05's ruling on decided values, as kZeroFill).
+constexpr std::uint8_t kWhammyReportedFull = 0xFE;
 
 // One result line in the house convention, and the verdict as a return value so the caller
 // aggregates it. A case that printed its own verdict without returning it would leave the
@@ -227,13 +238,10 @@ constexpr std::uint8_t kZeroFill = 0x00;
 
     const ps2::GuitarState state = ps2::map_frame( *frame );
 
-    // Against the vector's own byte, so the assertion cannot disagree with the literal. The
-    // vector's other three axes are centred, so reading the wrong index yields kWhammyRest and
-    // fails here — that is what pins the index rather than merely "a byte changed".
-    const bool is_ok =
-        frame.has_value() &&
-        state.whammy == vectors::kAnalogWhammyFull[ ps2::kPayloadIndex + ps2::kWhammyIndex ] &&
-        state.whammy != ps2::kWhammyRest;
+    // The vector's other three axes are centred, so reading the wrong index yields kWhammyRest
+    // and fails here — that is what pins the index rather than merely "a byte changed".
+    const bool is_ok = frame.has_value() && state.whammy == kWhammyReportedFull &&
+                       state.whammy != ps2::kWhammyRest;
     return report( is_ok, "analog_whammy_full: the whammy reads full deflection" );
 }
 
@@ -764,18 +772,15 @@ constexpr std::size_t kDigitalAckedLen = std::size( vectors::kDigitalIdle );
     return report( is_ok, "hid: nothing pressed is a report with no button bits set" );
 }
 
-// End to end, bytes on the bus to bytes on the wire to the host, over one vector. The whammy
-// is compared against the vector's own literal so the chain cannot disagree with it.
+// End to end, bytes on the bus to bytes on the wire to the host, over one vector.
 [[nodiscard]] bool case_report_carries_the_whammy_end_to_end() {
     const std::span<const std::uint8_t> bytes{ vectors::kAnalogWhammyFull };
     const auto                          frame = ps2::decode( bytes );
 
     const ps2::HidReport built = ps2::build_report( ps2::map_frame( *frame ) );
 
-    const bool is_ok = frame.has_value() &&
-                       built[ ps2::kWhammyOffset ] ==
-                           vectors::kAnalogWhammyFull[ ps2::kPayloadIndex + ps2::kWhammyIndex ];
-    return report( is_ok, "hid: the whammy byte reaches the report unchanged" );
+    const bool is_ok = frame.has_value() && built[ ps2::kWhammyOffset ] == kWhammyReportedFull;
+    return report( is_ok, "hid: the whammy reaches the report as ADR-0022 maps it" );
 }
 
 // The report is wide enough for the buttons it declares. Derived on both sides, so this fails
@@ -785,6 +790,107 @@ constexpr std::size_t kDigitalAckedLen = std::size( vectors::kDigitalIdle );
                        ps2::kReportLen == ps2::kButtonBytes + 1 &&
                        ps2::kWhammyOffset < ps2::kReportLen;
     return report( is_ok, "hid: the report is wide enough for every button it declares" );
+}
+
+// --- the real SG (09-guitar-observe's captures) -----------------------------------------
+
+// The whammy's payload byte inside a whole-frame vector.
+constexpr std::size_t kWhammyByte    = ps2::kPayloadIndex + ps2::kWhammyIndex;
+// The first axis byte, and how many axes an analog payload carries.
+constexpr std::size_t kFirstAxisByte = ps2::kPayloadIndex + 2;
+constexpr std::size_t kAxisCount     = 4;
+
+// Do two states press the same controls? The whammy is left out: the cases check it alone.
+[[nodiscard]] bool same_controls( const ps2::GuitarState& got, const ps2::GuitarState& want ) {
+    bool is_same = got.is_strum_up == want.is_strum_up && got.is_strum_down == want.is_strum_down &&
+                   got.is_start == want.is_start && got.is_select == want.is_select &&
+                   got.is_tilt == want.is_tilt;
+    for ( std::size_t i = 0; i < ps2::kFretCount; ++i ) {
+        is_same = is_same && got.is_fret_pressed[ i ] == want.is_fret_pressed[ i ];
+    }
+    return is_same;
+}
+
+[[nodiscard]] bool case_sg_digital_idle() {
+    const std::span<const std::uint8_t> bytes{ vectors::kSgDigitalIdle };
+
+    const auto frame = ps2::decode( bytes );
+
+    const bool is_ok = frame.has_value() && frame->id == ps2::ControllerId::Digital &&
+                       same_controls( ps2::map_frame( *frame ), ps2::GuitarState{} );
+    return report( is_ok, "sg_digital_idle: decodes as Digital, nothing pressed" );
+}
+
+// Frame i holds Button i alone; state_with( ) says what that means as controls.
+[[nodiscard]] bool case_sg_digital_controls() {
+    bool is_ok = true;
+
+    for ( std::size_t i = 0; is_ok && i < vectors::kSgControlCount; ++i ) {
+        const std::span<const std::uint8_t> bytes{ vectors::kSgDigitalControls[ i ] };
+        const auto                          frame = ps2::decode( bytes );
+
+        is_ok = frame.has_value() && same_controls( ps2::map_frame( *frame ),
+                                                    state_with( static_cast<ps2::Button>( i ) ) );
+    }
+    return report( is_ok, "sg_digital_controls: each frame maps to exactly its control" );
+}
+
+[[nodiscard]] bool case_sg_negotiation() {
+    ps2::Master                         master{};
+    const std::span<const std::uint8_t> enter{ vectors::kSgAnswerEnter };
+    const std::span<const std::uint8_t> set{ vectors::kSgAnswerSet };
+    const std::span<const std::uint8_t> leave{ vectors::kSgAnswerLeave };
+
+    const ps2::LinkState after_enter = answer_with( master, enter.subspan( 1 ), kEnterLen );
+    const ps2::LinkState after_set   = answer_with( master, set.subspan( 1 ), kLongLen );
+    const ps2::LinkState after_leave = answer_with( master, leave.subspan( 1 ), kLongLen );
+    const bool           is_polling  = master.stage == ps2::NegotiationStage::Polling;
+    const ps2::LinkState polled      = answer_with( master, vectors::kSgAnalogIdle, kLongLen );
+
+    const bool is_ok =
+        enter[ 0 ] == vectors::kAddressReply && set[ 0 ] == vectors::kAddressReply &&
+        leave[ 0 ] == vectors::kAddressReply && after_enter == ps2::LinkState::Absent &&
+        after_set == ps2::LinkState::Negotiating && after_leave == ps2::LinkState::Negotiating &&
+        is_polling && polled == ps2::LinkState::AnalogStreaming;
+    return report( is_ok, "sg_negotiation: the SG's answers reach Polling, then AnalogStreaming" );
+}
+
+[[nodiscard]] bool case_sg_analog_idle() {
+    const std::span<const std::uint8_t> bytes{ vectors::kSgAnalogIdle };
+
+    const auto frame = ps2::decode( bytes );
+
+    const bool is_ok = frame.has_value() && frame->id == ps2::ControllerId::Analog &&
+                       bytes[ kWhammyByte ] == vectors::kSgWhammyAtRest &&
+                       same_controls( ps2::map_frame( *frame ), ps2::GuitarState{} ) &&
+                       ps2::map_frame( *frame ).whammy == ps2::kWhammyRest;
+    return report( is_ok, "sg_analog_idle: decodes as Analog, nothing pressed, whammy at rest" );
+}
+
+[[nodiscard]] bool case_sg_analog_controls() {
+    bool is_ok = true;
+
+    for ( std::size_t i = 0; is_ok && i < vectors::kSgAnalogCount; ++i ) {
+        const std::span<const std::uint8_t> bytes{ vectors::kSgAnalogControls[ i ] };
+        const auto                          frame = ps2::decode( bytes );
+
+        is_ok = frame.has_value() && same_controls( ps2::map_frame( *frame ),
+                                                    state_with( static_cast<ps2::Button>( i ) ) );
+    }
+    return report( is_ok, "sg_analog_controls: each frame maps to exactly its control" );
+}
+
+[[nodiscard]] bool case_sg_analog_whammy_full() {
+    const std::span<const std::uint8_t> bytes{ vectors::kSgAnalogWhammyFull };
+
+    const auto frame = ps2::decode( bytes );
+
+    bool is_ok = frame.has_value() && bytes[ kWhammyByte ] == vectors::kSgWhammyFull &&
+                 ps2::map_frame( *frame ).whammy == kWhammyReportedFull;
+    for ( std::size_t axis = kFirstAxisByte; axis < kFirstAxisByte + kAxisCount; ++axis ) {
+        is_ok = is_ok && ( axis == kWhammyByte || bytes[ axis ] != vectors::kSgWhammyFull );
+    }
+    return report( is_ok, "sg_analog_whammy_full: the whammy at its stop reports full scale" );
 }
 
 // --- the HID report descriptor and the report for a frame -------------------------------
@@ -1030,6 +1136,13 @@ int main() {
     is_ok = case_report_idle_is_all_zero_buttons() && is_ok;
     is_ok = case_report_carries_the_whammy_end_to_end() && is_ok;
     is_ok = case_report_is_wide_enough() && is_ok;
+
+    is_ok = case_sg_digital_idle() && is_ok;
+    is_ok = case_sg_digital_controls() && is_ok;
+    is_ok = case_sg_negotiation() && is_ok;
+    is_ok = case_sg_analog_idle() && is_ok;
+    is_ok = case_sg_analog_controls() && is_ok;
+    is_ok = case_sg_analog_whammy_full() && is_ok;
 
     is_ok = rule_proto02() && is_ok;
     is_ok = rule_proto03() && is_ok;

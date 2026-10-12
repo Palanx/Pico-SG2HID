@@ -1,6 +1,6 @@
 #pragma once
 
-// Which frames the observe firmware prints (09-guitar-observe). It exchanges a frame every
+// Which frames the observe firmware prints (src/app/observe.cpp). It exchanges a frame every
 // millisecond and a serial line of ~170 characters per frame would drown the port, so a frame is
 // printed only when it says something the last printed one did not. A frame is due when:
 //

@@ -1,4 +1,4 @@
-// Observe firmware, build/pico/sg2hid_observe.uf2 (09-guitar-observe): the instrument the real SG
+// Observe firmware, build/pico/sg2hid_observe.uf2: the instrument the real SG
 // first meets the bus through. No HID interface; USB stdio is its only USB function. Every
 // ps2::kPollPeriodUs, start to start, it exchanges one frame in one of two modes:
 //

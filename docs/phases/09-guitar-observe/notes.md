@@ -6,10 +6,24 @@
   `f9913a6`, the expansion, and the base are the tech-debt work below, committed apart so this
   phase's diff does not carry it)
 - not-ours: .claude/rules/tech-debt.md — the operator: the two paid entries removed (3f83e24) and the belay reviewer-breach watch added, both tech-debt log upkeep this spec puts out of scope
-- **Where implementation stopped (2026-10-09, round 1):** Plan steps 1, 2, 3 and 6 are done. Steps 4,
-  5 and 7 are bench steps owed by the operator (`verify.md` Parts 2, 3 and 4). Steps 8–11 need the
-  captures step 7 produces and have not started. The G table is therefore not yet in this file;
-  §Outcome gains it in step 11.
+- **Where implementation stopped (2026-10-12, round 2):** Plan steps 1–11 done. Step 7's captures
+  were recorded by the agent while the operator handled the guitar; steps 8–11 followed the
+  operator's G7 decision (ADR-0022). Owed by the operator: Part 3 (`make hil`) on the 8 ms,
+  remapped `sg2hid.uf2` — the harness's expectations changed with the masks and the whammy.
+
+| id | Disposition | Evidence |
+|---|---|---|
+| G1 | confirmed | `sg-digital.log`: `link: absent -> digital`; needed X9 (breakout mirrored), X4 (ADR-0020) and X10 (ADR-0021) first |
+| G2 | confirmed | `0x41`, `sg_digital_idle.h` |
+| G3 | corrected | green `0x40`→`0x02`, blue `0x80`→`0x40`, orange `0x04`→`0x80`; the rest confirmed; tilt absent on this unit; `sg_digital_controls.h` |
+| G4 | confirmed | enter answered digital, set and leave `0xF3` + six `0x00`; `sg_negotiation_answers.h` |
+| G5 | confirmed | reaches analog streaming, id `0x73`, no corrected sequence needed; `sg_analog_idle.h` |
+| G6 | confirmed | same bytes and masks as G3; `sg_analog_controls.h` |
+| G7 | corrected | index 5 confirmed; rest `0x7F`, stop `0x00`; mapped to `0x00..0xFE` and `kWhammyRest` `0x00` (ADR-0022, operator's decision); `sg_analog_idle.h`, `sg_analog_whammy_full.h` |
+| G8 | confirmed | ACK 6–17 µs, median 11 over 1312 ACKs; `kAckTimeoutUs` 100 stays; emulator `kAckDelayUs` 10→11 |
+| G9 | unmeasurable | the master waits only for ACK to fall; `kAckPulseUs` stays a budget |
+| G10 | confirmed | three frames from `ok: analog` to `-> analog`, two `Negotiating`; `kNegotiationTimeoutUs` stays, tightening re-owned by `10-guitar-full` |
+| G11 | confirmed | `ps2_master.pio`, `pio_port.cpp` unchanged since `51f1291`; no guitar `ack` read negative |
 - Step 1: `src/app/console.{h,cpp}` (new, namespace `console`) holds `state_name( )`, `fault_name( )`,
   `print_trace( )`, moved unchanged from `src/app/main.cpp`, and the new `print_link( from, to,
   fault )`. `main.cpp` calls them; its serial output is unchanged. `console.cpp` joined
@@ -222,10 +236,29 @@
   byte" is written in `verify.md` as one `grep` per value over nine-byte frames' last `in` byte; the
   spec gives no command.
 
+- Spec step 8 asks for ten frames per controls vector; `sg_digital_controls.h` and
+  `sg_analog_controls.h` hold nine. The SG has no tilt sensor (operator, 2026-10-12: shaken through
+  Guitar Hero 3 sessions with no effect; never seen in either capture).
+- Spec step 9 says `sg_analog_idle`'s whammy "is `kSgWhammyAtRest`". With ADR-0022 the reported
+  whammy is no longer the wire byte: the cases assert the wire byte against `kSgWhammyAtRest` /
+  `kSgWhammyFull` and the reported value against `kWhammyRest` / `kWhammyReportedFull` (0xFE, worked
+  by hand in `tests/ps2_codec_cases.cpp`, as `kZeroFill` is).
+- Step 10 touched files the spec did not name, each because a correction broke it:
+  `tests/vectors/digital_pressed.h` (green's bit), `tests/vectors/analog_whammy_full.h` (the stop
+  byte), `tools/hil_digital.py` (masks, whammy pairs, neutral report), `src/core/hid_descriptor.h`
+  (a comment), and `src/core/command_line.{h,cpp}`, `src/core/trace_filter.h`, `src/app/observe.cpp`
+  (comments naming this phase, removed for the `grep -rn '09-guitar-observe' src/` criterion).
+- The `ls $C` criterion expects only `emu.log sg-analog.log sg-digital.log`; `captures/` also holds
+  the seven X4, X5 and X10 logs, kept as the evidence ADR-0020 and ADR-0021 cite.
+- Outside the plan entirely: X4–X10 in `experiments.md`, with ADR-0020 and ADR-0021, and the
+  `docs/wiring.md` breakout table.
+
 ## Debt
 
 - None new in this phase's code. No `belay-debt:` comment was added; `tests/test_repo_shape.sh`
   lost one (`core_headers( )`'s anonymous-namespace gap, closed by the `clang-query` matcher).
+- G9: `kAckPulseUs` stays a budget the master cannot observe; no phase owns it.
+- The whammy mapping is the SG's (ADR-0022); a second controller model would need its own constants.
 
 ## For later phases
 

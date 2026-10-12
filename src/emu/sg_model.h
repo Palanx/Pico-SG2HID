@@ -34,10 +34,11 @@
 namespace ps2 {
 
 // How long after a byte's last rising CLK edge the ACK pulse starts, and how long it lasts.
-// belay-debt: budgets, not measurements; 09-guitar-observe measures the real SG and replaces
-// both. The pulse is kept short because the master never waits for ACK to rise: a pulse longer
-// than the master's turnaround would overlap the next byte's first falling CLK edge.
-constexpr std::uint32_t kAckDelayUs = 10;
+// kAckDelayUs is the SG's median ACK delay (docs/constraints.md §Observed conventions, "The SG on
+// the bus"). kAckPulseUs is a budget the master cannot observe: it waits only for ACK to fall. The
+// pulse is kept short because the master never waits for ACK to rise: a pulse longer than the
+// master's turnaround would overlap the next byte's first falling CLK edge.
+constexpr std::uint32_t kAckDelayUs = 11;
 constexpr std::uint32_t kAckPulseUs = 2;
 
 // The longest command line accepted, terminator excluded.

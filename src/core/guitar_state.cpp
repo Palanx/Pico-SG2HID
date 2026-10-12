@@ -24,6 +24,14 @@ namespace {
     return id == ControllerId::Digital || id == ControllerId::Analog;
 }
 
+// The SG's bar falls from kWhammyAxisRest toward 0x00 (ADR-0022): distance travelled, doubled.
+[[nodiscard]] std::uint8_t whammy_from_axis( std::uint8_t axis ) {
+    if ( axis >= kWhammyAxisRest ) {
+        return kWhammyRest;
+    }
+    return static_cast<std::uint8_t>( ( kWhammyAxisRest - axis ) * kWhammyAxisScale );
+}
+
 }  // namespace
 
 GuitarState map_frame( const Ps2Frame& frame ) {
@@ -58,7 +66,7 @@ GuitarState map_frame( const Ps2Frame& frame ) {
     // byte is ever reinterpreted as an axis, and there is no index arithmetic on this path
     // that could reach one by accident.
     if ( frame.id == ControllerId::Analog ) {
-        state.whammy = frame.payload[ kWhammyIndex ];
+        state.whammy = whammy_from_axis( frame.payload[ kWhammyIndex ] );
     } else {
         state.whammy = kWhammyRest;
     }

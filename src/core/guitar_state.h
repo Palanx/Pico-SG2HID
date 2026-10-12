@@ -19,11 +19,9 @@ namespace ps2 {
 // pressed when its bit is CLEAR, which is the opposite of the obvious reading and is why
 // `is_pressed` exists instead of a bare `&`.
 //
-// TODO(09-guitar-observe): every position and mask in this section is read from the PS2
-// controller protocol documentation and from how Guitar Hero controllers are commonly
-// reported to map onto it. NONE of it has been measured against this guitar. Phase
-// 09-guitar-observe confronts all of it with the real device; until then a vector in this
-// repo asserts that the codec does what the codec says, not that the SG agrees.
+// Measured against the real SG, digital and analog mode alike (docs/constraints.md §Observed
+// conventions, "The SG on the bus"). The SG has no tilt sensor: kMaskTilt is the documented
+// position, never seen to change.
 
 constexpr std::size_t kButtonsLowIndex  = 0;  // payload byte carrying SELECT/START/d-pad
 constexpr std::size_t kButtonsHighIndex = 1;  // payload byte carrying the face and shoulder buttons
@@ -35,27 +33,29 @@ constexpr std::uint8_t kMaskStrumUp   = 0x10;  // bit 4 — D-pad UP
 constexpr std::uint8_t kMaskStrumDown = 0x40;  // bit 6 — D-pad DOWN
 
 // Bits of the high buttons byte.
-constexpr std::uint8_t kMaskTilt       = 0x01;  // bit 0 — L2, the tilt/effects switch
-constexpr std::uint8_t kMaskFretOrange = 0x04;  // bit 2 — L1
+constexpr std::uint8_t kMaskTilt       = 0x01;  // bit 0 — L2, the tilt switch (absent on this SG)
+constexpr std::uint8_t kMaskFretGreen  = 0x02;  // bit 1 — R2
 constexpr std::uint8_t kMaskFretYellow = 0x10;  // bit 4 — TRIANGLE
 constexpr std::uint8_t kMaskFretRed    = 0x20;  // bit 5 — CIRCLE
-constexpr std::uint8_t kMaskFretGreen  = 0x40;  // bit 6 — CROSS
-constexpr std::uint8_t kMaskFretBlue   = 0x80;  // bit 7 — SQUARE
+constexpr std::uint8_t kMaskFretBlue   = 0x40;  // bit 6 — CROSS
+constexpr std::uint8_t kMaskFretOrange = 0x80;  // bit 7 — SQUARE
 
 // --- The whammy axis --------------------------------------------------------------------
 
 // Payload index of the whammy, valid only in an analog frame. An analog payload is two
-// button bytes followed by four axis bytes, and this is the last of them.
-//
-// TODO(09-guitar-observe): which of the four axes the SG reports the whammy on is a guess,
-// and so is kWhammyRest below it. kFretCount is NOT a guess and is deliberately outside this
-// marker: five frets is ADR-0003's control set, not a claim about this guitar. Confronting
-// the two guesses with the real device is exactly what 09-guitar-observe is for.
+// button bytes followed by four axis bytes, and this is the last of them. Measured
+// (docs/constraints.md §Observed conventions, "The SG on the bus").
 constexpr std::size_t kWhammyIndex = 5;
 
-// The value the codec REPORTS when there is no analog frame to read one from — supplied by
-// us, never a byte reinterpreted out of a digital payload (R-PROTO-04).
-constexpr std::uint8_t kWhammyRest = 0x80;
+// The SG's whammy byte: kWhammyAxisRest with the bar untouched, falling to 0x00 at its stop.
+// The codec turns it around and doubles it (ADR-0022), so the reported axis runs from
+// kWhammyRest at rest to 0xFE at the stop. A byte above kWhammyAxisRest reads as rest.
+constexpr std::uint8_t kWhammyAxisRest  = 0x7F;
+constexpr std::uint8_t kWhammyAxisScale = 2;
+
+// The value the codec REPORTS with the bar at rest, and when there is no analog frame to read
+// one from — supplied by us, never a byte reinterpreted out of a digital payload (R-PROTO-04).
+constexpr std::uint8_t kWhammyRest = 0x00;
 
 // The number of fret buttons, so a caller can size an array without counting the members.
 constexpr std::size_t kFretCount = 5;
@@ -84,7 +84,8 @@ struct GuitarState {
     bool is_select;
     bool is_tilt;
 
-    // 0x00..0xFF, one axis. kWhammyRest when the frame did not report analog mode.
+    // kWhammyRest (bar untouched) to 0xFE (bar at its stop). kWhammyRest when the frame did
+    // not report analog mode.
     std::uint8_t whammy;
 };
 

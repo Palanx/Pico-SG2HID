@@ -21,7 +21,8 @@ constexpr std::uint8_t kAnalogWhammyFull[] = {
     0x80,  // axis 0 — centred
     0x80,  // axis 1 — centred
     0x80,  // axis 2 — centred
-    0xFF,  // axis 3 — whammy pushed all the way
+    0x00,  // axis 3 — whammy pushed all the way: the SG's bar falls to 0x00 at its stop
+           // (docs/phases/09-guitar-observe/captures/sg-analog.log:91)
 };
 
 }  // namespace vectors

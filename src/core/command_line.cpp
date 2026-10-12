@@ -29,8 +29,8 @@ LineEvent take_char( CommandLine& line, char c ) {
         }
         return LineEvent::Pending;
     }
-    // Judged first, cleared after: the 09-guitar-observe bug cleared the buffer under a view of
-    // it, so every line compared as NUL bytes and `analog` was always refused.
+    // Judged first, cleared after: the first observe firmware's bug cleared the buffer under a view
+    // of it, so every line compared as NUL bytes and `analog` was always refused.
     const LineEvent event = judge( line );
     line                  = CommandLine{};
     return event;

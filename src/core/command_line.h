@@ -1,6 +1,6 @@
 #pragma once
 
-// The observe firmware's serial input (09-guitar-observe), one character at a time. It accepts
+// The observe firmware's serial input (src/app/observe.cpp), one character at a time. It accepts
 // exactly one line, `analog`, optionally followed by '\r'; every other non-empty line is
 // unknown. A line longer than the buffer is unknown as a whole, never cut and read as a shorter
 // command.

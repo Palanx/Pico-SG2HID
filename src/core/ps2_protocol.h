@@ -55,8 +55,8 @@ constexpr std::uint32_t kByteGapUs  = 20;
 constexpr std::uint32_t kPollPeriodUs = 8000;
 
 // How long the master waits for ACK after a byte's last bit before giving up on the byte.
-// belay-debt: a budget, not a measurement; 09-guitar-observe measures the real ACK delay and
-// replaces this if the guitar answers later than it allows.
+// The SG ACKs 6–17 µs after a byte (docs/constraints.md §Observed conventions, "The SG on the
+// bus"), so this keeps more than 5x margin.
 constexpr std::uint32_t kAckTimeoutUs = 100;
 
 // --- Bytes the controller sends ---------------------------------------------------------
@@ -67,9 +67,8 @@ constexpr std::uint8_t kReadyByte = 0x5A;
 
 // Controller id bytes, in the header position of a response.
 //
-// TODO(09-guitar-observe): read from the protocol documentation, not measured. Which of
-// these the SG actually answers with — and whether it answers a fourth — is what
-// 09-guitar-observe establishes against the real device.
+// All three measured on the SG, and it answered no fourth (docs/constraints.md §Observed
+// conventions, "The SG on the bus").
 constexpr std::uint8_t kIdDigital = 0x41;
 constexpr std::uint8_t kIdAnalog  = 0x73;
 constexpr std::uint8_t kIdConfig  = 0xF3;

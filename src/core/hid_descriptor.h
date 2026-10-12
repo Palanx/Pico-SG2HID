@@ -78,7 +78,7 @@ constexpr std::array<std::uint8_t, 44> kHidReportDescriptor = {
     kItemReportCount, static_cast<std::uint8_t>( kPaddingBits ),
     kItemInput, kInputConstVarAbs,
 
-    // The whammy, one byte, passed straight through.
+    // The whammy, one byte, as map_frame( ) reports it (ADR-0022).
     kItemUsagePage, kUsagePageGenericDesktop,
     kItemUsage, kUsageX,
     kItemLogicalMinimum, 0,
