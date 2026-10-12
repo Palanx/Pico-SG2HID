@@ -5,6 +5,8 @@ they bite.
 # RULE R-SAFETY-07 — docs/constraints.md §Invariants — every error and timeout path releases ATT
 # RULE R-PROTO-06 — docs/constraints.md §Invariants — the master waits for ACK after every byte
 #                   but the last
+# RULE R-PROTO-11 — docs/constraints.md §Invariants — the master waits after ATT falls and before
+#                   every byte but the first
 
 The driver for tests/bus_frame_cases.cpp, which is not named test_*.cpp for the reason
 tests/test_ps2_codec.py gives. It is compiled with src/hal/bus_frame.cpp and a fake port, run,
@@ -96,6 +98,13 @@ MUTATIONS = [
     Mutation("R-PROTO-06", "the loop goes on after a failed byte",
              "        if ( !got.in ) {\n            break;",
              "        if ( !got.in ) {\n            ++done;\n            continue;"),
+    Mutation("R-PROTO-11", "no wait after ATT falls",
+             "    bus_wait_us( kAttSetupUs );\n", "\n"),
+    Mutation("R-PROTO-11", "no gap between bytes",
+             "            bus_wait_us( kByteGapUs );\n", "\n"),
+    Mutation("R-PROTO-11", "the gap also before the first byte",
+             "        if ( done > 0 ) {\n            bus_wait_us( kByteGapUs );",
+             "        if ( true ) {\n            bus_wait_us( kByteGapUs );"),
 ]
 
 

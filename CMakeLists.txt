@@ -34,7 +34,7 @@ file( GLOB SG2HID_CORE_SOURCES CONFIGURE_DEPENDS src/core/*.cpp )
 file( GLOB SG2HID_EMU_SOURCES CONFIGURE_DEPENDS src/emu/*.cpp )
 
 # The master firmwares share everything but their main( ).
-set( SG2HID_MASTER_SOURCES ${SG2HID_CORE_SOURCES} src/hal/bus_frame.cpp src/hal/pio_port.cpp src/app/console.cpp )
+set( SG2HID_MASTER_SOURCES ${SG2HID_CORE_SOURCES} src/hal/bus_frame.cpp src/hal/bus_wait.cpp src/hal/pio_port.cpp src/app/console.cpp )
 function( add_master_firmware target main_source )
     set( target_sources ${SG2HID_MASTER_SOURCES} ${main_source} )
     add_executable( ${target} ${target_sources} )

@@ -24,6 +24,9 @@ void att_assert();
 // ATT high: the controller is deselected and the bus is idle.
 void att_release();
 
+// Busy-waits `us` microseconds with the bus as it is (ADR-0020).
+void bus_wait_us( std::uint32_t us );
+
 // One byte's outcome: the byte shifted in, or std::nullopt when the byte, or its ACK when one
 // was asked for, did not complete within kAckTimeoutUs; and on both paths the microseconds from
 // handing the byte over until it completed or was given up on (ADR-0015).

@@ -1,4 +1,4 @@
-// Assertions over the frame loop in src/hal/bus_frame.cpp (R-SAFETY-07, R-PROTO-06).
+// Assertions over the frame loop in src/hal/bus_frame.cpp (R-SAFETY-07, R-PROTO-06, R-PROTO-11).
 //
 // NOT named test_*.cpp on purpose: the Makefile builds and runs every tests/test_*.cpp, and this
 // file needs src/hal/bus_frame.cpp linked in. tests/test_bus_frame.py is the single entry
@@ -16,12 +16,13 @@
 
 namespace {
 
-enum class CallKind : std::uint8_t { Assert, Release, Exchange };
+enum class CallKind : std::uint8_t { Assert, Release, Exchange, Wait };
 
 struct Call {
-    CallKind     kind;
-    std::uint8_t out;
-    bool         should_wait_ack;
+    CallKind      kind;
+    std::uint8_t  out;
+    bool          should_wait_ack;
+    std::uint32_t wait_us;  // Wait only
 };
 
 // What the fake shifts in for a byte: distinct from the byte shifted out, so a frame that was
@@ -57,6 +58,11 @@ void att_assert() {
 
 void att_release() {
     calls.push_back( { .kind = CallKind::Release, .out = 0, .should_wait_ack = false } );
+}
+
+void bus_wait_us( std::uint32_t us ) {
+    calls.push_back(
+        { .kind = CallKind::Wait, .out = 0, .should_wait_ack = false, .wait_us = us } );
 }
 
 ByteExchange exchange_byte( std::uint8_t out, bool should_wait_ack ) {
@@ -134,6 +140,35 @@ struct Run {
     return true;
 }
 
+// R-PROTO-11: the record reads assert, wait kAttSetupUs, byte, then wait kByteGapUs before every
+// later byte, and nothing else waits. Byte exchanges are attempted bytes only, so a frame that
+// stops early has no gap after its failed byte.
+[[nodiscard]] bool waits_placed( const std::vector<Call>& record ) {
+    std::size_t bytes = 0;
+    std::size_t waits = 0;
+    for ( std::size_t i = 0; i < record.size(); ++i ) {
+        const Call& call = record[ i ];
+        if ( call.kind == CallKind::Wait ) {
+            ++waits;
+            const bool is_after_assert_or_byte =
+                i > 0 && ( record[ i - 1 ].kind == CallKind::Assert ||
+                           record[ i - 1 ].kind == CallKind::Exchange );
+            if ( !is_after_assert_or_byte ) {
+                return false;
+            }
+        }
+        if ( call.kind == CallKind::Exchange ) {
+            const std::uint32_t expected = bytes == 0 ? ps2::kAttSetupUs : ps2::kByteGapUs;
+            if ( i == 0 || record[ i - 1 ].kind != CallKind::Wait ||
+                 record[ i - 1 ].wait_us != expected ) {
+                return false;
+            }
+            ++bytes;
+        }
+    }
+    return waits == bytes;
+}
+
 // The trace's timing: every attempted byte, the failed one included, holds the fake's elapsed
 // time for it, and every byte never sent still holds kUnsentUs.
 [[nodiscard]] bool elapsed_recorded( const Run& run ) {
@@ -159,6 +194,7 @@ int main() {
     bool is_framed = true;
     bool is_acked  = true;
     bool is_timed  = true;
+    bool is_spaced = true;
     for ( const std::size_t length : kFrameLengths ) {
         // failure == length is the run where nothing fails.
         for ( std::size_t failure = 0; failure <= length; ++failure ) {
@@ -174,6 +210,12 @@ int main() {
                              failure );
                 is_acked = false;
             }
+            if ( !waits_placed( calls ) ) {
+                std::printf( "    frame of %zu failing at %zu: waits missing or misplaced\n",
+                             length,
+                             failure );
+                is_spaced = false;
+            }
             if ( !elapsed_recorded( run ) ) {
                 std::printf( "    frame of %zu failing at %zu: elapsed time not where it belongs\n",
                              length,
@@ -188,6 +230,10 @@ int main() {
         report(
             is_acked,
             "R-PROTO-06 (ACK waited after every byte but the last; stop at the first failure)" ) &&
+        is_ok;
+    is_ok =
+        report( is_spaced,
+                "R-PROTO-11 (kAttSetupUs after ATT falls, kByteGapUs before every later byte)" ) &&
         is_ok;
     is_ok = report( is_timed,
                     "elapsed time kept for every attempted byte, the failed one included; "

@@ -43,6 +43,12 @@ constexpr std::size_t kWireBitsPerByte = 8;
 // CLK frequency the master drives: 4 µs per bit, 32 µs per byte.
 constexpr std::uint32_t kBusClockHz = 250000;
 
+// How long ATT stays low before the first clock, and how long the bus idles before every later
+// byte (ADR-0020, R-PROTO-11). Calibration knobs: chosen above Arduino PS2X's values, not
+// measured on a console.
+constexpr std::uint32_t kAttSetupUs = 20;
+constexpr std::uint32_t kByteGapUs  = 20;
+
 // How long the master waits for ACK after a byte's last bit before giving up on the byte.
 // belay-debt: a budget, not a measurement; 09-guitar-observe measures the real ACK delay and
 // replaces this if the guitar answers later than it allows.

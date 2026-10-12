@@ -26,8 +26,8 @@ X4 re-checked after X9 (2026-10-12), same bench, guitar plugged, 20 s of digital
 this branch's `sg2hid_observe.uf2` (`ee637ef`) answers but drops the link 34 times
 (`digital -> absent fault=ack-timeout`, each recovering on the next frame;
 `captures/x4-check-base-fw-20s.log`); X4's build (`36813ad`) drops it 0 times
-(`captures/x4-check-x4-fw-20s.log`). X4's waits are needed. Merging X4 (ADR-0020, R-PROTO-11)
-into this branch is the operator's call.
+(`captures/x4-check-x4-fw-20s.log`). X4's waits are needed; merged into this branch
+(2026-10-12).
 
 X1's evidence did not cover this: the emulator's wires went into the breakout by its printed
 numbers too, so a mirrored breakout passed. X6–X8 below are moot unless a later G check fails.
