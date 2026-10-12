@@ -34,7 +34,7 @@
 
 namespace {
 
-constexpr std::uint32_t kPollPeriodUs = 16000;  // experiment X10: a console's ~60 Hz
+constexpr std::uint32_t kPollPeriodUs = 8000;  // experiment X10: 125 Hz
 constexpr std::uint32_t kPortWaitMs   = 10;
 
 // The read poll: the only frame digital mode sends.
