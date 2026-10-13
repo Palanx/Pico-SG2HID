@@ -20,8 +20,8 @@ namespace ps2 {
 // `is_pressed` exists instead of a bare `&`.
 //
 // Measured against the real SG, digital and analog mode alike (docs/constraints.md §Observed
-// conventions, "The SG on the bus"). The SG has no tilt sensor: kMaskTilt is the documented
-// position, never seen to change.
+// conventions, "The SG on the bus"). The tilt switch chatters while the neck moves; the codec
+// reports it as read, frame by frame.
 
 constexpr std::size_t kButtonsLowIndex  = 0;  // payload byte carrying SELECT/START/d-pad
 constexpr std::size_t kButtonsHighIndex = 1;  // payload byte carrying the face and shoulder buttons
@@ -33,7 +33,7 @@ constexpr std::uint8_t kMaskStrumUp   = 0x10;  // bit 4 — D-pad UP
 constexpr std::uint8_t kMaskStrumDown = 0x40;  // bit 6 — D-pad DOWN
 
 // Bits of the high buttons byte.
-constexpr std::uint8_t kMaskTilt       = 0x01;  // bit 0 — L2, the tilt switch (absent on this SG)
+constexpr std::uint8_t kMaskTilt       = 0x01;  // bit 0 — L2, the tilt switch
 constexpr std::uint8_t kMaskFretGreen  = 0x02;  // bit 1 — R2
 constexpr std::uint8_t kMaskFretYellow = 0x10;  // bit 4 — TRIANGLE
 constexpr std::uint8_t kMaskFretRed    = 0x20;  // bit 5 — CIRCLE

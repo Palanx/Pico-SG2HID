@@ -230,7 +230,8 @@ each entry gets one when it does.
   - G3: frets in payload byte 1 — green bit 1 (R2), red bit 5, yellow bit 4, blue bit 6, orange
     bit 7; strum, start, select in payload byte 0 — up bit 4, down bit 6, start bit 3, select
     bit 0. Green, blue and orange were assumed elsewhere (bits 6, 7, 2) and are corrected. Payload
-    byte 0 bit 7 is always clear. No tilt sensor on this unit.
+    byte 0 bit 7 is always clear. Tilt is payload byte 1 bit 0, as assumed; the switch chatters
+    while the neck moves (`sg-tilt-*.log`).
   - G4: enter-config is answered as a digital poll; set-analog and leave-config as config mode
     (`0xF3`, six `0x00`).
   - G5: the sequence as sent reaches analog streaming, id `0x73`.

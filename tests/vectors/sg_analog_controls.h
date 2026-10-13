@@ -1,8 +1,8 @@
 #pragma once
 
-// The real SG in analog mode, one control held per frame, in ps2::Button order; nine frames,
-// no tilt (see sg_digital_controls.h). Transcribed by hand from
-// docs/phases/09-guitar-observe/captures/sg-analog.log (R-PROTO-05). Each frame is
+// The real SG in analog mode, one control held per frame, in ps2::Button order. Transcribed by
+// hand from docs/phases/09-guitar-observe/captures/sg-analog.log, and tilt from
+// sg-tilt-analog.log (R-PROTO-05). Each frame is
 // [header][0x5A][buttons 0][buttons 1][axis 0..3]; the comment names the capture line.
 
 #include <cstddef>
@@ -10,7 +10,7 @@
 
 namespace vectors {
 
-constexpr std::size_t kSgAnalogCount = 9;
+constexpr std::size_t kSgAnalogCount = 10;
 constexpr std::size_t kSgAnalogLen   = 8;
 
 constexpr std::uint8_t kSgAnalogControls[ kSgAnalogCount ][ kSgAnalogLen ] = {
@@ -23,6 +23,7 @@ constexpr std::uint8_t kSgAnalogControls[ kSgAnalogCount ][ kSgAnalogLen ] = {
     {0x73, 0x5A, 0x3F, 0xFF, 0x7F, 0x7F, 0x7F, 0x7F}, // strum down — sg-analog.log:23
     {0x73, 0x5A, 0x77, 0xFF, 0x7F, 0x7F, 0x7F, 0x7F}, // start      — sg-analog.log:19
     {0x73, 0x5A, 0x7E, 0xFF, 0x7F, 0x7F, 0x7F, 0x7F}, // select     — sg-analog.log:21
+    {0x73, 0x5A, 0x7F, 0xFE, 0x7F, 0x7F, 0x7F, 0x7F}, // tilt       — sg-tilt-analog.log:2
 };
 
 }  // namespace vectors

@@ -1,8 +1,8 @@
 #pragma once
 
-// The real SG in digital mode, one control held per frame, in ps2::Button order. Nine frames:
-// the SG has no tilt sensor, so Button::Tilt has none. Transcribed by hand from
-// docs/phases/09-guitar-observe/captures/sg-digital.log (R-PROTO-05). Each frame is
+// The real SG in digital mode, one control held per frame, in ps2::Button order. Transcribed by
+// hand from docs/phases/09-guitar-observe/captures/sg-digital.log, and tilt from
+// sg-tilt-digital.log (R-PROTO-05). Each frame is
 // [header][0x5A][buttons 0][buttons 1]; the comment names the capture line it came from.
 //
 // The operator called the bit-6 strum "up (toward the legs)" and the bit-4 strum "down (toward
@@ -13,7 +13,7 @@
 
 namespace vectors {
 
-constexpr std::size_t kSgControlCount = 9;
+constexpr std::size_t kSgControlCount = 10;
 constexpr std::size_t kSgDigitalLen   = 4;
 
 constexpr std::uint8_t kSgDigitalControls[ kSgControlCount ][ kSgDigitalLen ] = {
@@ -26,6 +26,7 @@ constexpr std::uint8_t kSgDigitalControls[ kSgControlCount ][ kSgDigitalLen ] = 
     {0x41, 0x5A, 0x3F, 0xFF}, // strum down  — sg-digital.log:14, buttons 0 bit 6 clear
     {0x41, 0x5A, 0x77, 0xFF}, // start       — sg-digital.log:18, buttons 0 bit 3 clear
     {0x41, 0x5A, 0x7E, 0xFF}, // select      — sg-digital.log:20, buttons 0 bit 0 clear
+    {0x41, 0x5A, 0x7F, 0xFE}, // tilt        — sg-tilt-digital.log:4, buttons 1 bit 0 clear
 };
 
 }  // namespace vectors

@@ -15,7 +15,7 @@
 |---|---|---|
 | G1 | confirmed | `sg-digital.log`: `link: absent -> digital`; needed X9 (breakout mirrored), X4 (ADR-0020) and X10 (ADR-0021) first |
 | G2 | confirmed | `0x41`, `sg_digital_idle.h` |
-| G3 | corrected | green `0x40`→`0x02`, blue `0x80`→`0x40`, orange `0x04`→`0x80`; the rest confirmed; tilt absent on this unit; `sg_digital_controls.h` |
+| G3 | corrected | green `0x40`→`0x02`, blue `0x80`→`0x40`, orange `0x04`→`0x80`; the rest confirmed, tilt included (bit 0, chatters while the neck moves; `sg-tilt-*.log`); `sg_digital_controls.h` |
 | G4 | confirmed | enter answered digital, set and leave `0xF3` + six `0x00`; `sg_negotiation_answers.h` |
 | G5 | confirmed | reaches analog streaming, id `0x73`, no corrected sequence needed; `sg_analog_idle.h` |
 | G6 | confirmed | same bytes and masks as G3; `sg_analog_controls.h` |
@@ -236,9 +236,9 @@
   byte" is written in `verify.md` as one `grep` per value over nine-byte frames' last `in` byte; the
   spec gives no command.
 
-- Spec step 8 asks for ten frames per controls vector; `sg_digital_controls.h` and
-  `sg_analog_controls.h` hold nine. The SG has no tilt sensor (operator, 2026-10-12: shaken through
-  Guitar Hero 3 sessions with no effect; never seen in either capture).
+- Tilt never showed in 4.5 or 4.6 (neck raised to vertical and past it), so it got its own
+  captures, `sg-tilt-digital.log` and `sg-tilt-analog.log` (neck held vertical, past vertical, and
+  jerked up). The tilt frames in the two controls vectors come from them.
 - Spec step 9 says `sg_analog_idle`'s whammy "is `kSgWhammyAtRest`". With ADR-0022 the reported
   whammy is no longer the wire byte: the cases assert the wire byte against `kSgWhammyAtRest` /
   `kSgWhammyFull` and the reported value against `kWhammyRest` / `kWhammyReportedFull` (0xFE, worked
@@ -249,7 +249,8 @@
   (a comment), and `src/core/command_line.{h,cpp}`, `src/core/trace_filter.h`, `src/app/observe.cpp`
   (comments naming this phase, removed for the `grep -rn '09-guitar-observe' src/` criterion).
 - The `ls $C` criterion expects only `emu.log sg-analog.log sg-digital.log`; `captures/` also holds
-  the seven X4, X5 and X10 logs, kept as the evidence ADR-0020 and ADR-0021 cite.
+  the seven X4, X5 and X10 logs, kept as the evidence ADR-0020 and ADR-0021 cite, and the two tilt
+  captures.
 - Outside the plan entirely: X4–X10 in `experiments.md`, with ADR-0020 and ADR-0021, and the
   `docs/wiring.md` breakout table.
 
