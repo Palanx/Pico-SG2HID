@@ -24,6 +24,10 @@
 #                  master flashed with sg2hid.uf2
 #                  and an emulator with sg2hid_emu.uf2.
 #                  Needs the bench; never part of `make test`.
+#   make guitar MASTER=<port>
+#                  The real-guitar run (10-guitar-full): tools/hil_digital.py --guitar against a
+#                  master flashed with sg2hid.uf2 and the SG on its bus, a person at the guitar.
+#                  Needs the bench; never part of `make test`.
 #   make clean
 #
 # CMake is never invoked directly; this file is the seam between the two builds.
@@ -39,7 +43,7 @@ CPP_BINS  := $(patsubst tests/%.cpp,$(BUILD)/%,$(CPP_TESTS))
 SH_TESTS  := $(wildcard tests/test_*.sh)
 PY_TESTS  := $(wildcard tests/test_*.py)
 
-.PHONY: test lint typecheck firmware hil clean print-CXXFLAGS
+.PHONY: test lint typecheck firmware hil guitar clean print-CXXFLAGS
 
 # Every test file but the liveness harness runs in the background, each into its own log and
 # exit-code file under $(LOGS); the harness re-runs every check itself, so it runs last, alone,
@@ -97,6 +101,10 @@ firmware:
 hil:
 	@[ -n "$(MASTER)" ] && [ -n "$(EMU)" ] || { echo "usage: make hil MASTER=<master port> EMU=<emulator port>"; exit 1; }
 	python3 tools/hil_digital.py --master "$(MASTER)" --emu "$(EMU)"
+
+guitar:
+	@[ -n "$(MASTER)" ] || { echo "usage: make guitar MASTER=<master port>"; exit 1; }
+	python3 tools/hil_digital.py --guitar --master "$(MASTER)"
 
 # The flags the test drivers build their mutants with (tests/driver_support.py), so the two
 # builds cannot drift apart.

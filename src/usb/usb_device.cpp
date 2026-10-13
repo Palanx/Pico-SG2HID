@@ -139,6 +139,10 @@ void send_report( const ps2::HidReport& report ) {
     }
 }
 
+bool is_report_ready() {
+    return tud_hid_ready();
+}
+
 }  // namespace usb
 
 // --- TinyUSB callbacks ------------------------------------------------------------------

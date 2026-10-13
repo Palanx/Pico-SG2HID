@@ -511,6 +511,28 @@ constexpr std::uint32_t kOnePollUs = 1000;
     return report( is_ok, "link: exactly kNegotiationTimeoutUs in config mode is not yet past it" );
 }
 
+// The bound counted in polls: the SG negotiates with two config-mode frames (G10), and the link
+// waits six polls in config mode before it gives up, so a slow negotiation is not cut short and a
+// stuck one is dropped on the seventh.
+[[nodiscard]] bool case_link_negotiation_lasts_six_polls() {
+    constexpr int kPatientPolls = 6;
+
+    ps2::Link                           link{};
+    const std::span<const std::uint8_t> config{ vectors::kConfigMode };
+    const ps2::LinkState entered    = ps2::step( link, ps2::decode( config ), ps2::kPollPeriodUs );
+    bool                 is_patient = entered == ps2::LinkState::Negotiating;
+    for ( int poll = 0; poll < kPatientPolls; ++poll ) {
+        is_patient = is_patient && ps2::step( link, ps2::decode( config ), ps2::kPollPeriodUs ) ==
+                                       ps2::LinkState::Negotiating;
+    }
+
+    const ps2::LinkState seventh = ps2::step( link, ps2::decode( config ), ps2::kPollPeriodUs );
+
+    const bool is_ok = is_patient && seventh == ps2::LinkState::Absent &&
+                       link.last_fault == ps2::FaultCause::Negotiating;
+    return report( is_ok, "link: config mode lasts six polls and drops on the seventh" );
+}
+
 // The elapsed time handed to the step that ENTERS a state passed before the transition, so it
 // belongs to the state being left. A long silence before the first config-mode frame must not
 // count against the negotiation it precedes.
@@ -1129,6 +1151,7 @@ int main() {
     is_ok = case_link_not_ready_drops_and_records_why() && is_ok;
     is_ok = case_link_good_frame_keeps_the_last_fault() && is_ok;
     is_ok = case_link_negotiation_bound_is_exclusive() && is_ok;
+    is_ok = case_link_negotiation_lasts_six_polls() && is_ok;
     is_ok = case_link_time_before_entering_is_not_counted() && is_ok;
     is_ok = case_link_time_in_state_saturates() && is_ok;
 

@@ -10,6 +10,7 @@
 // (R-CLEAN-09) or I/O reached from `core` (ADR-0002, R-ARCH-01).
 
 #include "core/ps2_frame.h"
+#include "core/ps2_protocol.h"
 
 #include <cstdint>
 
@@ -46,14 +47,11 @@ enum class FaultCause : std::uint8_t {
     Declined,     // a well-formed answer with an id the analog-mode sequence did not ask for
 };
 
-// How long the controller may stay in config mode before the link gives up and starts over.
-// The sequence is a handful of frames at kPollPeriodUs (8 ms), ~40 ms, so this leaves about 2x:
-// it is a "something is wrong" bound, not a schedule.
-//
-// The SG negotiates in three frames, two of them Negotiating (~24 ms at kPollPeriodUs;
-// docs/constraints.md §Observed conventions, "The SG on the bus"). Tightening the bound is
-// 10-guitar-full's.
-constexpr std::uint32_t kNegotiationTimeoutUs = 100000;
+// How long the controller may stay in config mode before the link gives up and starts over: six
+// polls, twice the SG's measured negotiation (three frames, two of them Negotiating, ~24 ms;
+// docs/constraints.md §Observed conventions, "The SG on the bus"). A "something is wrong" bound,
+// not a schedule.
+constexpr std::uint32_t kNegotiationTimeoutUs = 6 * kPollPeriodUs;
 
 // Plain data. `us_in_state` is what makes the timeout above decidable without `core` ever
 // reading a clock: the caller reports how much time passed, this accumulates it, and it resets

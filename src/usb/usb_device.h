@@ -19,4 +19,8 @@ void task();
 // newer one (ADR-0018).
 void send_report( const ps2::HidReport& report );
 
+// Whether the HID interface can take a report now: a send_report( ) while this is false sends
+// nothing; the master counts those as `busy`.
+[[nodiscard]] bool is_report_ready();
+
 }  // namespace usb
