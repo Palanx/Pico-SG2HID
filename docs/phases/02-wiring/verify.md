@@ -105,7 +105,9 @@ and ask before continuing.
 
 "Pico pin N" is the physical pin number on the board edge: pin 1 is top-left with the USB
 connector at the top, 1–20 run down the left side and 21–40 back up the right. "Socket
-pin N" is the number printed on the PS2 breakout.
+pin N" is the PS2 pin number, the one the controller's plug uses, **not** necessarily the number
+printed on the breakout: this bench's breakout prints them mirrored. Find each PS2 pin on your
+breakout with `docs/wiring.md` §This bench's breakout before measuring.
 
 #### C1 — Unpowered: USB unplugged, guitar unplugged
 
