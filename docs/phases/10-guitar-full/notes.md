@@ -48,6 +48,19 @@
   on the bench the Deck gave the master `/dev/ttyACM1` because another device held `ttyACM0`;
   the run is the same. Reconciled in the same edit: spec Plan step 7's `verify.md` item and
   `verify.md` §6 step 3 (checked: PHASES.md names no port).
+- operator amended spec (validation round 1, 2026-10-13): Goal "shows every control and the
+  whammy, before and after replug cycles" and Plan step 7 "the gamepad tester on each host
+  before and after three replug cycles" → every control and the whammy, then green after each
+  of three replug cycles — `verify.md` §5 step 4 as written; the operator also tried the controls
+  after replugging in the tester and reports they all work. Reconciled in the same edit: Goal
+  and Plan step 7, the only two spec sentences stating it; checked PHASES.md's row ("plays
+  through a gamepad tester … across repeated unplug/replug cycles"), consistent, unchanged.
+- spec amended (validation round 2): Goal item 4 `streaming` "after `DISCARDED_SUMMARIES`,
+  `--seconds` summaries" → "`--seconds` summaries" — the discard is the unchanged
+  `Harness.window( )`'s, not this phase's; the clause asserted something outside the diff.
+  Reconciled: Context pointer line 70 still names `DISCARDED_SUMMARIES` as an existing symbol of
+  `tools/hil_digital.py`, a pointer, not a claim about `streaming`; left as is. No other spec
+  sentence states the discard.
 
 ## Debt
 
@@ -65,6 +78,9 @@
   release instructions must say to find it with `ls /dev/ttyACM*`, not hard-code it.
 - **If `busy` is non-zero at the bench**: the fix is re-sending the stored report from
   `usb::task( )` when the HID interface becomes ready (spec §Out of scope); operator's call.
+- **Taste, from validation round 3 (not blocking):** `verify.md` §6 step 3 explains how to find
+  the Deck's port, then shows the literal `/dev/ttyACM1`; someone copying it where the master is
+  `ttyACM0` runs it on the wrong port. **11-release**'s README should show a placeholder.
 
 ## Bench readings
 
@@ -160,3 +176,78 @@ physical), in `verify.md` order. Tree: `99ba0a6` + the uncommitted phase diff.
 - **All three bench criteria pass (2026-10-13), on the tree whose UF2 hashes are recorded
   above:** `make hil` → `hil: PASS`; `make guitar` on the Mac → `guitar: PASS`; the harness on
   the Deck → `guitar: PASS` (port `/dev/ttyACM1`, see For later phases).
+- **Largest `hand`, and `busy` (Plan step 8):** largest `hand=` read off a summary: 674 µs
+  (emulator, analog) and 669 µs (real SG, Mac, sampled before `make guitar`). The three harness
+  runs passed `checked_summary( )` on every `hil:` line they read, so none read `hand` > 1000;
+  the harness does not print the maximum it saw. `busy` was 0 in every summary `streaming`
+  judged and in every line sampled by hand.
+
+## Validation — 2026-10-13
+- criteria: 16 passed / 0 failed (13 host criteria run this round; the three bench criteria
+  operator-run earlier on 2026-10-13 on the identical `sg2hid.uf2`/`sg2hid_emu.uf2` (sha256 match)
+  and the identical `tools/hil_digital.py` — see `## Bench readings`)
+- project gates: test pass, lint pass, typecheck pass
+- gates tree: 6b1e2b684a6b0f073195c046b4682cdbc6453eda
+- boundary sweep: clean
+- independent review: contradicts (code-side): `verify.md` §5 step 4 (and §6 step 4 by "Repeat
+  step 5") re-checks only green after the replug cycles; spec Goal (lines 44–45) and Plan step 7
+  ("the gamepad tester on each host before and after three replug cycles") ask for every control
+  and the whammy after them — no Deviations entry, spec states the intent, the hunk departs
+  (settled: 2 — `make guitar MASTER=<master port>` for `guitar_streaming( )` discarding
+  `DISCARDED_SUMMARIES` via `Harness.window( )`, and for `Harness(Port(path), None)` working with
+  no emulator) (unstated: 7 — `controls` also requires `state=analog` and a whammy not `--`;
+  `busy` judged only in `streaming`; `verify.md` text the spec does not list (5–6 ms average,
+  `sudo` note, "ten `ok:` lines", never flash with the guitar in, `ls /dev/cu.usbmodem*`);
+  `verify.md` §6 shows literal `/dev/ttyACM1`; replug prompts carry ` (n/N)`; `LINK` regex
+  anchors `fault=\S+$`; `frame_start` read before `command_for( )`, stricter than spec)
+- closure test: pass
+- findings: 1
+- finding keys: §Goal docs/phases/10-guitar-full/verify.md
+- spec size: 12359 (first)
+- upstream: none
+- not-ours: none
+- verdict: returned to implementation
+
+## Validation — 2026-10-13 (round 2)
+- criteria: 16 passed / 0 failed (13 host re-run; bench three unchanged, same UF2 sha256 and harness)
+- project gates: test pass, lint pass, typecheck pass (re-run: the carry-over guard hit
+  `.gitattributes` and `tests/vectors/*.h`)
+- gates tree: 6b1e2b684a6b0f073195c046b4682cdbc6453eda
+- boundary sweep: clean
+- independent review: undecidable: Goal item 4 `streaming` "after `DISCARDED_SUMMARIES`" — the
+  discard lives in `Harness.window( )`, unchanged and outside the diff; reviewer named no
+  settling criterion (settled: none) (unstated: 6 — `controls` also requires `state=analog` and
+  whammy not `--`; `replug` waits for `analog -> absent` and checks `hil:` lines on the way;
+  `LINK` `fault=\S+$` tail; a port-open error reports under `streaming`; `usb_device.h` comment
+  about unchanged `send_report( )`; `verify.md` extras (5–6 ms average, `sudo`, quit Steam,
+  other strum direction, literal `ttyACM1`))
+- closure test: fail: the review's undecidable is a missing pointer
+- findings: 1
+- finding keys: §Goal tools/hil_digital.py
+- spec size: 12455 (+96 since the previous validation)
+- upstream: none
+- not-ours: none
+- verdict: returned to spec
+
+## Validation — 2026-10-13 (round 3)
+- criteria: 16 passed / 0 failed (13 host re-run; bench three unchanged, same UF2 sha256 and harness)
+- project gates: test pass, lint pass, typecheck pass (re-run: the carry-over guard hit
+  `.gitattributes` and `tests/vectors/*.h`)
+- gates tree: 6b1e2b684a6b0f073195c046b4682cdbc6453eda
+- boundary sweep: clean
+- independent review: clean (settled: 1 — `Harness(Port(path), None)` and the unchanged
+  `Harness.__init__`/`summary( )`/`window( )` with no emulator: `make guitar MASTER=<master port>`
+  and `python3 hil_digital.py --guitar --master /dev/ttyACM<n>`, both passed on the bench on this
+  tree) (unstated: 8 — replug prompts carry ` (n/N)`; `controls` also requires `state=analog` and
+  whammy not `--`; `link_until` checks `hil:` lines while waiting; `LINK` regex and helpers, the
+  `WHAMMY_PUSHED_MIN` comment; `is_report_ready( )` comment; `verify.md` extras (never flash with
+  the guitar in, "ten `ok:` lines", `sudo`, Steam holding the device, §7 Record list); PHASES.md
+  status; spec hunks authorised by Deviations) (taste: 1 — literal `ttyACM1` in `verify.md` §6,
+  under For later phases)
+- closure test: pass
+- findings: 0
+- finding keys: none
+- spec size: 12426 (-29 since the previous validation)
+- upstream: none
+- not-ours: none
+- verdict: done

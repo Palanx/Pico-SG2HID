@@ -25,7 +25,7 @@ that observable:
 4. **Guitar harness.** `tools/hil_digital.py --guitar --master <port>` needs no emulator. It runs
    three scenarios, printing `ok: <scenario>` or `FAIL: <scenario>: <reason>`, stopping at the
    first FAIL, and ending with `guitar: PASS` (exit 0) or `guitar: FAIL` (exit 1):
-   - `streaming` — after `DISCARDED_SUMMARIES`, `--seconds` summaries (default 60), each
+   - `streaming` — `--seconds` summaries (default 60), each
      `state=analog` and `busy=0`, with Δ`refused` = 0 over the window.
    - `controls` — for each of the ten controls in `BUTTONS` (green, red, yellow, blue, orange,
      strum up, strum down, start, select, tilt) it prints `hold <control>` and waits up to
@@ -42,7 +42,8 @@ that observable:
    `MAX_HANDOFF_US` (1000) in both modes; `busy` is judged in `--guitar` mode only.
 
 The game-facing check is the operator's: a browser gamepad tester on the Mac and on the Steam
-Deck shows every control and the whammy, before and after replug cycles (`verify.md`).
+Deck shows every control and the whammy, then green after each of three replug cycles, with
+the gamepad never leaving the tester (`verify.md`).
 
 ## Context pointers
 
@@ -114,8 +115,8 @@ Deck shows every control and the whammy, before and after replug cycles (`verify
    regression (step 6); connecting the guitar (09 `verify.md` Part 4's order, wiring by PS2
    number); `make guitar` on the Mac; the same script on the Steam Deck (copy
    `tools/hil_digital.py` over, `python3 hil_digital.py --guitar --master /dev/ttyACM<n>`, the
-   port found with `ls /dev/ttyACM*`); the gamepad tester on each host before and after three replug
-   cycles; how to unplug and replug safely (at the guitar's plug, Pico powered, never touching the
+   port found with `ls /dev/ttyACM*`); the gamepad tester on each host: every control and the whammy, then
+   green after each of three replug cycles; how to unplug and replug safely (at the guitar's plug, Pico powered, never touching the
    breadboard); and what a failure of each scenario points to. Check: `grep -cE '^#+ What was
    built|^#+ .*[Cc]heck it' docs/phases/10-guitar-full/verify.md` → 2.
 8. **The guitar, on the bench.** Operator runs `verify.md`: `make guitar` on the Mac, the harness
