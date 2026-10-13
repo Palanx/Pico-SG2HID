@@ -10,7 +10,7 @@ code fix corrects it.
 **The instrument (operator's decision, 2026-10-09).** `sg2hid_observe` is a third master
 firmware, built from `src/app/observe.cpp`. It has no HID interface; USB stdio is its only USB
 function. It configures pins only through `ps2::bus_init( )` (R-SAFETY-09, R-SAFETY-10). It
-exchanges one frame every 1000 µs, start to start, in one of two modes:
+exchanges one frame every `ps2::kPollPeriodUs` (8000 µs, ADR-0021), start to start, in one of two modes:
 
 | Mode | Entered | Frame sent | Link judged by |
 |---|---|---|---|
@@ -47,7 +47,7 @@ reproduces it with one disposition per row: `confirmed`, `corrected`, `re-owned`
 |---|---|---|---|
 | G1 | Does the SG answer the bus on 3V3 alone? | `requirements.md` OPEN line | `sg-digital.log` shows `link: absent -> digital` |
 | G2 | Digital id byte | `kIdDigital` 0x41 | `sg_digital_idle.h` |
-| G3 | Digital byte and bit of each of the ten `Button` controls | `kButtonsLowIndex`, `kButtonsHighIndex`, the ten `kMask*` in `guitar_state.h` | `sg_digital_controls.h` |
+| G3 | Digital byte and bit of each of the ten `Button` controls; strum up and down are named by the D-pad bit they report (operator, 2026-10-12) | `kButtonsLowIndex`, `kButtonsHighIndex`, the ten `kMask*` in `guitar_state.h` | `sg_digital_controls.h` |
 | G4 | The guitar's answer to each of the three negotiation frames, and the config id | `kIdConfig` 0xF3 | `sg_negotiation_answers.h` |
 | G5 | Does the sequence, as sent, reach analog streaming, and with which id? | `kIdAnalog` 0x73; no `5A` padding on leave-config | `sg_negotiation_answers.h` + `sg_analog_idle.h` |
 | G6 | Analog-mode byte and bit of each control: the same as G3? | the same two bytes and masks as digital | `sg_analog_controls.h` |
@@ -151,9 +151,9 @@ and asks; it does not pick.
 6. **Operator procedure.** Touches `docs/phases/09-guitar-observe/verify.md` (new; R-PROC-02
    headings). For a non-specialist, in this order:
    1. the R-SAFETY-08 order;
-   2. re-running the `02-wiring` continuity and voltage checklist on the socket wiring, with
+   2. moving the master's bus wires from the emulator to the socket;
+   3. re-running the `02-wiring` continuity and voltage checklist on the socket wiring, with
       socket pin 3 insulated and nothing on VBUS or VSYS;
-   3. moving the master's bus wires from the emulator to the socket;
    4. plugging the guitar in **with the Pico unpowered**, then plugging in USB;
    5. the two capture scripts below;
    6. reading the decoder's rows and `ack` values;
@@ -209,9 +209,13 @@ and asks; it does not pick.
 
    Check: `python3 tests/test_ps2_codec.py | grep -c '^  ok: *sg_'` → 6. A case that fails here
    is a `corrected` row and goes to step 10.
-10. **Reconcile.** Touches only the `core` files the G rows name (`ps2_protocol.h`,
-    `guitar_state.{h,cpp}`, `negotiation.cpp`, `link.h`), `src/emu/sg_model.h`, and the
-    existing cases `make test` reports failing after a correction, with their vectors. Per row:
+10. **Reconcile.** Touches the `core` files the G rows name (`ps2_protocol.h`,
+    `guitar_state.{h,cpp}`, `negotiation.cpp`, `link.h`), `src/emu/sg_model.h`, the
+    existing cases `make test` reports failing after a correction, with their vectors
+    (`tests/vectors/digital_pressed.h`, `tests/vectors/analog_whammy_full.h`), `tools/hil_digital.py`
+    (the harness's masks and whammy), `src/core/hid_descriptor.h` (a comment), and the comments
+    in `src/core/command_line.{h,cpp}`, `src/core/trace_filter.h` and `src/app/observe.cpp` that
+    name this phase. Per row:
     - **G2–G7, `corrected`:** change the constant or sequence until the step-9 cases pass. If
       G2, G4 or G5 shows the SG answering `0x79`, repoint `unknown_id.h` to another undeclared
       byte. A G4/G5 correction changes the bytes sent, so recapture `sg-analog.log` with the
@@ -235,6 +239,20 @@ and asks; it does not pick.
     - R-PROTO-06 gains an **Observed** sentence with the G8 range.
     - notes §Outcome holds the G table with dispositions.
     - Check: the acceptance criteria below.
+12. **Work first contact forced** (operator's decisions, recorded in `notes.md` §Outcome and
+    `docs/phases/09-guitar-observe/experiments.md`):
+    - The observe line reader moved to `src/core/command_line.{h,cpp}` with
+      `tests/test_command_line.cpp`, after bench round 1 found its parser comparing a cleared
+      buffer.
+    - ADR-0020 (`docs/adr/0020-att-setup-and-byte-gap.md`): waits after ATT and between bytes,
+      in `src/hal/bus_frame.cpp`, `src/hal/bus_port.h`, `src/hal/bus_wait.cpp`, with R-PROTO-11
+      bound to `tests/test_bus_frame.py` and `tests/bus_frame_cases.cpp`.
+    - ADR-0021 (`docs/adr/0021-poll-period-8ms.md`): the 8 ms poll period.
+    - ADR-0022 (`docs/adr/0022-whammy-mapped-in-core.md`): the whammy mapped in `core`.
+    - Evidence kept in `captures/`: `x4-check-base-fw-20s.log`, `x4-check-x4-fw-20s.log`,
+      `x5-first-answer.log`, `x10-poll-2ms.log`, `x10-poll-4ms.log`, `x10-poll-8ms.log`,
+      `x10-poll-60hz.log`, `sg-tilt-digital.log`, `sg-tilt-analog.log`; `.gitattributes` stores
+      capture logs byte for byte.
 
 ## Acceptance criteria
 
@@ -257,7 +275,7 @@ grep -c 'docs/phases/09-guitar-observe/captures' docs/constraints.md    # expect
 grep -c '^| G[0-9]' docs/phases/09-guitar-observe/notes.md       # expect: 11
 grep -c '^#\+ What was built\|^#\+ .*[Cc]heck it' docs/phases/09-guitar-observe/verify.md   # expect: 2
 git diff --quiet 51f1291 HEAD -- src/hal/ps2_master.pio src/hal/pio_port.cpp   # expect: exit 0 (G11's evidence holds)
-ls $C                                                            # bench, expect: emu.log sg-analog.log sg-digital.log
+ls $C/emu.log $C/sg-analog.log $C/sg-digital.log               # bench, expect: exit 0
 for f in $C/*.log; do python3 tools/trace_decode.py "$f" >/dev/null || echo "BAD $f"; done   # bench, expect: no output
 grep -c '^ok: analog' $C/emu.log                                 # bench, expect: 1
 grep -c 'link: absent -> digital' $C/sg-digital.log              # bench, expect: >= 1 (G1)
@@ -269,7 +287,9 @@ make hil MASTER=<master port> EMU=<emulator port> | tail -n 1    # bench, expect
 ## Out of scope
 
 - Any change to `sg2hid`'s behaviour, its HID output, hotplug, or latency belongs to
-  `10-guitar-full`. Step 1 moves printing code without changing output.
+  `10-guitar-full`, except what ADR-0020, ADR-0021 and ADR-0022 decided (step 12), including
+  the `requirements.md` latency clause ADR-0021 rewords. Step 1 moves printing code without
+  changing output.
 - Tightening `kNegotiationTimeoutUs` is re-owned to `10-guitar-full` (G10).
 - Measuring the ACK pulse width needs a logic analyzer. No phase owns it (G9).
 - A `digital` serial command, or any other observe command: a power cycle returns the guitar

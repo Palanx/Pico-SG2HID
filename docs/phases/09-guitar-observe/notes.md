@@ -260,6 +260,32 @@
 - The `ls $C` criterion expects only `emu.log sg-analog.log sg-digital.log`; `captures/` also holds
   the seven X4, X5 and X10 logs, kept as the evidence ADR-0020 and ADR-0021 cite, and the two tilt
   captures.
+- Validation round 1 (2026-10-12): the `ls $C` criterion is amended to
+  `ls $C/emu.log $C/sg-analog.log $C/sg-digital.log` (expect exit 0), since `captures/` keeps the
+  extra evidence logs listed above. Reconciliation checked: Plan steps 4 and 7 name the three files
+  without claiming they are the only ones; nothing else in the spec asserts the directory's contents.
+- Validation round 2 (2026-10-12), operator's order "fix all, revalidate":
+  - Code: `tests/vectors/sg_digital_controls.h` and `sg_analog_controls.h` rewritten to one comment
+    per byte (Plan step 8), literals unchanged and re-checked against the cited capture lines, under
+    `// clang-format off` as `src/core/hid_descriptor.h` does.
+  - Strum (G3): operator's decision — strum up and down are named by the D-pad bit they report
+    (bit 4 up, bit 6 down), not by the operator's physical labels; no mask change. The G3 row says so.
+  - Spec Plan step 6: items 2 and 3 swapped, so the wiring re-check follows the last wire move, as
+    `verify.md` §4.2–4.3 already does.
+  - Spec Goal: "every 1000 µs" → `ps2::kPollPeriodUs` (8000 µs, ADR-0021). Out of scope: the
+    `sg2hid` clause now excepts ADR-0020/0021/0022 and the `requirements.md` latency clause.
+  - Spec Plan: step 10 lists the files its corrections touched (drops "only"); new step 12 names the
+    command-line move, the ADR-0020/0021/0022 files, the nine extra captures and `.gitattributes`.
+  - Reconciliation checked: no other "1000 µs" in the spec; the constraints finding already records
+    strum up = bit 4; Context pointers already name `docs/wiring.md`; the earlier Deviations entries
+    on step 10's unnamed files and "outside the plan entirely" are now covered by steps 10 and 12 and
+    stay as history.
+- operator closed with open finding: §Plan tests/vectors/digital_pressed.h — green's byte became
+  `0xFD` "as the SG reports it" without naming its capture line (`sg-digital.log:4`), which
+  R-PROTO-05's second source asks of SG-sourced vectors; the spec never said whether a step-10
+  correction to a documentation vector counts as transcribed (round 3, 2026-10-12).
+  Fixed after closure on the operator's order (2026-10-12): the comment now cites
+  `sg-digital.log:4`.
 - Outside the plan entirely: X4–X10 in `experiments.md`, with ADR-0020 and ADR-0021, and the
   `docs/wiring.md` breakout table.
 
@@ -281,3 +307,82 @@
   Porting the other `test_repo_shape.sh` finders to `clang-query` was not taken and is not logged.
 - **10-guitar-full**: `make test` now runs in parallel and writes `build/host/test-logs/`; a phase that
   adds a test file pays nothing extra in wall clock unless the file is the new slowest one.
+- **Taste from validation round 2's reviewer (2026-10-12)**, not blocking: `src/core/trace_filter.h`'s
+  header says the firmware "exchanges a frame every millisecond" and `verify.md` says "A thousand
+  lines a second would bury the port", both stale under ADR-0021's 8 ms; R-PROTO-06's G8
+  **Observed** sentence sits after 06-hil-digital's rather than inside the Scope clause.
+- **Taste from validation round 3's reviewer (2026-10-12)**, not blocking: `src/core/link.h`'s
+  `kNegotiationTimeoutUs` comment estimates "~40 ms" in one paragraph and states the measured
+  "three frames… ~24 ms" in the next; ADR-0020 states its frame cost against "the 1000 µs poll
+  period" (immutable, predates ADR-0021).
+
+## Validation — 2026-10-12
+- criteria: 19 passed / 1 failed / 1 not run — failed: `ls $C` lists twelve files, the criterion
+  expects exactly `emu.log sg-analog.log sg-digital.log`; the nine extra logs are the evidence
+  ADR-0020/0021 and the tilt vectors cite (§Deviations already records them), so the criterion is
+  stale, not the tree. Not run: `make hil` (no board attached this round); last `hil: PASS`
+  2026-10-12 (§Outcome), and `src/ tools/ tests/` are unchanged since that commit (`6eb6128`).
+- project gates: test pass, lint pass, typecheck pass
+- gates tree: 2f6ed6d03c4423c68a08833b15ae6270e55bed45
+- boundary sweep: clean
+- independent review: not run — step 5 runs only once steps 1–4 are clean
+- closure test: not run — follows the review
+- findings: 1
+- finding keys: §Acceptance criteria docs/phases/09-guitar-observe/captures
+- spec size: 18897 (first)
+- upstream: none
+- not-ours: .claude/rules/tech-debt.md subtracted
+- verdict: returned to spec
+
+## Validation — 2026-10-12 (round 2)
+- criteria: 21 passed / 0 failed — `make hil` operator-reported PASS (operator ran `verify.md`
+  themselves, 2026-10-12); the amended `ls $C` criterion exits 0
+- project gates: test pass, lint pass, typecheck pass
+- gates tree: 2f6ed6d03c4423c68a08833b15ae6270e55bed45
+- boundary sweep: clean
+- independent review: contradicts (code-side): Plan step 8 "One comment per byte" — `sg_digital_controls.h`
+  and `sg_analog_controls.h` carry one comment per frame, the other four `sg_*.h` comply, no Deviation
+  | contradicts (spec-side): Plan step 6 orders the 02-wiring re-check (item 2) before moving the bus
+  wires (item 3) "in this order"; `verify.md` §4.2–4.3 checks after moving — evidence: a continuity check
+  before the last wire move does not check the wiring the guitar meets
+  | undecidable: G3 strum direction — the controls vectors relabel the operator's physical "up (toward the
+  legs)" bit 6 as DOWN to match the D-pad masks; the spec never defines strum up/down physically and no
+  operator decision records the relabel; no settling criterion
+  | undecidable: Out of scope "Any change to `sg2hid`'s behaviour, its HID output … latency" and the Goal's
+  "every 1000 µs" vs `kPollPeriodUs` 8000 (ADR-0021), `kWhammyRest` 0x00 (ADR-0022), the requirements.md
+  latency rewording; no Deviation lifts the clause; no settling criterion
+  (settled: none) (unstated: 7 — `.gitattributes`; `command_line.{h,cpp}` + its test; trace filter's
+  over-long-frame case; R-PROTO-04 rewording; the mirrored-breakout finding; `bus_wait.cpp` in
+  CMakeLists; rewritten whammy cases)
+- closure test: fail — 23 files in the diff are named in neither Context pointers nor Plan: ADR-0020/0021/0022,
+  `.gitattributes`, `experiments.md`, the nine X/tilt captures, `src/core/command_line.{h,cpp}`,
+  `src/core/hid_descriptor.h`, `src/hal/bus_frame.cpp`, `src/hal/bus_port.h`, `src/hal/bus_wait.cpp`,
+  `tests/bus_frame_cases.cpp`, `tests/test_bus_frame.py`, `tests/test_command_line.cpp`, `tools/hil_digital.py`
+- findings: 5
+- finding keys: §Plan tests/vectors/sg_digital_controls.h; §Plan docs/phases/09-guitar-observe/verify.md; §Goal tests/vectors/sg_digital_controls.h; §Out of scope src/core/ps2_protocol.h; §Plan docs/adr/0020-att-setup-and-byte-gap.md
+- spec size: 18865 (-32 since the previous validation)
+- upstream: none
+- not-ours: .claude/rules/tech-debt.md subtracted
+- verdict: returned to implementation
+
+## Validation — 2026-10-12 (round 3)
+- criteria: 21 passed / 0 failed — `make hil` operator-reported PASS
+- project gates: test pass, lint pass, typecheck pass
+- gates tree: 54f3712cd52f50be65b2c5e8c2ec7f89137b0a90
+- boundary sweep: clean
+- independent review: undecidable: `tests/vectors/digital_pressed.h` green byte changed to `0xFD` "as
+  the SG reports it" with no capture-line citation, while R-PROTO-05's new second source requires
+  "each such vector's comments name the capture line"; the spec does not say whether a step-10
+  correction to a documentation vector counts as transcribed from a capture; no settling criterion
+  (settled: none) (unstated: 8 — trace filter's over-long-frame case; command_line's 8-byte buffer
+  and silent empty line; R-PROTO-04 rewording; the mirrored-breakout finding and wiring table; the
+  finding's "Not in the G table" sub-bullet; console.cpp/bus_wait.cpp in SG2HID_MASTER_SOURCES;
+  `sg_negotiation`'s `kAddressReply` check and the relabelled whammy case; `sg-analog.log`'s control
+  order differs from the script, vectors labelled by bit)
+- closure test: pass — every changed file is named in Context pointers or Plan; every quantified claim ranges over an enumerated set
+- findings: 1
+- finding keys: §Plan tests/vectors/digital_pressed.h
+- spec size: 20485 (+1620 since the previous validation)
+- upstream: commands/validate-phase.md — round cap reached on fresh, unrelated findings; /belay-feedback recommended
+- not-ours: .claude/rules/tech-debt.md subtracted
+- verdict: done (operator-closed at round cap: 1 open)
