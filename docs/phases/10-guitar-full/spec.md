@@ -113,8 +113,8 @@ Deck shows every control and the whammy, before and after replug cycles (`verify
    bound and what it does not measure (the guitar's button scan, host buffering); the emulator
    regression (step 6); connecting the guitar (09 `verify.md` Part 4's order, wiring by PS2
    number); `make guitar` on the Mac; the same script on the Steam Deck (copy
-   `tools/hil_digital.py` over, `python3 hil_digital.py --guitar --master /dev/ttyACM0`, port
-   found with `ls /dev/ttyACM*`); the gamepad tester on each host before and after three replug
+   `tools/hil_digital.py` over, `python3 hil_digital.py --guitar --master /dev/ttyACM<n>`, the
+   port found with `ls /dev/ttyACM*`); the gamepad tester on each host before and after three replug
    cycles; how to unplug and replug safely (at the guitar's plug, Pico powered, never touching the
    breadboard); and what a failure of each scenario points to. Check: `grep -cE '^#+ What was
    built|^#+ .*[Cc]heck it' docs/phases/10-guitar-full/verify.md` → 2.
@@ -149,7 +149,7 @@ make guitar                                                      # expect: usage
 grep -cE '^#+ What was built|^#+ .*[Cc]heck it' docs/phases/10-guitar-full/verify.md   # expect: 2
 make hil MASTER=<master port> EMU=<emulator port>                # bench, emulator: expect hil: PASS
 make guitar MASTER=<master port>                                 # bench, real SG, Mac: expect guitar: PASS
-python3 hil_digital.py --guitar --master /dev/ttyACM0            # bench, real SG, Steam Deck: expect guitar: PASS
+python3 hil_digital.py --guitar --master /dev/ttyACM<n>          # bench, real SG, Steam Deck, <n> from ls /dev/ttyACM*: expect guitar: PASS
 ```
 
 The `python3 - <<'PY'` criterion is one shell command: the lines up to `PY` are its input.

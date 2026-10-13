@@ -7,7 +7,10 @@
 // HID interface that frame's report, or the neutral report while the link is not AnalogStreaming
 // (src/usb/, ADR-0018). Over the USB serial port, the composite device's other interface, it
 // prints a `hil:` summary every kPollsPerSummary frames, ending in the whammy of the last good
-// analog frame and the last report, and a `link:` line plus that frame's `T1` trace line
+// analog frame and the last report, then `hand=`, the longest time in that summary's frames from
+// the frame's start to the report handed to TinyUSB, and `busy=`, how many of them found the HID
+// interface not ready, so their report was not sent (the latency bound is kPollPeriodUs + hand +
+// one 1 ms bInterval); and a `link:` line plus that frame's `T1` trace line
 // (ADR-0015) whenever the link state changes; tools/hil_digital.py reads both. Configures no pin
 // itself: bus_init( ) in src/hal/ does, from src/core/pins.h (R-SAFETY-09, R-SAFETY-10).
 #include "app/console.h"
@@ -52,10 +55,13 @@ struct Poller {
     ps2::HidReport report      = ps2::neutral_report();  // the last one handed to the HID interface
     std::uint32_t  poll_start  = 0;                      // time_us_32( ) at the latest poll's start
     std::uint32_t  batch_start = 0;  // time_us_32( ) when the current summary's polls began
+    std::uint32_t  hand_max_us = 0;  // longest frame start to report handoff, this summary
+    std::uint32_t  busy        = 0;  // frames this summary whose report found the HID not ready
 };
 
 void poll_once( Poller& poller, std::uint32_t elapsed_us ) {
-    const std::span<const std::uint8_t> command = ps2::command_for( poller.master.stage );
+    const std::uint32_t                 frame_start = time_us_32();
+    const std::span<const std::uint8_t> command     = ps2::command_for( poller.master.stage );
     std::array<ps2::WireByte, kWireLen> wire{};
     for ( std::size_t i = 0; i < command.size(); ++i ) {
         wire[ i ].out = command[ i ];
@@ -69,7 +75,14 @@ void poll_once( Poller& poller, std::uint32_t elapsed_us ) {
         poller.master, ps2::Exchanged{ .wire = frame, .completed = completed }, elapsed_us );
     ps2::count_poll( poller.tally, now, outcome );
     poller.report = ps2::report_for( now, outcome );
+    if ( !usb::is_report_ready() ) {
+        ++poller.busy;
+    }
     usb::send_report( poller.report );
+    const std::uint32_t hand_us = time_us_32() - frame_start;
+    if ( hand_us > poller.hand_max_us ) {
+        poller.hand_max_us = hand_us;
+    }
     if ( now == ps2::LinkState::AnalogStreaming && outcome.has_value() ) {
         poller.whammy     = ps2::map_frame( *outcome ).whammy;
         poller.has_whammy = true;
@@ -115,7 +128,7 @@ void print_summary( Poller& poller ) {
     const std::string_view                  state = console::state_name( poller.master.link.state );
     const std::string_view fault = console::fault_name( poller.master.link.last_fault );
     std::printf( "hil: polls=%lu refused=%lu changes=%lu us=%lu state=%.*s fault=%.*s att=%s "
-                 "payload=%s whammy=%s report=%s\n",
+                 "payload=%s whammy=%s report=%s hand=%lu busy=%lu\n",
                  static_cast<unsigned long>( tally.polls ),
                  static_cast<unsigned long>( tally.refused ),
                  static_cast<unsigned long>( tally.payload_changes ),
@@ -127,7 +140,11 @@ void print_summary( Poller& poller ) {
                  is_att_high ? "high" : "low",
                  payload.data(),
                  whammy.data(),
-                 report.data() );
+                 report.data(),
+                 static_cast<unsigned long>( poller.hand_max_us ),
+                 static_cast<unsigned long>( poller.busy ) );
+    poller.hand_max_us = 0;
+    poller.busy        = 0;
 }
 
 }  // namespace

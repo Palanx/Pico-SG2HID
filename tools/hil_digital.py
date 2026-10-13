@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Two-Pico hardware-in-the-loop run, phases 06-hil-digital, 07-analog-mode and 08-usb-hid.
-Standard library only.
+"""Two-Pico hardware-in-the-loop run, phases 06-hil-digital, 07-analog-mode and 08-usb-hid, and
+the real-guitar run, 10-guitar-full. Standard library only.
 
 The master (build/pico/sg2hid.uf2) negotiates analog mode with the emulator
 (build/pico/sg2hid_emu.uf2), then polls it every 8 ms (ADR-0021), and prints a `hil:` summary every
@@ -15,8 +15,18 @@ scenario and `--demo` in docs/phases/08-usb-hid/spec.md §Goal.
 `--demo` needs only the emulator: it presses each control and sweeps the whammy, slowly, for a
 person watching a gamepad tester on the host the master is plugged into. It judges nothing.
 
+`--guitar` needs only the master, with the real SG on its bus, and a person at the guitar: the
+scenarios `streaming`, `controls` and `replug`, ending in `guitar: PASS` or `guitar: FAIL`
+(docs/phases/10-guitar-full/spec.md §Goal). The master's port stays open throughout, so a port
+error means the device re-enumerated.
+
+Every summary ends in `hand=`, the master's longest frame-start-to-report handoff in µs over the
+summary, and `busy=`, the frames whose report found the HID interface not ready. `hand` above
+MAX_HANDOFF_US fails any run; `busy` is judged in `--guitar` only.
+
     tools/hil_digital.py --master /dev/cu.usbmodem101 --emu /dev/cu.usbmodem2101
     tools/hil_digital.py --demo --emu /dev/cu.usbmodem2101
+    tools/hil_digital.py --guitar --master /dev/cu.usbmodem101
 """
 
 import argparse
@@ -31,11 +41,16 @@ import tty
 SUMMARY = re.compile(
     r"hil: polls=(?P<polls>\d+) refused=(?P<refused>\d+) changes=(?P<changes>\d+)"
     r" us=(?P<us>\d+) state=(?P<state>\S+) fault=(?P<fault>\S+) att=(?P<att>\S+)"
-    r" payload=(?P<payload>.+) whammy=(?P<whammy>\S+) report=(?P<report>[0-9A-F]{2}(?: [0-9A-F]{2})*)$"
+    r" payload=(?P<payload>.+) whammy=(?P<whammy>\S+) report=(?P<report>[0-9A-F]{2}(?: [0-9A-F]{2})*)"
+    r" hand=(?P<hand>\d+) busy=(?P<busy>\d+)$"
 )
-COUNTERS = ("polls", "refused", "changes", "us")
+COUNTERS = ("polls", "refused", "changes", "us", "hand", "busy")
+LINK = re.compile(r"link: (?P<was>\S+) -> (?P<now>\S+) fault=\S+$")
 
 MAX_SUMMARY_US = 1_100_000  # 125 polls at 8 ms, plus 10 %
+# The latency bound is kPollPeriodUs + hand + one 1 ms bInterval; the operator set hand <= 1 ms
+# (10-guitar-full, 2026-10-13).
+MAX_HANDOFF_US = 1000
 MASTER_SILENT_S = 3.0
 EMU_ANSWER_S = 2.0
 FAULT_WINDOW = 2
@@ -74,6 +89,13 @@ BUTTONS = (
     ("tilt", "ff fe", "00 02 00"),
 )
 BUTTONS_LINE = "payload {} 80 80 80 7f"
+
+# --guitar: how long a person gets to press a control, or to unplug or replug the guitar.
+CONTROL_WAIT_S = 30.0
+HUMAN_WAIT_S = 30.0
+# The whammy the master must report with the bar held at its stop: the SG's stop maps to FE
+# (ADR-0022); C0 leaves room for a hand that does not quite reach it. Hand-written.
+WHAMMY_PUSHED_MIN = 0xC0
 
 DEMO_HOLD_S = 2.0
 DEMO_IDLE_LINE = "payload ff ff 80 80 80 7f"
@@ -139,6 +161,8 @@ def checked_summary(line):
         raise Failure(f"att={got['att']}: {line}")
     if got["us"] > MAX_SUMMARY_US:
         raise Failure(f"us={got['us']} over {MAX_SUMMARY_US}: {line}")
+    if got["hand"] > MAX_HANDOFF_US:
+        raise Failure(f"hand={got['hand']} over {MAX_HANDOFF_US}: {line}")
     return got
 
 
@@ -170,6 +194,29 @@ class Harness:
                 raise Failure("master silent")
             if line.startswith("hil:"):
                 return checked_summary(line)
+
+    def summary_until(self, wanted, seconds, what):
+        """The first summary for which `wanted` holds, within `seconds`."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            s = self.summary()
+            if wanted(s):
+                return s
+        raise Failure(f"no {what} within {seconds:.0f} s")
+
+    def link_until(self, now, seconds, was=None):
+        """Waits for a `link:` line into `now` (from `was`, if given); every `hil:` line read on
+        the way is still checked."""
+        deadline = time.monotonic() + seconds
+        while True:
+            line = self.master.read_line(deadline)
+            if line is None:
+                raise Failure(f"no 'link: {was or '<any>'} -> {now}' within {seconds:.0f} s")
+            if line.startswith("hil:"):
+                checked_summary(line)
+            match = LINK.match(line)
+            if match and match["now"] == now and was in (None, match["was"]):
+                return
 
     def send(self, text):
         """Sends one emulator line and waits for its `ok:`; the master's older lines are dropped,
@@ -272,6 +319,75 @@ def demo(emu):
     command(emu, "fault none")
 
 
+def ask(text):
+    print(text, flush=True)
+
+
+def guitar_streaming(h, k):
+    got, delta = h.window(k)
+    for s in got:
+        if s["state"] != "analog" or s["busy"]:
+            raise Failure(f"state={s['state']} busy={s['busy']}, expected analog and busy=0")
+    if delta("refused"):
+        raise Failure(f"Δrefused={delta('refused')}")
+
+
+def has_bits(report, expected):
+    got = [int(b, 16) for b in report.split()]
+    want = [int(b, 16) for b in expected.split()]
+    return all(g & w == w for g, w in zip(got, want))
+
+
+def guitar_controls(h):
+    for control, _, report in BUTTONS:
+        ask(f"hold {control}")
+        h.summary_until(lambda s: s["state"] == "analog" and has_bits(s["report"], report),
+                        CONTROL_WAIT_S, f"report with {control} ({report})")
+    ask("push the whammy to the stop and hold")
+    h.summary_until(lambda s: s["state"] == "analog" and s["whammy"] != "--"
+                    and int(s["whammy"], 16) >= WHAMMY_PUSHED_MIN,
+                    CONTROL_WAIT_S, f"whammy at or above {WHAMMY_PUSHED_MIN:02X}")
+    ask("let go")
+
+
+def guitar_replug(h, cycles):
+    for cycle in range(1, cycles + 1):
+        ask(f"unplug the guitar ({cycle}/{cycles})")
+        h.link_until("absent", HUMAN_WAIT_S, was="analog")
+        s = h.summary()
+        if s["state"] != "absent" or s["report"] != NEUTRAL_REPORT:
+            raise Failure(f"cycle {cycle}: state={s['state']} report={s['report']},"
+                          f" expected absent/{NEUTRAL_REPORT}")
+        ask(f"plug the guitar back in ({cycle}/{cycles})")
+        h.link_until("analog", HUMAN_WAIT_S)
+        s = h.summary()
+        if s["state"] != "analog":
+            raise Failure(f"cycle {cycle}: state={s['state']} after replug, expected analog")
+
+
+def guitar_scenarios(seconds, cycles):
+    return [
+        ("streaming", lambda h: guitar_streaming(h, seconds)),
+        ("controls", guitar_controls),
+        ("replug", lambda h: guitar_replug(h, cycles)),
+    ]
+
+
+def run_guitar(path, seconds, cycles):
+    name = "streaming"
+    try:
+        h = Harness(Port(path), None)
+        for name, run in guitar_scenarios(seconds, cycles):
+            run(h)
+            print(f"ok: {name}", flush=True)
+    except (Failure, *PORT_ERRORS) as failure:
+        print(f"FAIL: {name}: {failure}")
+        print("guitar: FAIL")
+        return 1
+    print("guitar: PASS")
+    return 0
+
+
 def setup(h):
     for line in ("fault none", "mode digital", PAYLOAD_LINE):
         h.send(line)
@@ -331,12 +447,24 @@ def run_demo(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--master", help="the master Pico's serial port (not with --demo)")
-    parser.add_argument("--emu", required=True, help="the emulator Pico's serial port")
+    parser.add_argument("--emu", help="the emulator Pico's serial port (not with --guitar)")
     parser.add_argument("--seconds", type=at_least_one, default=60,
                         help="summaries in the sustained window (default 60)")
     parser.add_argument("--demo", action="store_true",
                         help="press each control and sweep the whammy for a gamepad tester")
+    parser.add_argument("--guitar", action="store_true",
+                        help="judge the master against the real guitar; needs no emulator")
+    parser.add_argument("--cycles", type=at_least_one, default=5,
+                        help="unplug/replug cycles in --guitar's replug scenario (default 5)")
     args = parser.parse_args()
+    if args.guitar:
+        if args.emu is not None or args.demo:
+            parser.error("--guitar takes neither --emu nor --demo")
+        if args.master is None:
+            parser.error("--master is required with --guitar")
+        return run_guitar(args.master, args.seconds, args.cycles)
+    if args.emu is None:
+        parser.error("--emu is required unless --guitar")
     if args.demo:
         return run_demo(args.emu)
     if args.master is None:
