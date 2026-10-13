@@ -65,8 +65,8 @@ the Pico side so the Pico always sees a defined level even with the guitar unplu
 ## Socket pin 3 — 7.6 V, never connected
 
 On a console, pin 3 carries 7.6 V for the vibration motors. The SG has no motors to feed,
-and 7.6 V on any Pico pin destroys it (R-SAFETY-04). Leave the breakout's pin 3 wire or
-terminal empty, and cover it: a wrap of electrical tape over the bare end, or a short piece
+and 7.6 V on any Pico pin destroys it (R-SAFETY-04). Leave PS2 pin 3's wire or terminal
+(printed 7 on this bench's breakout) empty, and cover it: a wrap of electrical tape over the bare end, or a short piece
 of heat-shrink, so it cannot touch a breadboard row by accident. The multimeter checklist in
 `docs/phases/02-wiring/verify.md` confirms it is isolated before anything is powered.
 
@@ -105,7 +105,8 @@ terminal. The real GND reads a diode drop to VCC (~0.6 V); a signal terminal doe
 
 **Viewing side.** The cited source numbers the pins but does not say which face of the
 connector its drawing is seen from, and pinout drawings online disagree on it. So this
-document does not rely on a drawing: pins are identified from the numbering printed on the
-breakout socket itself, then confirmed by continuity with the multimeter
-(`docs/phases/02-wiring/verify.md`). If the breakout carries no numbering, stop and ask
-before wiring.
+document does not rely on a drawing, nor on the numbering printed on a breakout, which this
+bench's breakout prints mirrored (§This bench's breakout). Pins are named by PS2 number: find
+GND with that section's diode-mode check, then confirm the rest by continuity with the
+multimeter (`docs/phases/02-wiring/verify.md`). If the breakout carries no numbering, stop and
+ask before wiring.
