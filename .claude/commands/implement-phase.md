@@ -71,7 +71,8 @@ substituting them, so read the id and the flag out of the prompt.
    after that bill is paid.
 
 6. **Run all acceptance criteria** from the spec, in order, once the plan is complete.
-   Fix failures and re-run until clean or genuinely blocked.
+   Fix failures and re-run until clean or genuinely blocked. A criterion that is itself wrong
+   is not yours to fix: see **Acceptance criterion impossible to satisfy** under Failure modes.
 
 ## Human-implemented mode (`--implemented`)
 
@@ -143,7 +144,7 @@ Update PHASES.md status: stays `in-progress` (validation flips it to `done`), or
 ## Failure modes
 
 - **Spec insufficient** (needed files outside the Context pointers) → finish the phase if you can, but record the missing pointers in notes.md under Deviations — `/validate-phase` treats that as a closure-test failure to feed back into how the next phases get cut.
-- **Acceptance criterion impossible to satisfy as written** → the criterion is wrong or the goal is: amend spec.md *with a note in notes.md saying so*, or block. Never delete a criterion silently.
+- **Acceptance criterion impossible to satisfy as written** → the criterion is wrong or the goal is. Propose the amendment and stop: changing what a criterion asserts is the operator's decision (ADR-0009). On a yes, amend spec.md with the Deviations entry `operator amended criterion: <old> → <new> — <evidence>`; otherwise `blocked: <reason>`. Never delete a criterion silently.
 - **`--implemented` and the operator can't answer a notes section** → do not invent it. Write what is known, leave the phase `in-progress`, and say which section is missing. A fabricated `notes.md` is worse than a missing one: the next phase reads it as ground truth.
 - **Session dies mid-phase** → next session resumes from `in-progress` status + partial notes; that is the designed recovery path, which is why steps 1 and P6 are non-negotiable.
 
