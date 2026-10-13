@@ -1,0 +1,2 @@
+# Bench captures are evidence: stored byte for byte, never line-ending converted.
+docs/phases/*/captures/*.log -text

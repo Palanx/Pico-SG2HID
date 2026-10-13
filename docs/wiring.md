@@ -70,6 +70,31 @@ terminal empty, and cover it: a wrap of electrical tape over the bare end, or a 
 of heat-shrink, so it cannot touch a breadboard row by accident. The multimeter checklist in
 `docs/phases/02-wiring/verify.md` confirms it is isolated before anything is powered.
 
+## This bench's breakout prints its pin numbers mirrored
+
+Every "socket pin" in this document is the PS2 pin number, the one the controller's plug
+uses. The breakout on this bench prints them mirrored: the terminal printed **N** carries PS2
+pin **10 − N**. Wire by PS2 number, so on this breakout:
+
+| PS2 pin (signal) | Breakout terminal printed |
+|---|---|
+| 1 DATA | 9 |
+| 2 CMD | 8 |
+| 3 7.6 V — never connected, insulate it | 7 |
+| 4 GND | 6 |
+| 5 VCC 3.3 V | 5 |
+| 6 ATT | 4 |
+| 7 CLK | 3 |
+| 8 unused | 2 |
+| 9 ACK | 1 |
+
+Wired by the printed numbers, the guitar never got a clock and never answered; every check
+before 2026-10-12 measured against the printed numbers, so none of them could see it. Found
+with a logic analyzer and a diode-mode sweep of the plugged guitar (phase 09, experiment X5).
+A replacement breakout must be checked again: plug in a controller and, with everything
+unpowered, read diode mode from the terminal you believe is GND (red probe) to every other
+terminal. The real GND reads a diode drop to VCC (~0.6 V); a signal terminal does not.
+
 ## Sources
 
 - Raspberry Pi Pico datasheet — pinout figure and §"Powering Pico" (3V3(OUT) load should be

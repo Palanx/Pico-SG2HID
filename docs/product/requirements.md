@@ -96,7 +96,9 @@ promise; they are not negotiable by a later ADR without new hardware.
 - **The guitar is powered from the Pico's 3V3 pin**, not VBUS and not VSYS (both
   5 V). The onboard regulator's budget is the ceiling.
 - **USB full-speed HID, 1 ms polling.** The host contract is a standard HID gamepad
-  report; latency added by the firmware must stay well inside one poll interval.
+  report. The firmware reads the guitar every 8 ms, because the SG stops refreshing its
+  buttons at 2 ms and below (ADR-0021), so the firmware adds up to 8 ms of latency, 4 ms on
+  average; the game's calibration absorbs the average.
 - **No kernel driver on either host OS**, and no code signing, entitlement, or
   privileged install step on macOS.
 - **Every rule stated as a project rule must either be bound to a deterministic
@@ -112,7 +114,9 @@ promise; they are not negotiable by a later ADR without new hardware.
 - ANSWERED (02-wiring, 2026-09-28): the SG draws 0.85 mA from 3V3 at power-up, settling
   to 0.36–0.50 mA, measured with the Pico in BOOTSEL and no bus traffic. That is far
   inside the onboard regulator's budget; no external 3.3 V supply is needed.
-- OPEN (09-guitar-observe): does the SG answer the bus correctly on 3V3 alone?
+- ANSWERED (09-guitar-observe, 2026-10-12): yes, on 3V3 alone, once the breakout is wired by
+  PS2 number, the master waits 20 µs around ATT and between bytes (ADR-0020) and polls no
+  faster than every 4 ms (ADR-0021 sets 8). Detail: `docs/constraints.md`, "The SG on the bus".
 
 <!-- Byte-level unknowns (exact config-mode sequence, whammy byte position, rest and
      full-deflection values, the controller id this specific SG reports) are NOT

@@ -43,9 +43,20 @@ constexpr std::size_t kWireBitsPerByte = 8;
 // CLK frequency the master drives: 4 µs per bit, 32 µs per byte.
 constexpr std::uint32_t kBusClockHz = 250000;
 
+// How long ATT stays low before the first clock, and how long the bus idles before every later
+// byte (ADR-0020, R-PROTO-11). Calibration knobs: chosen above Arduino PS2X's values, not
+// measured on a console.
+constexpr std::uint32_t kAttSetupUs = 20;
+constexpr std::uint32_t kByteGapUs  = 20;
+
+// How often the master starts a frame, start to start (ADR-0021). The SG answers at a 1 or 2 ms
+// period but never refreshes its buttons; at 4, 8 and 16 ms it does. 8 ms keeps 2x margin from
+// the last period that worked.
+constexpr std::uint32_t kPollPeriodUs = 8000;
+
 // How long the master waits for ACK after a byte's last bit before giving up on the byte.
-// belay-debt: a budget, not a measurement; 09-guitar-observe measures the real ACK delay and
-// replaces this if the guitar answers later than it allows.
+// The SG ACKs 6–17 µs after a byte (docs/constraints.md §Observed conventions, "The SG on the
+// bus"), so this keeps more than 5x margin.
 constexpr std::uint32_t kAckTimeoutUs = 100;
 
 // --- Bytes the controller sends ---------------------------------------------------------
@@ -56,9 +67,8 @@ constexpr std::uint8_t kReadyByte = 0x5A;
 
 // Controller id bytes, in the header position of a response.
 //
-// TODO(09-guitar-observe): read from the protocol documentation, not measured. Which of
-// these the SG actually answers with — and whether it answers a fourth — is what
-// 09-guitar-observe establishes against the real device.
+// All three measured on the SG, and it answered no fourth (docs/constraints.md §Observed
+// conventions, "The SG on the bus").
 constexpr std::uint8_t kIdDigital = 0x41;
 constexpr std::uint8_t kIdAnalog  = 0x73;
 constexpr std::uint8_t kIdConfig  = 0xF3;

@@ -47,12 +47,12 @@ enum class FaultCause : std::uint8_t {
 };
 
 // How long the controller may stay in config mode before the link gives up and starts over.
-// The sequence is a handful of frames at a ~1 ms poll interval, so this is generous by two
-// orders of magnitude: it is a "something is wrong" bound, not a schedule.
+// The sequence is a handful of frames at kPollPeriodUs (8 ms), ~40 ms, so this leaves about 2x:
+// it is a "something is wrong" bound, not a schedule.
 //
-// belay-debt: the value is a budget, not a measurement — nothing has yet timed a real
-// negotiation. The emulator negotiates in one frame of Negotiating, so it measures nothing about
-// the guitar; 09-guitar-observe times the real sequence and owns tightening it.
+// The SG negotiates in three frames, two of them Negotiating (~24 ms at kPollPeriodUs;
+// docs/constraints.md §Observed conventions, "The SG on the bus"). Tightening the bound is
+// 10-guitar-full's.
 constexpr std::uint32_t kNegotiationTimeoutUs = 100000;
 
 // Plain data. `us_in_state` is what makes the timeout above decidable without `core` ever

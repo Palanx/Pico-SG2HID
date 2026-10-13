@@ -1,0 +1,3 @@
+T1 n=5 k=0 out=01,42,00,00,00 in=--,--,--,--,-- us=134,-,-,-,-
+link: absent -> digital fault=ack-timeout
+T1 n=5 k=5 out=01,42,00,00,00 in=FF,41,5A,7F,FF us=46,44,44,48,36

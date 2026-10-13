@@ -35,3 +35,8 @@ and parses nothing.
 `hid_descriptor.h` is the other direction again, and not PS2 at all: the HID report descriptor
 the master sends the USB host (`08-usb-hid`, R-HID-01), written from the HID 1.11 item encoding.
 `tests/ps2_codec_cases.cpp` compares `src/core/hid_descriptor.h` with it byte for byte.
+
+**The `sg_*.h` files are the second source R-PROTO-05 allows** (`09-guitar-observe`): frames
+transcribed by hand from the real SG's captures under `docs/phases/09-guitar-observe/captures/`,
+one comment per byte naming the capture line. The guitar is the authority over both `core` and the
+emulator (ADR-0004), so these outrank the documentation-derived files above where they disagree.

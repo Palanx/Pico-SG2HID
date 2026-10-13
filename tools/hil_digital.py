@@ -3,8 +3,8 @@
 Standard library only.
 
 The master (build/pico/sg2hid.uf2) negotiates analog mode with the emulator
-(build/pico/sg2hid_emu.uf2), then polls it once a millisecond, and prints a `hil:` summary every
-1000 frames. This harness tells the emulator what to answer, through the 05-emulator command
+(build/pico/sg2hid_emu.uf2), then polls it every 8 ms (ADR-0021), and prints a `hil:` summary every
+125 frames, about once a second. This harness tells the emulator what to answer, through the 05-emulator command
 grammar plus `fault decline`, and judges the master's summaries. It prints `ok: <scenario>` or
 `FAIL: <scenario>: <reason>` per scenario, stops at the first FAIL, sends `fault none` to the
 emulator before it exits, and ends with `hil: PASS` (exit 0) or `hil: FAIL` (exit 1). The rules it
@@ -35,7 +35,7 @@ SUMMARY = re.compile(
 )
 COUNTERS = ("polls", "refused", "changes", "us")
 
-MAX_SUMMARY_US = 1_100_000  # 1000 polls at 1 ms, plus 10 %
+MAX_SUMMARY_US = 1_100_000  # 125 polls at 8 ms, plus 10 %
 MASTER_SILENT_S = 3.0
 EMU_ANSWER_S = 2.0
 FAULT_WINDOW = 2
@@ -45,36 +45,38 @@ FAULT_WINDOW = 2
 DISCARDED_SUMMARIES = 2
 
 # The harness's own input, sent in `setup`; not a protocol-fixed byte (R-PROTO-05, 2026-09-17).
-PAYLOAD_LINE = "payload 7f fe 80 80 80 80"
+PAYLOAD_LINE = "payload 7f fe 80 80 80 7f"
 EXPECTED_PAYLOAD = "7F FE"
-EXPECTED_WHAMMY = "80"
-# The `sweep` scenario's whammy values: the last payload byte, which the master reads as the
-# whammy. Uppercase, as the master prints them.
-SWEEP_WHAMMY = ("00", "40", "80", "C0", "FF")
+EXPECTED_WHAMMY = "00"
+# The `sweep` scenario: the whammy byte the emulator sends (the last payload byte, from the SG's
+# rest 7F down to its stop 00) and the whammy the master reports for it, worked by hand from
+# ADR-0022: (7F - byte) * 2. Uppercase, as the master prints them.
+SWEEP_WHAMMY = (("7F", "00"), ("60", "3E"), ("40", "7E"), ("20", "BE"), ("00", "FE"))
 SWEEP_LINE = "payload 7f fe 80 80 80 {}"
 
 # The HID report the master shows, hand-written from 08-usb-hid's spec, never computed from core.
 # PAYLOAD_LINE presses tilt only (7f fe: bit 0 of the second byte clear, active low).
-STREAMING_REPORT = "00 02 80"
-NEUTRAL_REPORT = "00 00 80"
+STREAMING_REPORT = "00 02 00"
+NEUTRAL_REPORT = "00 00 00"
 SWEEP_REPORT = "00 02 {}"
-# Each control alone: the two button bytes of its payload, and the report that must follow.
+# Each control alone: the two button bytes of its payload, as the SG sends them (09-guitar-observe
+# captures), and the report that must follow.
 BUTTONS = (
-    ("green", "ff bf", "01 00 80"),
-    ("red", "ff df", "02 00 80"),
-    ("yellow", "ff ef", "04 00 80"),
-    ("blue", "ff 7f", "08 00 80"),
-    ("orange", "ff fb", "10 00 80"),
-    ("strum up", "ef ff", "20 00 80"),
-    ("strum down", "bf ff", "40 00 80"),
-    ("start", "f7 ff", "80 00 80"),
-    ("select", "fe ff", "00 01 80"),
-    ("tilt", "ff fe", "00 02 80"),
+    ("green", "ff fd", "01 00 00"),
+    ("red", "ff df", "02 00 00"),
+    ("yellow", "ff ef", "04 00 00"),
+    ("blue", "ff bf", "08 00 00"),
+    ("orange", "ff 7f", "10 00 00"),
+    ("strum up", "ef ff", "20 00 00"),
+    ("strum down", "bf ff", "40 00 00"),
+    ("start", "f7 ff", "80 00 00"),
+    ("select", "fe ff", "00 01 00"),
+    ("tilt", "ff fe", "00 02 00"),
 )
-BUTTONS_LINE = "payload {} 80 80 80 80"
+BUTTONS_LINE = "payload {} 80 80 80 7f"
 
 DEMO_HOLD_S = 2.0
-DEMO_IDLE_LINE = "payload ff ff 80 80 80 80"
+DEMO_IDLE_LINE = "payload ff ff 80 80 80 7f"
 DEMO_WHAMMY_LINE = "payload ff ff 80 80 80 {}"
 
 # Everything a Port call raises: os and select raise OSError, tty.setraw( ) and
@@ -228,16 +230,16 @@ def expect_declined(h):
 
 
 def sweep(h):
-    for value in SWEEP_WHAMMY:
-        h.send(SWEEP_LINE.format(value.lower()))
+    for sent, reported in SWEEP_WHAMMY:
+        h.send(SWEEP_LINE.format(sent.lower()))
         got, delta = h.window(1)
         for s in got:
-            report = SWEEP_REPORT.format(value)
-            if s["state"] != "analog" or s["whammy"] != value or s["report"] != report:
+            report = SWEEP_REPORT.format(reported)
+            if s["state"] != "analog" or s["whammy"] != reported or s["report"] != report:
                 raise Failure(f"state={s['state']} whammy={s['whammy']} report={s['report']},"
-                              f" expected analog/{value}/{report}")
+                              f" expected analog/{reported}/{report}")
         if delta("refused"):
-            raise Failure(f"whammy {value}: Δrefused={delta('refused')}")
+            raise Failure(f"whammy {sent}: Δrefused={delta('refused')}")
     h.send(PAYLOAD_LINE)
 
 
@@ -262,9 +264,9 @@ def demo(emu):
         print(f"pressed: {control}", flush=True)
         command(emu, BUTTONS_LINE.format(button_bytes))
         time.sleep(DEMO_HOLD_S)
-    for value in SWEEP_WHAMMY:
-        print(f"whammy: {value}", flush=True)
-        command(emu, DEMO_WHAMMY_LINE.format(value.lower()))
+    for sent, _ in SWEEP_WHAMMY:
+        print(f"whammy: {sent}", flush=True)
+        command(emu, DEMO_WHAMMY_LINE.format(sent.lower()))
         time.sleep(DEMO_HOLD_S)
     command(emu, DEMO_IDLE_LINE)
     command(emu, "fault none")

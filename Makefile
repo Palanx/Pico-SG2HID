@@ -11,7 +11,9 @@
 #   make firmware  Builds build/pico/sg2hid.uf2 (the master, an analog-mode poller since
 #                  07-analog-mode and a composite CDC + HID gamepad since 08-usb-hid),
 #                  build/pico/sg2hid_loopback.uf2 (the 24-pio-bus loopback and bit-order
-#                  probe) and build/pico/sg2hid_emu.uf2 (the emulator, 05-emulator). Needs
+#                  probe), build/pico/sg2hid_emu.uf2 (the emulator, 05-emulator) and
+#                  build/pico/sg2hid_observe.uf2 (the read-only trace instrument the real
+#                  guitar first meets, 09-guitar-observe). Needs
 #                  cmake, arm-none-eabi-gcc and
 #                  PICO_SDK_PATH pointing at pico-sdk 2.3.1 (ADR-0014). Also writes
 #                  build/pico/compile_commands.json, which `make lint` reads for
@@ -39,11 +41,26 @@ PY_TESTS  := $(wildcard tests/test_*.py)
 
 .PHONY: test lint typecheck firmware hil clean print-CXXFLAGS
 
+# Every test file but the liveness harness runs in the background, each into its own log and
+# exit-code file under $(LOGS); the harness re-runs every check itself, so it runs last, alone,
+# to keep the peak CPU load single. The logs are then printed in the serial order (C++, sh,
+# Python) and their exit codes folded.
+HARNESS := tests/test_checks_are_live.py
+LOGS    := $(BUILD)/test-logs
+
 test: $(CPP_BINS)
-	@fail=0; \
-	for t in $(CPP_BINS) ; do echo "--- $$t"       ; "$$t"           || fail=1; done; \
-	for t in $(SH_TESTS) ; do echo "--- $$t"       ; OPTIONAL_TOOLS=1 sh "$$t" || fail=1; done; \
-	for t in $(PY_TESTS) ; do echo "--- $$t"       ; FULL="$(FULL)" OPTIONAL_TOOLS=1 python3 "$$t" || fail=1; done; \
+	@rm -rf $(LOGS); mkdir -p $(LOGS); \
+	run( ) { n=$$(basename "$$1"); shift; "$$@" > "$(LOGS)/$$n.log" 2>&1; echo $$? > "$(LOGS)/$$n.rc"; }; \
+	for t in $(CPP_BINS) ; do run "$$t" "$$t" & done; \
+	for t in $(SH_TESTS) ; do run "$$t" env OPTIONAL_TOOLS=1 sh "$$t" & done; \
+	for t in $(filter-out $(HARNESS),$(PY_TESTS)) ; do run "$$t" env FULL="$(FULL)" OPTIONAL_TOOLS=1 python3 "$$t" & done; \
+	wait; \
+	run $(HARNESS) env FULL="$(FULL)" OPTIONAL_TOOLS=1 python3 $(HARNESS); \
+	fail=0; \
+	for t in $(CPP_BINS) $(SH_TESTS) $(PY_TESTS) ; do \
+	    n=$$(basename "$$t"); echo "--- $$t"; cat "$(LOGS)/$$n.log"; \
+	    [ "$$(cat "$(LOGS)/$$n.rc")" = 0 ] || fail=1; \
+	done; \
 	if [ $$fail -ne 0 ]; then echo "FAIL"; exit 1; fi; \
 	echo "OK"
 

@@ -1,8 +1,8 @@
 // Master firmware, build/pico/sg2hid.uf2 (phases 06-hil-digital, 07-analog-mode, 08-usb-hid): an
-// analog-mode poller and a USB HID gamepad. Every kPollPeriodUs, start to start, it exchanges one
-// frame of the analog-mode sequence (src/core/negotiation.h, ADR-0017): enter config mode, select
-// analog, leave config mode, then analog polls for as long as the controller answers them. It
-// never streams digital, and it never stops: a frame that leaves the link Absent restarts the
+// analog-mode poller and a USB HID gamepad. Every ps2::kPollPeriodUs, start to start, it exchanges
+// one frame of the analog-mode sequence (src/core/negotiation.h, ADR-0017): enter config mode,
+// select analog, leave config mode, then analog polls for as long as the controller answers them.
+// It never streams digital, and it never stops: a frame that leaves the link Absent restarts the
 // sequence on the next frame (docs/constraints.md §Error handling). After each frame it hands the
 // HID interface that frame's report, or the neutral report while the link is not AnalogStreaming
 // (src/usb/, ADR-0018). Over the USB serial port, the composite device's other interface, it
@@ -10,6 +10,7 @@
 // analog frame and the last report, and a `link:` line plus that frame's `T1` trace line
 // (ADR-0015) whenever the link state changes; tools/hil_digital.py reads both. Configures no pin
 // itself: bus_init( ) in src/hal/ does, from src/core/pins.h (R-SAFETY-09, R-SAFETY-10).
+#include "app/console.h"
 #include "core/bus_trace.h"
 #include "core/guitar_state.h"
 #include "core/hid_report.h"
@@ -17,6 +18,7 @@
 #include "core/negotiation.h"
 #include "core/pins.h"
 #include "core/poll.h"
+#include "core/ps2_protocol.h"
 #include "hal/bus_frame.h"
 #include "hal/bus_port.h"
 #include "pico/stdlib.h"
@@ -31,10 +33,8 @@
 
 namespace {
 
-constexpr std::uint32_t kPollPeriodUs    = 1000;
-constexpr std::uint32_t kPollsPerSummary = 1000;
-// A nine-byte `T1` line is about 170 characters; the rest is headroom.
-constexpr std::size_t   kTraceLineSize   = 256;
+// One summary a second at ps2::kPollPeriodUs; tools/hil_digital.py's MAX_SUMMARY_US assumes it.
+constexpr std::uint32_t kPollsPerSummary = 125;
 // "XX XX" and its NUL.
 constexpr std::size_t   kPayloadTextSize = 6;
 // "XX" and its NUL.
@@ -43,38 +43,6 @@ constexpr std::size_t   kWhammyTextSize  = 3;
 constexpr std::size_t   kReportTextSize  = 3 * ps2::kReportLen;
 // The longest frame the master sends: an analog frame plus its address byte.
 constexpr std::size_t   kWireLen         = ps2::frame_len( ps2::ControllerId::Analog ) + 1;
-
-[[nodiscard]] std::string_view state_name( ps2::LinkState state ) {
-    switch ( state ) {
-    case ps2::LinkState::Absent:
-        return "absent";
-    case ps2::LinkState::Negotiating:
-        return "negotiating";
-    case ps2::LinkState::DigitalStreaming:
-        return "digital";
-    case ps2::LinkState::AnalogStreaming:
-        return "analog";
-    }
-    return "?";
-}
-
-[[nodiscard]] std::string_view fault_name( ps2::FaultCause fault ) {
-    switch ( fault ) {
-    case ps2::FaultCause::None:
-        return "none";
-    case ps2::FaultCause::AckTimeout:
-        return "ack-timeout";
-    case ps2::FaultCause::UnknownId:
-        return "unknown-id";
-    case ps2::FaultCause::NotReady:
-        return "not-ready";
-    case ps2::FaultCause::Negotiating:
-        return "negotiating";
-    case ps2::FaultCause::Declined:
-        return "declined";
-    }
-    return "?";
-}
 
 struct Poller {
     ps2::Master    master{};
@@ -85,16 +53,6 @@ struct Poller {
     std::uint32_t  poll_start  = 0;                      // time_us_32( ) at the latest poll's start
     std::uint32_t  batch_start = 0;  // time_us_32( ) when the current summary's polls began
 };
-
-void print_trace( std::span<const ps2::WireByte> wire, std::size_t completed ) {
-    std::array<char, kTraceLineSize> line{};
-    const std::size_t                length = ps2::format_trace_line( wire, completed, line );
-    if ( length == 0 ) {
-        std::printf( "trace: line too long\n" );
-        return;
-    }
-    std::printf( "%.*s\n", static_cast<int>( length ), line.data() );
-}
 
 void poll_once( Poller& poller, std::uint32_t elapsed_us ) {
     const std::span<const std::uint8_t> command = ps2::command_for( poller.master.stage );
@@ -119,17 +77,8 @@ void poll_once( Poller& poller, std::uint32_t elapsed_us ) {
     if ( now == was ) {
         return;
     }
-    const std::string_view from  = state_name( was );
-    const std::string_view to    = state_name( now );
-    const std::string_view fault = fault_name( poller.master.link.last_fault );
-    std::printf( "link: %.*s -> %.*s fault=%.*s\n",
-                 static_cast<int>( from.size() ),
-                 from.data(),
-                 static_cast<int>( to.size() ),
-                 to.data(),
-                 static_cast<int>( fault.size() ),
-                 fault.data() );
-    print_trace( frame, completed );
+    console::print_link( was, now, poller.master.link.last_fault );
+    console::print_trace( frame, completed );
 }
 
 // The report as `kReportLen` uppercase hex bytes separated by single spaces.
@@ -163,8 +112,8 @@ void print_summary( Poller& poller ) {
         std::snprintf( whammy.data(), whammy.size(), "%02X", poller.whammy );
     }
     const std::array<char, kReportTextSize> report = report_text( poller.report );
-    const std::string_view                  state  = state_name( poller.master.link.state );
-    const std::string_view                  fault  = fault_name( poller.master.link.last_fault );
+    const std::string_view                  state = console::state_name( poller.master.link.state );
+    const std::string_view fault = console::fault_name( poller.master.link.last_fault );
     std::printf( "hil: polls=%lu refused=%lu changes=%lu us=%lu state=%.*s fault=%.*s att=%s "
                  "payload=%s whammy=%s report=%s\n",
                  static_cast<unsigned long>( tally.polls ),
@@ -193,7 +142,7 @@ int main() {
     poller.poll_start  = time_us_32();
     poller.batch_start = poller.poll_start;
     for ( ;; ) {
-        while ( time_us_32() - poller.poll_start < kPollPeriodUs ) {
+        while ( time_us_32() - poller.poll_start < ps2::kPollPeriodUs ) {
             usb::task();
         }
         // Unsigned, so the counter's ~71.6-minute wraparound subtracts correctly (ADR-0011).

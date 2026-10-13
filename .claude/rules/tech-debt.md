@@ -1,10 +1,8 @@
 ---
 paths:
-  - "Makefile"
   - "tests/test_rule_traceability.py"
   - "tests/test_checks_are_live.py"
-  - "tests/test_repo_shape.sh"
-  - "docs/constraints.md"
+  - "docs/phases/*/notes.md"
 ---
 
 # Tech debt log
@@ -46,73 +44,20 @@ Fix, cheapest first:
 
 Where it was found: the debt sweep after `27-live-mutant-cache` closed, 2026-10-08.
 
-## Grep checks have no type information (reviewed 2026-10-08)
+## belay's step-5 reviewer is starved by instruction only (reviewed 2026-10-09)
 
-Files: `tests/test_repo_shape.sh`, `docs/constraints.md` (R-ERR-01, R-ERR-02)
+Files: `docs/phases/*/notes.md` (the `- independent review:` line of every `## Validation` block)
 
-`tests/test_repo_shape.sh` checks C++ with line-anchored `grep`s, after stripping `//` comments.
-Its two `belay-debt:` comments and the scope clauses of R-ERR-01 and R-ERR-02 record what that
-misses:
-- block comments and string literals are never stripped, which produces false positives;
-- `'` read as a quote can hide code after a `//` inside a string, which produces a miss;
-- a return type spelled other than at the start of the line (`static`, qualified, trailing
-  `->`, on its own line) is not seen;
-- a fallible return other than the three recognised spellings is not seen (`id_from_byte`
-  returns `std::optional` and is not reached);
-- a function declared only in an anonymous namespace is outside R-ERR-02.
+`/validate-phase` step 5 hands its reviewer four inputs and tells it to use nothing else. The
+subagent still has the session's tools and can read the whole repo. In `07-analog-mode` round 2
+the reviewer ran a `diff -q` of its `CLAUDE.md` copy against the repo's, outside those inputs; it
+recorded the call on the review line and did not use it.
 
-All of these named `03-pio-bus` as owner. That phase was superseded by `23-firmware-build` and
-`24-pio-bus`, and both closed saying the upgrade is still unowned (23's and 24's `notes.md`).
+Nothing breaks while the reviewer keeps to its inputs, or reports when it does not. A reviewer
+that reads the rest of `notes.md` or a dependency's notes judges the diff against what the session
+meant, which is the bias the starvation exists to remove.
 
-Nothing breaks today. The constraints text measured each blind form one fixture at a time, and none
-of them occurs in `src/core/` now. The false positives fail loudly instead of passing quietly. The
-risk is a future `src/core/` edit written in one of the unseen forms.
-
-The input the fix needs now exists. `make firmware` writes `build/pico/compile_commands.json` (since
-`23-firmware-build`), and `clang-query` ships with the Homebrew LLVM that `make lint` already
-requires (`/opt/homebrew/opt/llvm/bin/clang-query`).
-
-Fix, cheapest first:
-- Leave the greps and keep the scope clauses. This costs nothing, and the clauses already state
-  every gap.
-- Replace R-ERR-01 and R-ERR-02's greps with `clang-query` matchers over the host compile of
-  `src/core/` (`make test` compiles it, but no database is written for it). This costs a host
-  compile database or explicit flags, a new tool in `make test` (R-TOOL-01 floor, `skip:` when
-  absent), and rewriting their rejection cases and scope clauses. It buys type-aware matching,
-  which closes the last three gaps listed above.
-- Port every `test_repo_shape.sh` finder to `clang-query`. This is the same cost multiplied by
-  every rule, and it also closes the comment and string gaps. It is a phase, through
-  `/plan-feature`.
-
-## `make test` runs its 16 test files one after another (reviewed 2026-10-08)
-
-Files: `Makefile`, `tests/test_checks_are_live.py`
-
-The `test` recipe walks `$(CPP_BINS)`, `$(SH_TESTS)` and `$(PY_TESTS)` in three serial `for`
-loops. Measured 2026-10-08 at `853a8a3`, with a warm mutant cache: `make test` takes 55.4 s. Of
-that, 11.3 s is the liveness harness, which already runs its accounting runs and mutants in
-parallel. The other ~44 s is the remaining files back to back: `test_repo_shape.sh` 7.4 s,
-`test_style.sh` 5.6 s, `test_ps2_codec.py` 5.5 s, `test_bus_frame.py` 5.0 s, then the rest. Run
-in parallel, the floor would be about the slowest file plus the harness.
-
-Nothing breaks: this is only wall-clock time. The operator expects it may never be worth doing,
-because a warm run is under a minute.
-
-What already works: every check is safe to run alongside the others. That was confirmed
-2026-10-08 when the harness's accounting runs were parallelised. Each check works in a temp
-directory outside the tree, the `.py` suites' tree copies skip `.git`, `build` and `mut_*`, and the
-one repo module a test imports (`tests/driver_support.py`, since `07-analog-mode`) is imported with
-`sys.dont_write_bytecode` set, so none writes `__pycache__` into the tree. The five `MUTATIONS`
-drivers share `build/mutant-cache/`, one subdirectory each, so they do not collide there.
-
-Fix, cheapest first:
-- Background each file in the recipe, write its output to `build/test-logs/<name>.log`, `wait`,
-  then print the logs in the current order and fold their exit codes. This costs a longer recipe
-  and per-file exit-code bookkeeping in POSIX `sh`, and it keeps the `--- <file>` output order
-  people read.
-- One phony target per test file under `make -j`. This needs `--output-sync` to keep each file's
-  output together. That flag arrived in GNU Make 4.0, and macOS ships 3.81 (`/usr/bin/make`), so
-  this costs a Homebrew `gmake` dependency, which `make test`'s "a C++23 compiler, `python3`,
-  bash >= 4" promise does not allow today.
-- Either way: the harness re-runs every check itself, so running it alongside them doubles the
-  CPU load at peak. Start the harness first, or last on its own.
+When a `- independent review:` line, or anything else in a validation round, shows the reviewer
+reading outside its four inputs: run `/belay-feedback` with that line, and say whether the outside
+read fed a verdict. The fix is belay's (restrict the reviewer's tools, or have the review line
+record every outside read), not this project's.
