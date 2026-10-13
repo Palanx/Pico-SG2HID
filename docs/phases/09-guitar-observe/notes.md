@@ -14,8 +14,8 @@
   Part 2 on the observe build flashed for 4.5 (8 ms, before ADR-0022; observe prints raw bytes, so
   the later mask and whammy changes do not reach its output; not re-flashed because the operator
   had wired the emulator already): `-> digital` 1, `-> analog` 1, `ok: analog` 1, decoder exit 0,
-  whammy `00 40 80 C0 FF` = 3, 1, 2, 1, 1, green sent as `ff fd` (the corrected mask; `verify.md`
-  step 5 still says `ff bf`). `captures/emu.log` replaced. Part 3 on the current `sg2hid.uf2` and
+  whammy `00 40 80 C0 FF` = 3, 1, 2, 1, 1, green sent as `ff fd` (the corrected mask;
+  `verify.md` Part 2 steps 5 and 8 corrected to match). `captures/emu.log` replaced. Part 3 on the current `sg2hid.uf2` and
   `sg2hid_emu.uf2`, flashed with signal wires out: `make hil` — setup, sustained, sweep, buttons,
   fault ack 0, fault ack 3, fault late 200, fault id 79, fault late 50, fault decline all `ok`,
   `hil: PASS`.

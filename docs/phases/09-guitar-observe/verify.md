@@ -123,7 +123,7 @@ After Part 4, the captures go back to the agent (Claude), who turns each answer 
 
    ```
    printf 'mode digital\n' > $EMU
-   printf 'payload ff bf 80 80 80 80\n' > $EMU
+   printf 'payload ff fd 80 80 80 80\n' > $EMU
    printf 'analog\n' > $MASTER
    printf 'mode analog\n' > $EMU
    printf 'payload ff ff 80 80 80 00\n' > $EMU
@@ -148,7 +148,7 @@ After Part 4, the captures go back to the agent (Claude), who turns each answer 
 
    The last command looks for each whammy value as the last `in` byte of a nine-byte frame. If one shows `0`, wait longer between the `payload` lines and capture again.
 
-8. **Read it by eye**: `python3 tools/trace_decode.py $C/emu.log | less`. You should see, in this order: a `link: absent -> digital` line, five-byte frames with `in` starting `FF 41 5A`, a frame whose byte 4 changes from `FF` to `BF` (green), `ok: analog`, then a few frames whose `out` bytes change (the switch to analog), a `-> analog` line, and nine-byte frames whose last `in` byte steps through `00 40 80 C0 FF`. Press **q** to leave.
+8. **Read it by eye**: `python3 tools/trace_decode.py $C/emu.log | less`. You should see, in this order: a `link: absent -> digital` line, five-byte frames with `in` starting `FF 41 5A`, a frame whose byte 4 changes from `FF` to `FD` (green: bit 1, as the real SG reports it), `ok: analog`, then a few frames whose `out` bytes change (the switch to analog), a `-> analog` line, and nine-byte frames whose last `in` byte steps through `00 40 80 C0 FF`. Press **q** to leave.
 
 Do not edit `emu.log`. It is evidence, kept exactly as the port gave it.
 
