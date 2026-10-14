@@ -6,17 +6,21 @@ this table must name the same GPIO for every signal, and `make test` fails if it
 
 ## Pin table
 
-| Signal | Pico GPIO | Pico physical pin | PS2 socket pin | Direction | Drive mode | On the breadboard |
-|---|---|---|---|---|---|---|
-| DATA | GP2 | 4 | 1 | Input | OpenDrainInputOnly | 330 Ω in series; 10 kΩ pull-up to 3V3 on the Pico side |
-| CMD | GP3 | 5 | 2 | Output | PushPull | 330 Ω in series |
-| ATT | GP4 | 6 | 6 | Output | PushPull | 330 Ω in series |
-| CLK | GP5 | 7 | 7 | Output | PushPull | 330 Ω in series |
-| ACK | GP6 | 9 | 9 | Input | OpenDrainInputOnly | 330 Ω in series; 10 kΩ pull-up to 3V3 on the Pico side |
-| VCC 3.3 V | 3V3(OUT) | 36 | 5 | — | — | direct |
-| GND | GND | 38 | 4 | — | — | direct |
-| 7.6 V | — | — | 3 | — | — | **not connected** (R-SAFETY-04) |
-| unused | — | — | 8 | — | — | not connected |
+| Signal | Pico GPIO | Pico physical pin | PS2 socket pin | Socket position | Direction | Drive mode | On the breadboard |
+|---|---|---|---|---|---|---|---|
+| DATA | GP2 | 4 | 1 | 9 | Input | OpenDrainInputOnly | 330 Ω in series; 10 kΩ pull-up to 3V3 on the Pico side |
+| CMD | GP3 | 5 | 2 | 8 | Output | PushPull | 330 Ω in series |
+| ATT | GP4 | 6 | 6 | 4 | Output | PushPull | 330 Ω in series |
+| CLK | GP5 | 7 | 7 | 3 | Output | PushPull | 330 Ω in series |
+| ACK | GP6 | 9 | 9 | 1 | Input | OpenDrainInputOnly | 330 Ω in series; 10 kΩ pull-up to 3V3 on the Pico side |
+| VCC 3.3 V | 3V3(OUT) | 36 | 5 | 5 | — | — | direct |
+| GND | GND | 38 | 4 | 6 | — | — | direct |
+| 7.6 V | — | — | 3 | 7 | — | — | **not connected** (R-SAFETY-04) |
+| unused | — | — | 8 | 2 | — | — | not connected |
+
+"Socket position" counts the socket's nine contacts from left to right, looking straight into
+the female socket with its metal shield at the top (§Finding each pin on the socket). It is
+not the PS2 pin number: position N is PS2 pin 10 − N.
 
 "Pico physical pin" counts the board's 40 edge pins: pin 1 is top-left with the USB
 connector at the top, pins 1–20 run down the left edge and 21–40 run back up the right edge.
@@ -66,34 +70,39 @@ the Pico side so the Pico always sees a defined level even with the guitar unplu
 
 On a console, pin 3 carries 7.6 V for the vibration motors. The SG has no motors to feed,
 and 7.6 V on any Pico pin destroys it (R-SAFETY-04). Leave PS2 pin 3's wire or terminal
-(printed 7 on this bench's breakout) empty, and cover it: a wrap of electrical tape over the bare end, or a short piece
+(socket position 7) empty, and cover it: a wrap of electrical tape over the bare end, or a short piece
 of heat-shrink, so it cannot touch a breadboard row by accident. The multimeter checklist in
 `docs/phases/02-wiring/verify.md` confirms it is isolated before anything is powered.
 
-## This bench's breakout prints its pin numbers mirrored
+## Finding each pin on the socket
 
-Every "socket pin" in this document is the PS2 pin number, the one the controller's plug
-uses. The breakout on this bench prints them mirrored: the terminal printed **N** carries PS2
-pin **10 − N**. Wire by PS2 number, so on this breakout:
+Every "socket pin" in this document is the PS2 pin number, the one the controller's plug uses.
+The socket's contacts carry no numbers, so find them by position: look straight into the female
+socket with its metal shield at the top and count the nine contacts **from left to right**.
+Position **N** is PS2 pin **10 − N**:
 
-| PS2 pin (signal) | Breakout terminal printed |
-|---|---|
-| 1 DATA | 9 |
-| 2 CMD | 8 |
-| 3 7.6 V — never connected, insulate it | 7 |
-| 4 GND | 6 |
-| 5 VCC 3.3 V | 5 |
-| 6 ATT | 4 |
-| 7 CLK | 3 |
-| 8 unused | 2 |
-| 9 ACK | 1 |
+| Socket position (left to right) | PS2 pin | Signal |
+|---|---|---|
+| 1 | 9 | ACK |
+| 2 | 8 | unused |
+| 3 | 7 | CLK |
+| 4 | 6 | ATT |
+| 5 | 5 | VCC 3.3 V |
+| 6 | 4 | GND |
+| 7 | 3 | 7.6 V — never connected, insulate it |
+| 8 | 2 | CMD |
+| 9 | 1 | DATA |
 
-Wired by the printed numbers, the guitar never got a clock and never answered; every check
-before 2026-10-12 measured against the printed numbers, so none of them could see it. Found
-with a logic analyzer and a diode-mode sweep of the plugged guitar (phase 09, experiment X5).
-A replacement breakout must be checked again: plug in a controller and, with everything
-unpowered, read diode mode from the terminal you believe is GND (red probe) to every other
-terminal. The real GND reads a diode drop to VCC (~0.6 V); a signal terminal does not.
+So DATA (GP2) is the right-hand end and ACK (GP6) the left-hand end. This is the wiring that
+played Clone Hero on the Mac and the Steam Deck (phases 10 and 11).
+
+Phase 02 numbered the contacts from a pinout drawing that does not say which face it shows
+(§Sources), and read it mirrored: the guitar never got a clock and never answered, and every
+check before 2026-10-12 measured against that mirrored numbering, so none of them could see it.
+Found with a logic analyzer and a diode-mode sweep of the plugged guitar (phase 09, experiment
+X5). To check a socket without trusting any drawing: plug in a controller and, with everything
+unpowered, read diode mode from position 6 (red probe, GND) to position 5 (black, VCC). It reads
+a diode drop (~0.6 V).
 
 ## Sources
 
@@ -104,9 +113,8 @@ terminal. The real GND reads a diode drop to VCC (~0.6 V); a signal terminal doe
   <https://store.curiousinventor.com/guides/PS2>
 
 **Viewing side.** The cited source numbers the pins but does not say which face of the
-connector its drawing is seen from, and pinout drawings online disagree on it. So this
-document does not rely on a drawing, nor on the numbering printed on a breakout, which this
-bench's breakout prints mirrored (§This bench's breakout). Pins are named by PS2 number: find
-GND with that section's diode-mode check, then confirm the rest by continuity with the
-multimeter (`docs/phases/02-wiring/verify.md`). If the breakout carries no numbering, stop and
-ask before wiring.
+connector its drawing is seen from, and pinout drawings online disagree on it. Reading it from
+the wrong face mirrored this bench's wiring until phase 09. So this document does not rely on a
+drawing: pins are named by PS2 number and found by socket position (§Finding each pin on the
+socket), with GND confirmed by that section's diode-mode check and the rest by continuity with
+the multimeter (`docs/phases/02-wiring/verify.md`).
