@@ -75,7 +75,7 @@ As in the README's **Flash** section's last paragraph: unplug the Pico's USB, pl
 its socket, plug the Pico back into the Mac. The wiring has not changed since phase 10, so there
 is no need to repeat the multimeter checklist. If you have touched the breadboard since phase 10,
 repeat it first (`docs/phases/02-wiring/verify.md`, Part C, sections C1 and C2), **by PS2 pin
-number, not the breakout's printed numbers** (`docs/wiring.md` §This bench's breakout).
+number, found by socket position** (`docs/wiring.md` §Finding each pin on the socket).
 
 ### (d) Clone Hero on the Mac
 

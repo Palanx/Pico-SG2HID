@@ -38,13 +38,15 @@ times; the full set is in [`docs/constraints.md`](docs/constraints.md) §Invaria
 
 Everything is in [`docs/wiring.md`](docs/wiring.md): the pin table, the parts (a PS2 female
 socket breakout, five 330 Ω and two 10 kΩ resistors), the breadboard layout step by step, and
-why each resistor is there. Read its section on breakouts that print pin numbers mirrored:
-**wire by PS2 pin number**, not by what the breakout prints.
+why each resistor is there. The socket's contacts carry no numbers: look straight into the
+female socket with its metal shield at the top and count them **from left to right**. Position N
+is PS2 pin 10 − N, so DATA (GP2) is the right-hand end. The pin table gives each signal's
+position; §Finding each pin on the socket says how to confirm it with a multimeter.
 
 Before the guitar is ever plugged in, run the multimeter checklist in
 [`docs/phases/02-wiring/verify.md`](docs/phases/02-wiring/verify.md). It is written for someone
-who has not used a multimeter before. Its "socket pin" numbers are PS2 pin numbers too: find
-each one on your breakout with `docs/wiring.md` first.
+who has not used a multimeter before. Its "socket pin" numbers are PS2 pin numbers: find each
+one's position in `docs/wiring.md` first.
 
 ## Build
 
